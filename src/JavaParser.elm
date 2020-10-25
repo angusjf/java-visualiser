@@ -3,8 +3,6 @@ module JavaParser exposing (..)
 import Set exposing (Set)
 import Parser as P exposing (Parser, (|=), (|.))
 
-type alias Ast = CompilationUnit
-
 type alias CompilationUnit
   = { package : Maybe String
     , imports : List ImportDeclaration
@@ -45,21 +43,36 @@ type InterfaceDeclaration
 
 type alias NormalClassDeclaration =
   { identifier : String
-  , extends : Maybe String
-  , implements : List String
+  , extends : Maybe Type
+  , implements : List Type
+  , body : ClassBody
   }
+
+type Type
+  = BasicType BasicType
+  | BasicArrayType BasicType
+  | ReferenceType ReferenceType
+  | ReferenceArrayType ReferenceType
+
+type BasicType
+  = Byte
+  | Short
+  | Char
+  | Int
+  | Long
+  | Float
+  | Double
+  | Boolean
+
+type ReferenceType = RT String -- TODO
 
 type EnumDeclaration
   = EnumDec
 
+type ClassBody = CB () -- TODO
+
 reserved : Set String
 reserved = Set.fromList ["class", "package", "public", "static", "int"]
-
-toAst : String -> Maybe Ast
-toAst src =
-  case P.run compilationUnit src of
-    Ok ast -> Just ast
-    Err de -> Nothing
 
 {-
 CompilationUnit: 
@@ -183,15 +196,75 @@ NormalClassDeclaration:
 -}
 normalClassDeclaration : Parser NormalClassDeclaration
 normalClassDeclaration =
-  P.succeed NormalClassDeclaration
-    |. P.keyword "class"
-    |. P.spaces
-    |= identifier
-    |= P.succeed Nothing
-    |= P.succeed []
-    --|. classBody
+  let
+    ext : Parser Type
+    ext = P.succeed identity
+             |. P.keyword "extends"
+             |. P.spaces
+             |= type_
+    impl : Parser (List Type)
+    impl = P.succeed identity
+             |. P.keyword "implements"
+             |. P.spaces
+             |= typeList
+  in
+    P.succeed NormalClassDeclaration
+      |. P.keyword "class"
+      |. P.spaces
+      |= identifier
+      |. P.spaces
+      |= orNot ext
+      |. P.spaces
+      |= P.map (Maybe.withDefault []) (orNot impl)
+      |= classBody
 
--- classBody 
+classBody : Parser ClassBody
+classBody = P.succeed (CB ())
+
+orNot : Parser a -> Parser (Maybe a)
+orNot parser =
+  P.oneOf
+    [ P.map Just parser
+    , P.succeed Nothing
+    ]
+
+type_ : Parser Type
+type_ =
+  P.oneOf
+    [ P.map BasicType basicType
+    , P.map ReferenceType referenceType
+    ]
+
+typeList : Parser (List Type)
+typeList =
+  commas type_
+
+commas : Parser a -> Parser (List a)
+commas parser =
+  P.sequence
+    { start = ""
+    , separator = ","
+    , end = ""
+    , spaces = P.spaces
+    , item = parser
+    , trailing = P.Forbidden
+    }
+
+basicType : Parser BasicType
+basicType =
+  P.oneOf 
+    [ P.succeed Byte    |. P.keyword "byte"
+    , P.succeed Short   |. P.keyword "short"
+    , P.succeed Char    |. P.keyword "char"
+    , P.succeed Int     |. P.keyword "int"
+    , P.succeed Long    |. P.keyword "long"
+    , P.succeed Float   |. P.keyword "float"
+    , P.succeed Double  |. P.keyword "double"
+    , P.succeed Boolean |. P.keyword "boolean"
+    ]
+
+referenceType : Parser ReferenceType
+referenceType = P.map (RT) identifier -- TODO
 
 list : Parser a -> Parser (List a)
 list p = 

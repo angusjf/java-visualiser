@@ -1,24 +1,27 @@
 port module Main exposing (main)
 
 import Browser
-import Graphics as G exposing (Svg)
-import Graph exposing (Graph)
+import Html
+
 import File exposing (File, Uri)
+import JavaToGraph
+import Visualiser
 
 type alias Model =
-  { graph : Graph
-  , files : List File
+  { files : List File
+  , visualiser : Visualiser.Model
   }
 
 type Msg
   = NewFile File
   | UpdateFile File
   | DeleteFile Uri
+  | VisualiserMsg Visualiser.Msg
 
 init : List File -> (Model, Cmd Msg)
 init files =
-  ({ graph = Graph.fromFiles files
-   , files = files
+  ({ files = files
+   , visualiser = Visualiser.init (filesToGraph files)
    }
   , Cmd.none
   )
@@ -29,21 +32,33 @@ port deleteFile : (Uri -> msg) -> Sub msg
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
-  let
-    newFiles = 
-      case msg of 
-        NewFile file ->
-          file :: model.files
-        UpdateFile file ->
-          replace file model.files -- TODO
-        DeleteFile uri ->
-          model.files -- TODO
-  in
-    ({ model | files = newFiles
-             , graph = Graph.fromFiles newFiles
-     }
-    , Cmd.none
-    )
+  case msg of 
+    NewFile file ->
+      ( setFiles (file :: model.files) model
+      , Cmd.none
+      )
+    UpdateFile file ->
+      ( setFiles (replace file model.files) model
+      , Cmd.none
+      )
+    DeleteFile uri ->
+      ( setFiles (delete uri model.files) model
+      , Cmd.none
+      )
+    VisualiserMsg vMsg ->
+      let
+        (mo, me) = Visualiser.update vMsg model.visualiser
+      in
+        ( { model | visualiser = mo }
+        , Cmd.map VisualiserMsg me
+        )
+
+setFiles : List File -> Model -> Model
+setFiles files model =
+  { model
+    | files = files
+    , visualiser = Visualiser.setGraph (filesToGraph files) model.visualiser
+  }
 
 replace : File -> List File -> List File
 replace file files =
@@ -51,29 +66,21 @@ replace file files =
     x::xs -> if file.uri == x.uri then file :: xs else x :: replace file xs
     [] -> []
 
+delete : Uri -> List File -> List File
+delete uri files =
+  case files of
+    x::xs -> if x.uri == uri then xs else x :: delete uri xs
+    [] -> []
+
+filesToGraph files = 
+  List.map (\f -> f.content) files |> JavaToGraph.fromSources
+
 view : Model -> Browser.Document Msg
 view model =
   { title = "I don't think you can see this"
-  , body = [ G.render [ viewGraph model.graph ] ]
+  , body = [ Visualiser.view model.visualiser |> Html.map VisualiserMsg
+           ]
   }
-
-viewGraph : Graph -> Svg Msg
-viewGraph graph =
-  let
-    l = List.length graph.classes
-    xs = List.map (\x -> x + 0) <| List.repeat l 0
-    ys = List.map (\y -> y * 60 + 0) <| List.range 0 l
-    classPos = zip3 xs ys graph.classes
-  in
-    G.group <| List.map viewClass classPos
-
-viewClass : (Int, Int, Graph.Class) -> Svg Msg
-viewClass (x, y, class) =
-  let
-    text = G.text (x + 10) (y + 30) class.name
-    box = (if class.public then G.rect2 else G.rect1) x y 120 50
-  in
-    G.group [ box, text ]
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
@@ -82,12 +89,6 @@ subscriptions model =
     , updateFile UpdateFile
     , deleteFile DeleteFile
     ]
-
-zip3 : List a -> List b -> List c -> List (a, b, c)
-zip3 aList bList cList =
-  case (aList, bList, cList) of
-    (a::aa, b::bb, c::cc) -> (a, b, c) :: zip3 aa bb cc
-    _ -> []
 
 main =
   Browser.document
