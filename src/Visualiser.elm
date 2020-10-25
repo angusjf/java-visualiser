@@ -1,55 +1,76 @@
-module Visualiser exposing (Model, Msg, init, view, update, setGraph)
+module Visualiser exposing (Model, Msg, init, view, update, withGraph)
 
 import Html exposing (Html)
+import Json.Decode as Decode
 
 import Graph exposing (Graph, Class, NodeId)
 import CustomSvg as G exposing (Svg)
 
 type alias Model =
   { graph : Graph
+  , positions : List (Class, (Float, Float))
+  , draggedClass : Maybe NodeId
   }
 
-type alias Msg = ()
+type Msg
+  = Start NodeId
+  | Stop
+  | Move DragData
+
+type alias DragData =
+  { x : Float
+  , y : Float
+  }
 
 init : Graph -> Model
-init graph = { graph = graph
-             }
-
-setGraph : Graph -> Model -> Model
-setGraph graph model = { model | graph = graph }
-
-view : Model -> Html Msg
-view model =
+init graph =
   let
-    graph = model.graph
     l = List.length graph.classes
-    xs = List.map (\x -> (x ^ 2.2) * 2) <| flip <| List.map toFloat <| List.range 0 l
-    ys = List.map (\y -> y * 60) <| List.map toFloat <| List.range 0 l
-    classPoss = zip3 xs ys graph.classes
-    extPoss = zip3 xs ys graph.extensions
+    xs = List.map (\x -> (x ^ 2.2) * 2 + 10) <| flip <| List.map toFloat <| List.range 0 l
+    ys = List.map (\y -> y * 60 + 10) <| List.map toFloat <| List.range 0 l
+    poss = zip3With (\c x y -> (c, (x, y))) graph.classes xs ys
   in
-    G.render
-      [
-        G.group
-          [ G.group <| List.map viewClass classPoss
-          , G.group <| List.map (viewExtension classPoss) extPoss
-          ]
-      ]
+    { graph = graph
+    , positions = poss
+    , draggedClass = Nothing
+    }
+
+withGraph : Graph -> Model -> Model
+withGraph graph model = init graph
+--withGraph graph model =
+--  { model | graph = graph
+--          , positions = 
+--  }
 
 update : Msg -> Model -> (Model, Cmd Msg)
-update dragEvent model = (model, Cmd.none)
+update msg model =
+  case msg of
+    Start id ->
+      ({ model | draggedClass = Just id }, Cmd.none)
+    Stop ->
+      ({ model | draggedClass = Nothing }, Cmd.none)
+    Move dragData ->
+      case model.draggedClass of
+        Just draggedId ->
+          let
+            new = List.map up model.positions
+            up (class, (x, y)) =
+              if class.id == draggedId
+                then (class, (dragData.x - 60, dragData.y - 25))
+                else (class, (x, y))
+          in
+            ({ model | positions = new }, Cmd.none)
+        Nothing -> (model, Cmd.none)
 
---   Svg.Events.on "click" (decodeClickEvent 
--- 
---{- target: h1.title, buttons: 0, clientX: 392, clientY: 131, layerX: 392,
---   layerY: 131 -}
---decodeClickEvent : Json.Decode.Decoder Msg
---decodeClickEvent nodeId =
---  Decode.succeed
---    { x = 1
---    , y = 1
---    , id = nodeId
---    }
+moveEventDecoder : Decode.Decoder Msg
+moveEventDecoder =
+  Decode.map Move <|
+    Decode.map2 DragData
+      (Decode.field "clientX" Decode.float)
+      (Decode.field "clientY" Decode.float)
+
+eventDecoder : Msg -> Decode.Decoder Msg
+eventDecoder msg = Decode.succeed msg
 
 flip : List a -> List a
 flip list =
@@ -65,32 +86,47 @@ flip list =
   in
     flip_ 0 list
 
-viewClass : (Float, Float, Class) -> Svg Msg
-viewClass (x, y, class) =
+view : Model -> Html Msg
+view model =
+    G.render
+      { move = moveEventDecoder
+      , up = eventDecoder Stop
+      }
+      [ G.group
+          [ G.group <| List.map viewClass model.positions
+          , G.group <| List.map (viewExtension model.positions) model.graph.classes
+          ]
+      ]
+
+viewClass : (Class, (Float, Float)) -> Svg Msg
+viewClass (class, (x, y)) =
   let
     text = G.text (x + 10) (y + 30) class.name
-    box = (if class.public then G.rect2 else G.rect1) x y 120 50
+    rect = if class.public then G.rectClick2 else G.rectClick1
+    box = rect x y 120 50 (eventDecoder (Start class.id))
   in
     G.group [ box, text ]
 
-viewExtension : List (Float, Float, Class) -> (Float, Float, (NodeId, NodeId)) -> Svg Msg
-viewExtension classPoss (x, y, (child, parent)) =
+viewExtension : List (Class, (Float, Float)) -> Class -> Svg Msg
+viewExtension poss class =
   let
-    childPos = Maybe.map (\(a, b) -> (a + 70, b + 30)) <| getPos classPoss child
-    parentPos = Maybe.map (\(a, b) -> (a + 70, b + 30)) <| getPos classPoss parent
+    childPos_ = getPos poss class.id
+    parentPos_ = Maybe.andThen (getPos poss) class.extends
+    childPos = Maybe.map (\(a, b) -> (a + 70, b + 5)) childPos_
+    parentPos = Maybe.map (\(a, b) -> (a + 70, b + 45)) parentPos_
   in
     case (childPos, parentPos) of
       (Just c, Just p) -> G.arrow1 c p
       _ -> G.group []
 
-getPos : List (Float, Float, Class) -> NodeId -> Maybe (Float, Float)
+getPos : List (Class, (Float, Float)) -> NodeId -> Maybe (Float, Float)
 getPos poss id =
-  case List.filter (\(x, y, class) -> class.id == id) poss of
-    (x, y, _)::_ -> Just (x, y)
+  case List.filter (\(class, (x, y)) -> class.id == id) poss of
+    (_, (x, y)) ::_ -> Just (x, y)
     [] -> Nothing
 
-zip3 : List a -> List b -> List c -> List (a, b, c)
-zip3 aList bList cList =
+zip3With : (a -> b -> c -> d) -> List a -> List b -> List c -> List d
+zip3With f aList bList cList =
   case (aList, bList, cList) of
-    (a::aa, b::bb, c::cc) -> (a, b, c) :: zip3 aa bb cc
+    (a::aa, b::bb, c::cc) -> (f a b c) :: zip3With f aa bb cc
     _ -> []

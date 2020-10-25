@@ -17,7 +17,6 @@ fromSources srcs =
     classes = List.concatMap compUnitToClasses asts
   in
     { classes = classes
-    , extensions = getExtensions asts
     }
 
 compUnitToClasses : JP.CompilationUnit -> List Graph.Class
@@ -36,6 +35,11 @@ typeToClass pkg t =
                 { id = mkNodeId (Maybe.withDefault "[NOPKG]" pkg) data.identifier
                 , name = data.identifier
                 , public = List.member JP.Public mod
+                , extends = 
+              Maybe.map2
+                (\class p -> mkNodeId p class)
+                (onlyRefTypes data.extends)
+                pkg
                 }
             JP.Enum _ ->
               Nothing
@@ -43,7 +47,7 @@ typeToClass pkg t =
           Nothing -- TODO
     JP.Semicolon ->
       Nothing
-
+      {-
 getExtensions : List JP.CompilationUnit -> List (NodeId, NodeId)
 getExtensions units =
   let
@@ -86,6 +90,7 @@ ext unit t =
           Nothing -- TODO
     JP.Semicolon ->
       Nothing
+      -}
 
 onlyRefTypes : Maybe JP.Type -> Maybe String
 onlyRefTypes maybeType =

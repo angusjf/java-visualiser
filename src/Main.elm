@@ -16,6 +16,7 @@ type Msg
   = NewFile File
   | UpdateFile File
   | DeleteFile Uri
+  | RenameFile (Uri, Uri)
   | VisualiserMsg Visualiser.Msg
 
 init : List File -> (Model, Cmd Msg)
@@ -29,6 +30,7 @@ init files =
 port newFile : (File -> msg) -> Sub msg
 port updateFile : (File -> msg) -> Sub msg
 port deleteFile : (Uri -> msg) -> Sub msg
+port renameFile : ((Uri, Uri) -> msg) -> Sub msg
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
@@ -38,11 +40,17 @@ update msg model =
       , Cmd.none
       )
     UpdateFile file ->
-      ( setFiles (replace file model.files) model
+      ( always (setFiles (replace file model.files) model)
+          (Debug.log "" (setFiles (replace file model.files)
+          model).visualiser.graph.classes)
       , Cmd.none
       )
     DeleteFile uri ->
       ( setFiles (delete uri model.files) model
+      , Cmd.none
+      )
+    RenameFile (from, to) ->
+      ( model
       , Cmd.none
       )
     VisualiserMsg vMsg ->
@@ -57,7 +65,7 @@ setFiles : List File -> Model -> Model
 setFiles files model =
   { model
     | files = files
-    , visualiser = Visualiser.setGraph (filesToGraph files) model.visualiser
+    , visualiser = Visualiser.withGraph (filesToGraph files) model.visualiser
   }
 
 replace : File -> List File -> List File
@@ -88,6 +96,7 @@ subscriptions model =
     [ newFile NewFile
     , updateFile UpdateFile
     , deleteFile DeleteFile
+    , renameFile RenameFile
     ]
 
 main =
