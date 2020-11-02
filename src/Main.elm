@@ -40,17 +40,15 @@ update msg model =
       , Cmd.none
       )
     UpdateFile file ->
-      ( always (setFiles (replace file model.files) model)
-          (Debug.log "" (setFiles (replace file model.files)
-          model).visualiser.graph.classes)
+      ( setFiles (insert file model.files) model
       , Cmd.none
       )
     DeleteFile uri ->
-      ( setFiles (delete uri model.files) model
+      ( Debug.log "" setFiles (delete uri model.files) model
       , Cmd.none
       )
     RenameFile (from, to) ->
-      ( model
+      ( setFiles (rename from to model.files) model
       , Cmd.none
       )
     VisualiserMsg vMsg ->
@@ -68,16 +66,31 @@ setFiles files model =
     , visualiser = Visualiser.withGraph (filesToGraph files) model.visualiser
   }
 
-replace : File -> List File -> List File
-replace file files =
+insert : File -> List File -> List File
+insert file files =
   case files of
-    x::xs -> if file.uri == x.uri then file :: xs else x :: replace file xs
-    [] -> []
+    x::xs ->
+      if file.uri == x.uri
+        then file :: xs
+        else x :: insert file xs
+    [] -> [ file ]
 
 delete : Uri -> List File -> List File
 delete uri files =
   case files of
-    x::xs -> if x.uri == uri then xs else x :: delete uri xs
+    x::xs ->
+      if x.uri == uri
+        then xs
+        else x :: delete uri xs
+    [] -> []
+
+rename : Uri -> Uri -> List File -> List File
+rename from to files =
+  case files of
+    x::xs ->
+      if x.uri == from
+        then { x | uri = to } :: xs
+        else x :: rename from to xs
     [] -> []
 
 filesToGraph files = 

@@ -3,130 +3,168 @@ module Visualiser exposing (Model, Msg, init, view, update, withGraph)
 import Html exposing (Html)
 import Json.Decode as Decode
 
-import Graph exposing (Graph, Class, NodeId)
+import Graph exposing (Graph, Class, NodeId, Vertex, Kind(..))
 import CustomSvg as G exposing (Svg)
 
+type alias Node =
+  { data : Class
+  , pos : Vec2
+  , vel : Vec2
+  }
+
+type alias Vec2 = (Float, Float)
+
 type alias Model =
-  { graph : Graph
-  , positions : List (Class, (Float, Float))
-  , draggedClass : Maybe NodeId
+  { nodes : List Node
+  , extensions : List Vertex
+  , implements : List Vertex
+  , draggedNode : Maybe Node
   }
 
 type Msg
-  = Start NodeId
+  = Start Node
   | Stop
-  | Move DragData
-
-type alias DragData =
-  { x : Float
-  , y : Float
-  }
+  | Move Vec2
 
 init : Graph -> Model
 init graph =
   let
-    l = List.length graph.classes
-    xs = List.map (\x -> (x ^ 2.2) * 2 + 10) <| flip <| List.map toFloat <| List.range 0 l
-    ys = List.map (\y -> y * 60 + 10) <| List.map toFloat <| List.range 0 l
-    poss = zip3With (\c x y -> (c, (x, y))) graph.classes xs ys
+    addPosAndVel class = { data = class, pos = (100, 100), vel = (0, 0) }
   in
-    { graph = graph
-    , positions = poss
-    , draggedClass = Nothing
+    { nodes = arrange <| List.map addPosAndVel graph.classes
+    , extensions = graph.extensions
+    , implements = graph.implements
+    , draggedNode = Nothing
     }
 
 withGraph : Graph -> Model -> Model
-withGraph graph model = init graph
---withGraph graph model =
---  { model | graph = graph
---          , positions = 
---  }
+withGraph graph model = init graph -- TODO
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
   case msg of
-    Start id ->
-      ({ model | draggedClass = Just id }, Cmd.none)
+    Start node ->
+      ({ model | draggedNode = Just node }, Cmd.none)
     Stop ->
-      ({ model | draggedClass = Nothing }, Cmd.none)
-    Move dragData ->
-      case model.draggedClass of
-        Just draggedId ->
+      ({ model | draggedNode = Nothing }, Cmd.none)
+    Move (x, y) ->
+      case model.draggedNode of
+        Just old ->
           let
-            new = List.map up model.positions
-            up (class, (x, y)) =
-              if class.id == draggedId
-                then (class, (dragData.x - 60, dragData.y - 25))
-                else (class, (x, y))
+            new = { old | pos = (x - 60, y - 25) }
           in
-            ({ model | positions = new }, Cmd.none)
-        Nothing -> (model, Cmd.none)
+            ({ model | nodes = upsert new model.nodes }, Cmd.none)
+        Nothing ->
+          (model, Cmd.none)
 
 moveEventDecoder : Decode.Decoder Msg
 moveEventDecoder =
   Decode.map Move <|
-    Decode.map2 DragData
+    Decode.map2 Tuple.pair
       (Decode.field "clientX" Decode.float)
       (Decode.field "clientY" Decode.float)
-
-eventDecoder : Msg -> Decode.Decoder Msg
-eventDecoder msg = Decode.succeed msg
-
-flip : List a -> List a
-flip list =
-  let
-    flip_ i l =
-      case l of 
-        x::y::xs ->
-          if modBy 2 i == 0
-            then x :: y :: List.reverse (flip_ (i + 1) xs)
-            else y :: x :: (flip_ (i + 1) xs)
-        smth -> smth
-    noflip_ _ l = l
-  in
-    flip_ 0 list
 
 view : Model -> Html Msg
 view model =
     G.render
       { move = moveEventDecoder
-      , up = eventDecoder Stop
+      , up = Decode.succeed Stop
       }
       [ G.group
-          [ G.group <| List.map viewClass model.positions
-          , G.group <| List.map (viewExtension model.positions) model.graph.classes
+          [ G.group <| List.map viewNode model.nodes
+          , G.group <| List.map (viewVertex model.nodes) model.extensions
           ]
       ]
 
-viewClass : (Class, (Float, Float)) -> Svg Msg
-viewClass (class, (x, y)) =
+viewNode : Node -> Svg Msg
+viewNode node =
   let
-    text = G.text (x + 10) (y + 30) class.name
-    rect = if class.public then G.rectClick2 else G.rectClick1
-    box = rect x y 120 50 (eventDecoder (Start class.id))
+    (x, y) = node.pos
+    text = G.text (x + 10) (y + 30) node.data.name
+    rect = if node.data.kind == Normal then G.rectClick2 else G.rectClick1
+    box = rect x y 120 50 (Decode.succeed (Start node))
   in
     G.group [ box, text ]
 
-viewExtension : List (Class, (Float, Float)) -> Class -> Svg Msg
-viewExtension poss class =
+viewVertex : List Node -> Vertex -> Svg Msg
+viewVertex nodes vertex =
   let
-    childPos_ = getPos poss class.id
-    parentPos_ = Maybe.andThen (getPos poss) class.extends
-    childPos = Maybe.map (\(a, b) -> (a + 70, b + 5)) childPos_
-    parentPos = Maybe.map (\(a, b) -> (a + 70, b + 45)) parentPos_
+    moveTop (a, b) = (a + 70, b + 5)
+    moveBottom (a, b) = (a + 70, b + 45)
+    childPos = Maybe.map moveTop <| getPos nodes vertex.from
+    parentPos = Maybe.map moveBottom <| getPos nodes vertex.to
   in
     case (childPos, parentPos) of
       (Just c, Just p) -> G.arrow1 c p
       _ -> G.group []
 
-getPos : List (Class, (Float, Float)) -> NodeId -> Maybe (Float, Float)
-getPos poss id =
-  case List.filter (\(class, (x, y)) -> class.id == id) poss of
-    (_, (x, y)) ::_ -> Just (x, y)
+getPos : List Node -> NodeId -> Maybe Vec2
+getPos nodes id =
+  case List.filter (\n -> n.data.id == id) nodes of
+    node :: _ -> Just node.pos
     [] -> Nothing
 
-zip3With : (a -> b -> c -> d) -> List a -> List b -> List c -> List d
-zip3With f aList bList cList =
-  case (aList, bList, cList) of
-    (a::aa, b::bb, c::cc) -> (f a b c) :: zip3With f aa bb cc
-    _ -> []
+upsert : Node -> List Node -> List Node
+upsert new nodes =
+  case nodes of
+    (x::xs) ->
+      if x.data.id == new.data.id
+        then new :: xs
+        else x :: upsert new xs
+    [] ->
+      [new]
+
+{-
+zip : List a -> List b -> List (a, b)
+zip xs ys =
+  case (xs, ys) of
+    (xHead::xTail, yHead::yTail) -> (xHead, yHead) :: zip xTail yTail
+    (_, _) -> []
+-}
+
+-- ARRANGE
+
+arrange : List Node -> List Node
+arrange nodes = repeat 5 arrangeStep nodes
+
+repeat : Int -> (a -> a) -> a -> a
+repeat times f x =
+  case times of
+    0 -> x
+    n -> repeat (n - 1) f (f x)
+
+arrangeStep : List Node -> List Node
+arrangeStep nodes = List.map (step nodes) nodes
+
+step : List Node -> Node -> Node
+step all node =
+  let
+    acc = getAccTotal node.pos others
+    others = 
+      all
+      |> List.filter (\n -> n.data.id /= node.data.id)
+      |> List.map (\n -> n.pos)
+  in
+    { data = node.data
+    , pos = add node.pos (add node.vel acc)
+    , vel = add node.vel acc
+    }
+
+add : Vec2 -> Vec2 -> Vec2
+add (x1, y1) (x2, y2) = (x1 + x2, y1 + y2)
+
+mul : Vec2 -> Vec2 -> Vec2
+mul (x1, y1) (x2, y2) = (x1 * x2, y1 * y2)
+
+getAccTotal : Vec2 -> List Vec2 -> Vec2
+getAccTotal pos others =
+    List.foldr add (0, 0) <| List.map (getAcc pos) others
+
+getAcc : Vec2 -> Vec2 -> Vec2
+getAcc (x1, y1) (x2, y2) =
+  let
+    l = ((x2 - x1) ^ 2 + (y2 - y1) ^ 2) ^ 0.5
+    r = 1
+    k = 1
+  in
+    mul (l - r, l - r) (k, k)

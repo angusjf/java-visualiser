@@ -1,8 +1,10 @@
 module JavaToGraph exposing (..)
 
-import Graph exposing (Graph, NodeId, mkNodeId)
+import Graph exposing (Graph, NodeId, mkNodeId, Kind(..), Vertex)
 import JavaParser as JP
 import Parser
+
+type alias ClassData = (Graph.Class, Maybe NodeId, List NodeId)
 
 fromSources : List String -> Graph
 fromSources srcs =
@@ -13,17 +15,32 @@ fromSources srcs =
     toAst : String -> Maybe JP.CompilationUnit
     toAst src = Result.toMaybe (Parser.run JP.compilationUnit src)
 
-    classes : List Graph.Class
+    classes : List ClassData
     classes = List.concatMap compUnitToClasses asts
+
+    extensions : List Vertex
+    extensions =
+      dropMaybes <|
+        List.map
+          (\(class, parent, _) ->
+            case parent of 
+              Just p ->
+                Just { from = class.id, to = p }
+              Nothing ->
+                Nothing
+          )
+          classes
   in
-    { classes = classes
+    { classes = List.map (\(x, _, _) -> x) classes
+    , extensions = extensions
+    , implements = []
     }
 
-compUnitToClasses : JP.CompilationUnit -> List Graph.Class
+compUnitToClasses : JP.CompilationUnit -> List ClassData
 compUnitToClasses unit =
   List.filterMap (typeToClass unit.package) unit.types
 
-typeToClass : Maybe String -> JP.TypeDeclaration -> Maybe Graph.Class
+typeToClass : Maybe String -> JP.TypeDeclaration -> Maybe ClassData
 typeToClass pkg t =
   case t of
     JP.ClassOrInterface coi ->
@@ -32,15 +49,18 @@ typeToClass pkg t =
           case c of
             JP.NormalClass data ->
               Just
-                { id = mkNodeId (Maybe.withDefault "[NOPKG]" pkg) data.identifier
-                , name = data.identifier
-                , public = List.member JP.Public mod
-                , extends = 
-              Maybe.map2
-                (\class p -> mkNodeId p class)
-                (onlyRefTypes data.extends)
-                pkg
-                }
+                ({ id = mkNodeId (Maybe.withDefault "[NOPKG]" pkg) data.identifier
+                 , name = data.identifier
+                 , kind = if List.member JP.Public mod
+                            then Public
+                            else Normal
+                 }
+                , Maybe.map2
+                    (\class p -> mkNodeId p class)
+                    (onlyRefTypes data.extends)
+                    pkg
+                , []
+                )
             JP.Enum _ ->
               Nothing
         JP.Interface _ _ ->
@@ -97,3 +117,10 @@ onlyRefTypes maybeType =
   case maybeType of
     Just (JP.ReferenceType (JP.RT name)) -> Just name
     _ -> Nothing
+
+dropMaybes : List (Maybe a) -> List a
+dropMaybes list =
+  case list of
+    (Just x) :: xs -> x :: dropMaybes xs
+    Nothing :: xs -> dropMaybes xs
+    [] -> []

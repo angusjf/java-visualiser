@@ -1,23 +1,24 @@
-module Graph exposing (NodeId, Graph, Class, mkNodeId)
-
-type Msg
-  = DragEvent
-      { x : Float
-      , y : Float
-      , id : NodeId
-      }
+module Graph exposing (NodeId, Graph, Class, Vertex, mkNodeId, Kind(..))
 
 type NodeId = NodeId String
 
+type alias Vertex =
+  { from : NodeId
+  , to : NodeId
+  }
+
 type alias Graph =
   { classes : List Class
+  , extensions : List Vertex
+  , implements : List Vertex
   }
+
+type Kind = Normal | Public
 
 type alias Class =
   { id : NodeId
   , name : String
-  , public : Bool
-  , extends : Maybe NodeId
+  , kind : Kind
   }
 
 mkNodeId : String -> String -> NodeId
