@@ -1,6 +1,6 @@
 module Graph exposing (NodeId, Graph, Class, Vertex, mkNodeId, Kind(..))
 
-type NodeId = NodeId String
+type alias NodeId = String
 
 type alias Vertex =
   { from : NodeId
@@ -22,4 +22,4 @@ type alias Class =
   }
 
 mkNodeId : String -> String -> NodeId
-mkNodeId pkg class = NodeId <| pkg ++ "." ++ class
+mkNodeId pkg class = pkg ++ "." ++ class
