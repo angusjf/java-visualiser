@@ -4,11 +4,13 @@ import Html exposing (Html)
 import Json.Decode as Decode
 import Random
 import Force
-import Graph exposing (Graph, Class, NodeId, Vertex, Kind(..))
+import Graph exposing ( Graph, Entity, NodeId, Vertex
+                      , Kind(..), Access(..), Attribute
+                      )
 import CustomSvg as G exposing (Svg)
 
 type alias Node =
-  { data : Class
+  { data : Entity
   , x : Float
   , y : Float
   , vx : Float
@@ -20,6 +22,7 @@ type alias Model =
   { nodes : List Node
   , extensions : List Vertex
   , implements : List Vertex
+  , references : List Vertex
   , draggedNode : Maybe Node
   }
 
@@ -28,7 +31,7 @@ type Msg
   | Stop
   | Move (Float, Float)
 
-wrap : Class -> Float -> Float -> Node
+wrap : Entity -> Float -> Float -> Node
 wrap class x y =
   { data = class
   , x = x
@@ -41,16 +44,17 @@ wrap class x y =
 init : Graph -> Model
 init graph =
   let
-    len = List.length graph.classes
+    len = List.length graph.entities
     gen = Random.list len (Random.float -1 1)
     seed = Random.initialSeed 1975
     (xs, seed2) = Random.step gen seed
     (ys, _) = Random.step gen seed2
-    nodes = List.map3 wrap graph.classes xs ys
+    nodes = List.map3 wrap graph.entities xs ys
   in
   { nodes = arrange nodes graph.extensions
   , extensions = graph.extensions
   , implements = graph.implements
+  , references = graph.references 
   , draggedNode = Nothing
   }
 
@@ -87,31 +91,47 @@ moveEventDecoder =
 
 view : Model -> Html Msg
 view model =
-    G.render
-      { move = moveEventDecoder
-      , up = Decode.succeed Stop
-      }
-      [ G.group
-          [ G.group <| List.map viewNode model.nodes
-          , G.group <| List.map (viewVertex model.nodes) model.extensions
-          ]
-      ]
+  G.render
+    { move = moveEventDecoder
+    , up = Decode.succeed Stop
+    }
+    [ G.text2 10 10 (getDesc model.nodes)
+    , G.group
+        [ G.group <| List.map (viewVertex model.nodes) model.extensions
+        , G.group <| List.map (viewVertex model.nodes) model.references
+        , G.group <| List.map viewNode model.nodes
+        ]
+    ]
+
+getDesc : List Node -> String
+getDesc nodes = "nodes: [ " ++ String.join ", " (List.map .id nodes) ++ " ]"
 
 viewNode : Node -> Svg Msg
 viewNode node =
   let
     (x, y) = (node.x, node.y)
-    text = G.text (x + 10) (y + 30) node.data.name
-    rect = if node.data.kind == Normal then G.rectClick2 else G.rectClick1
-    box = rect x y 120 50 (Decode.succeed (Start node))
+    text = G.text1 (x + 10) (y + 30) ("*" ++ node.data.name ++ "*")
+    rect = case node.data.access of
+             Public    -> G.rectClick2
+             Private   -> G.rectClick1
+             Protected -> G.rectClick1
+    box = rect x y 120 (toFloat (50 + l * 20)) (Decode.succeed (Start node))
+    l = List.length node.data.publicAttributes
+    offsets = List.map (\a -> toFloat (a + 1) * 20) <| List.range 0 l
+    attrs = List.map2 (viewAttr x y) node.data.publicAttributes offsets
   in
-    G.group [ box, text ]
+    G.group <| [ box, text ] ++ attrs
+
+viewAttr : Float -> Float -> Attribute -> Float -> Svg Msg
+viewAttr x y attr offset =
+    G.text1 (x + 10) (y + 30 + offset) <|
+        attr.prettyTypeName ++ " " ++ attr.identifier
 
 viewVertex : List Node -> Vertex -> Svg Msg
 viewVertex nodes vertex =
   let
-    moveTop (a, b) = (a + 70, b + 5)
-    moveBottom (a, b) = (a + 70, b + 45)
+    moveTop (a, b) = (a + 70, b + 25)
+    moveBottom (a, b) = (a + 70, b + 25)
     childPos = Maybe.map moveTop <| getPos nodes vertex.from
     parentPos = Maybe.map moveBottom <| getPos nodes vertex.to
   in
@@ -128,7 +148,7 @@ getPos nodes id =
 upsert : Node -> List Node -> List Node
 upsert new nodes =
   case nodes of
-    (x::xs) ->
+    x::xs ->
       if x.data.id == new.data.id
         then new :: xs
         else x :: upsert new xs

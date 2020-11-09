@@ -1,126 +1,217 @@
-module JavaToGraph exposing (..)
+module JavaToGraph exposing (fromSources)
 
-import Graph exposing (Graph, NodeId, mkNodeId, Kind(..), Vertex)
+import Graph exposing ( Graph, NodeId, mkNodeId, Kind(..)
+                      , Vertex, Attribute, Method, Entity
+                      , Access(..)
+                      )
 import JavaParser as JP
 import Parser
+import Regex
 
-type alias ClassData = (Graph.Class, Maybe NodeId, List NodeId)
+type alias Subgraph =
+  { entity : Graph.Entity
+  , parent : Maybe NodeId
+  , interfaces : List NodeId
+  , references : List NodeId
+  }
 
 fromSources : List String -> Graph
 fromSources srcs =
   let
-    asts : List JP.CompilationUnit
-    asts = List.filterMap toAst srcs
-
-    toAst : String -> Maybe JP.CompilationUnit
-    toAst src = Result.toMaybe (Parser.run JP.compilationUnit src)
-
-    classes : List ClassData
-    classes = List.concatMap compUnitToClasses asts
-
-    extensions : List Vertex
-    extensions =
-      dropMaybes <|
-        List.map
-          (\(class, parent, _) ->
-            case parent of 
-              Just p ->
-                Just { from = class.id, to = p }
-              Nothing ->
-                Nothing
-          )
-          classes
+    subgraphs : List Subgraph
+    subgraphs =
+      srcs
+      |> Debug.log "asts: "
+      |> List.filterMap (removeComments >> toAst)
+      |> List.concatMap compUnitToSubgraph
   in
-    { classes = List.map (\(x, _, _) -> x) classes
-    , extensions = extensions
-    , implements = []
+    { entities = List.map .entity subgraphs
+    , extensions = List.filterMap subgraphToExtension  subgraphs
+    , implements = List.concatMap subgraphToImplements subgraphs
+    , references = List.concatMap subgraphToReferences subgraphs
     }
 
-compUnitToClasses : JP.CompilationUnit -> List ClassData
-compUnitToClasses unit =
-  List.filterMap (typeToClass unit.package) unit.types
-
-typeToClass : Maybe String -> JP.TypeDeclaration -> Maybe ClassData
-typeToClass pkg t =
-  case t of
-    JP.ClassOrInterface coi ->
-      case coi of
-        JP.Class mod c ->
-          case c of
-            JP.NormalClass data ->
-              Just
-                ({ id = mkNodeId (Maybe.withDefault "[NOPKG]" pkg) data.identifier
-                 , name = data.identifier
-                 , kind = if List.member JP.Public mod
-                            then Public
-                            else Normal
-                 }
-                , Maybe.map2
-                    (\class p -> mkNodeId p class)
-                    (onlyRefTypes data.extends)
-                    pkg
-                , []
-                )
-            JP.Enum _ ->
-              Nothing
-        JP.Interface _ _ ->
-          Nothing -- TODO
-    JP.Semicolon ->
-      Nothing
-      {-
-getExtensions : List JP.CompilationUnit -> List (NodeId, NodeId)
-getExtensions units =
+removeComments : String -> String
+removeComments src =
   let
-    typesAndUnit : List (JP.CompilationUnit, JP.TypeDeclaration)
-    typesAndUnit = List.concatMap (\u -> List.map (\t -> (u, t)) u.types) units
-
-    typeToPair : (JP.CompilationUnit, JP.TypeDeclaration) -> Maybe (NodeId, Maybe NodeId)
-    typeToPair (unit, t) =
-      Maybe.map
-        (\class -> (class.id, ext unit t))
-        (typeToClass unit.package t)
-
-    exts : List (NodeId, NodeId)
-    exts =
-      List.filterMap
-        (\(a, b) ->
-          case b of 
-            Just z -> Just (a, z)
-            Nothing -> Nothing
-        )
-        <| List.filterMap typeToPair typesAndUnit
+    re =
+      "(\\/\\*(.|\\n)*?\\*\\/|\\/\\/.*$)"
+      |> Regex.fromStringWith
+         { caseInsensitive = False, multiline = True }
+      |> Maybe.withDefault Regex.never
   in
-    exts
+    Regex.replace re (always "") src
 
-ext : JP.CompilationUnit -> JP.TypeDeclaration -> Maybe NodeId
-ext unit t =
+toAst : String -> Maybe JP.CompilationUnit
+toAst src = Result.toMaybe (Parser.run JP.compilationUnit src)
+
+compUnitToSubgraph : JP.CompilationUnit -> List Subgraph
+compUnitToSubgraph unit =
+  let
+    pkg = Maybe.withDefault "" unit.package
+  in
+    List.filterMap (typeToSubgraph pkg) unit.types
+
+typeToSubgraph : String -> JP.TypeDeclaration -> Maybe Subgraph
+typeToSubgraph pkg t =
   case t of
     JP.ClassOrInterface coi ->
       case coi of
         JP.Class mod c ->
           case c of
             JP.NormalClass data ->
-              Maybe.map2
-                (\class pkg -> mkNodeId pkg class)
-                (onlyRefTypes data.extends)
-                unit.package
-            JP.Enum _ ->
-              Nothing
-        JP.Interface _ _ ->
-          Nothing -- TODO
+              Just <| normalClassToSubgraph data pkg mod
+            JP.Enum data ->
+              Just <| enumToSubgraph data pkg mod
+        JP.Interface mod data ->
+          Just <| interfaceToSubgraph data pkg mod
     JP.Semicolon ->
       Nothing
-      -}
 
-onlyRefTypes : Maybe JP.Type -> Maybe String
-onlyRefTypes maybeType =
-  case maybeType of
-    Just (JP.ReferenceType (JP.RT name)) -> Just name
-    _ -> Nothing
+normalClassToSubgraph : JP.NormalClassDeclaration -> String
+                            -> (List JP.Modifier) -> Subgraph
+normalClassToSubgraph class pkg mod =
+  { entity = { id = mkNodeId pkg class.identifier
+             , name = class.identifier
+             , kind = Class 
+             , access = if List.member JP.Public mod
+                          then Public
+                          else if List.member JP.Private mod
+                            then Private
+                            else Protected
+             , static = List.member JP.Static mod
+             , final = List.member JP.Final mod
+             , abstract = List.member JP.Abstract mod
+             , publicAttributes = getPublicAttributes class.body
+             , publicMethods = getPublicMethods class.body
+             }
+  , parent = Maybe.map (mkNodeId pkg) (Maybe.andThen onlyRefTypes class.extends)
+  , interfaces = List.filterMap onlyRefTypes class.implements
+  , references = getReferences pkg class.body
+  }
 
-dropMaybes : List (Maybe a) -> List a
-dropMaybes list =
-  case list of
-    (Just x) :: xs -> x :: dropMaybes xs
-    Nothing :: xs -> dropMaybes xs
-    [] -> []
+enumToSubgraph : JP.EnumDeclaration -> String -> (List JP.Modifier) -> Subgraph
+enumToSubgraph enum pkg mod = Debug.todo "enumToSubgraph"
+
+interfaceToSubgraph : JP.InterfaceDeclaration -> String -> (List JP.Modifier) -> Subgraph
+interfaceToSubgraph enum pkg mod = Debug.todo "interfaceToSubgraph"
+
+getReferences : String -> JP.ClassBody -> List NodeId
+getReferences pkg (JP.ClassBody declarations) =
+  declarations
+  |> List.filterMap onlyMembers
+  |> List.map Tuple.second
+  |> List.filterMap memberToAttribute
+  |> List.concatMap (attributeToNodeIds pkg)
+
+-- TODO: I should check imports... package might be different
+attributeToNodeIds : String -> Attribute -> List NodeId
+attributeToNodeIds pkg { typeIdentifiers } =
+    List.map (mkNodeId pkg) typeIdentifiers
+
+getPublicAttributes : JP.ClassBody -> List Attribute
+getPublicAttributes (JP.ClassBody declarations) =
+  declarations
+  |> List.filterMap onlyMembers
+  |> List.map Tuple.second
+  |> List.filterMap memberToAttribute
+
+memberToAttribute : JP.MemberDecl -> Maybe Attribute
+memberToAttribute memberDecl =
+  case memberDecl of 
+    JP.MDMethodOrField (JP.MethodOrFieldDecl t id rest)
+      -> Just { identifier = id
+              , prettyTypeName = typeToPrettyString t
+              , typeIdentifiers = typeToIdentifiers t
+              , multiple = case t of
+                             JP.ArrayType _ -> True
+                             _              -> False
+              }
+    JP.MDVoidMethod string voidMethodDeclaratorRest
+      -> Nothing
+    JP.MDConstructor constructorDeclaratorRest
+      -> Nothing
+    JP.MDGenericMethodOrConstructor genericMethodOrConstructorDecl
+      -> Nothing
+    JP.MDClass classDeclaration
+      -> Nothing
+    JP.MDInterface interfaceDeclaration
+      -> Nothing
+
+-- no brackets: typeToString (Array Int) = "int"
+typeToIdentifiers : JP.Type -> List String
+typeToIdentifiers type_ =
+  case type_ of
+    JP.BasicType JP.Byte    -> [ "byte" ]
+    JP.BasicType JP.Short   -> [ "short" ]
+    JP.BasicType JP.Char    -> [ "char" ]
+    JP.BasicType JP.Int     -> [ "int" ]
+    JP.BasicType JP.Long    -> [ "long" ]
+    JP.BasicType JP.Float   -> [ "float" ]
+    JP.BasicType JP.Double  -> [ "double" ]
+    JP.BasicType JP.Boolean -> [ "boolean" ]
+    JP.ArrayType t -> typeToIdentifiers t
+    JP.ReferenceType (JP.RT name typeArguments) ->
+        if List.isEmpty typeArguments
+          then [ name ]
+          else name :: List.concatMap (unnamed >> typeToIdentifiers) typeArguments
+
+-- no brackets: typeToString (Array Int) = "int[]"
+typeToPrettyString : JP.Type -> String
+typeToPrettyString type_ =
+  case type_ of
+    JP.BasicType JP.Byte    -> "byte"
+    JP.BasicType JP.Short   -> "short"
+    JP.BasicType JP.Char    -> "char"
+    JP.BasicType JP.Int     -> "int"
+    JP.BasicType JP.Long    -> "long"
+    JP.BasicType JP.Float   -> "float"
+    JP.BasicType JP.Double  -> "double"
+    JP.BasicType JP.Boolean -> "boolean"
+    JP.ArrayType t ->
+        typeToPrettyString t ++ "[]"
+    JP.ReferenceType (JP.RT name typeArguments) ->
+        name ++ if List.isEmpty typeArguments
+                  then ""
+                  else
+                    let
+                      types = List.map (unnamed >> typeToPrettyString) typeArguments
+                    in
+                      "<" ++ String.join ", " types ++ ">"
+
+unnamed : JP.TypeArgument -> JP.Type
+unnamed typeArg =
+  case typeArg of
+    JP.ReferenceTypeArgument rt -> JP.ReferenceType rt
+    JP.WildCardSuper rt         -> JP.ReferenceType rt
+    JP.WildCardExtends rt       -> JP.ReferenceType rt
+
+getPublicMethods : JP.ClassBody -> List Method
+getPublicMethods (JP.ClassBody declarations) = []
+
+-- we don't care about basic or array types... they can't be extended
+onlyRefTypes : JP.Type -> Maybe String
+onlyRefTypes type_ =
+  case type_ of
+    JP.BasicType basic -> Nothing
+    JP.ArrayType t -> Nothing
+    JP.ReferenceType (JP.RT name args) -> Just name
+
+onlyMembers : JP.ClassBodyDeclaration -> Maybe (List JP.Modifier, JP.MemberDecl)
+onlyMembers dec =
+  case dec of
+    JP.CBSemicolon -> Nothing 
+    JP.CBMember modifier memberDecl -> Just (modifier, memberDecl)
+    JP.CBBlock mool mlock -> Nothing
+
+subgraphToExtension : Subgraph -> Maybe Vertex
+subgraphToExtension { entity, parent } =
+  Maybe.map (\p -> { from = entity.id, to = p }) parent
+
+subgraphToImplements : Subgraph -> List Vertex
+subgraphToImplements { entity, interfaces } =
+  List.map (\i -> { from = entity.id, to = i }) interfaces
+
+subgraphToReferences : Subgraph -> List Vertex
+subgraphToReferences { entity, references } =
+  List.map (\ref -> { from = entity.id, to = ref }) references
