@@ -43,7 +43,15 @@ removeComments src =
     Regex.replace re (always "") src
 
 toAst : String -> Maybe JP.CompilationUnit
-toAst src = Result.toMaybe (Parser.run JP.compilationUnit src)
+toAst src = toMaybeLog (Parser.run JP.compilationUnit src)
+
+toMaybeLog : Result a b -> Maybe b
+toMaybeLog res =
+  case res of
+    Ok x ->
+      Just x
+    Err e ->
+      always Nothing (Debug.log "toMaybeLog: " e)
 
 compUnitToSubgraph : JP.CompilationUnit -> List Subgraph
 compUnitToSubgraph unit =
@@ -96,9 +104,10 @@ enumToSubgraph enum pkg mod = Debug.todo "enumToSubgraph"
 interfaceToSubgraph : JP.InterfaceDeclaration -> String -> (List JP.Modifier) -> Subgraph
 interfaceToSubgraph enum pkg mod = Debug.todo "interfaceToSubgraph"
 
+-- TODO could be a reference anywhere in here...
 getReferences : String -> JP.ClassBody -> List NodeId
-getReferences pkg (JP.ClassBody declarations) =
-  declarations
+getReferences pkg body =
+  body.declarations
   |> List.filterMap onlyMembers
   |> List.map Tuple.second
   |> List.filterMap memberToAttribute
@@ -110,8 +119,8 @@ attributeToNodeIds pkg { typeIdentifiers } =
     List.map (mkNodeId pkg) typeIdentifiers
 
 getPublicAttributes : JP.ClassBody -> List Attribute
-getPublicAttributes (JP.ClassBody declarations) =
-  declarations
+getPublicAttributes body =
+  body.declarations
   |> List.filterMap onlyMembers
   |> List.map Tuple.second
   |> List.filterMap memberToAttribute
@@ -119,15 +128,15 @@ getPublicAttributes (JP.ClassBody declarations) =
 memberToAttribute : JP.MemberDecl -> Maybe Attribute
 memberToAttribute memberDecl =
   case memberDecl of 
-    JP.MDMethodOrField (JP.MethodOrFieldDecl t id rest)
-      -> Just { identifier = id
-              , prettyTypeName = typeToPrettyString t
-              , typeIdentifiers = typeToIdentifiers t
-              , multiple = case t of
+    JP.MDMethodOrField { type_, identifier, rest }
+      -> Just { identifier = identifier
+              , prettyTypeName = typeToPrettyString type_
+              , typeIdentifiers = typeToIdentifiers type_
+              , multiple = case type_ of
                              JP.ArrayType _ -> True
                              _              -> False
               }
-    JP.MDVoidMethod string voidMethodDeclaratorRest
+    JP.MDVoidMethod _
       -> Nothing
     JP.MDConstructor constructorDeclaratorRest
       -> Nothing
@@ -151,7 +160,7 @@ typeToIdentifiers type_ =
     JP.BasicType JP.Double  -> [ "double" ]
     JP.BasicType JP.Boolean -> [ "boolean" ]
     JP.ArrayType t -> typeToIdentifiers t
-    JP.ReferenceType (JP.RT name typeArguments) ->
+    JP.RefType { name, typeArguments } ->
         if List.isEmpty typeArguments
           then [ name ]
           else name :: List.concatMap (unnamed >> typeToIdentifiers) typeArguments
@@ -170,7 +179,7 @@ typeToPrettyString type_ =
     JP.BasicType JP.Boolean -> "boolean"
     JP.ArrayType t ->
         typeToPrettyString t ++ "[]"
-    JP.ReferenceType (JP.RT name typeArguments) ->
+    JP.RefType { name, typeArguments } ->
         name ++ if List.isEmpty typeArguments
                   then ""
                   else
@@ -182,12 +191,12 @@ typeToPrettyString type_ =
 unnamed : JP.TypeArgument -> JP.Type
 unnamed typeArg =
   case typeArg of
-    JP.ReferenceTypeArgument rt -> JP.ReferenceType rt
-    JP.WildCardSuper rt         -> JP.ReferenceType rt
-    JP.WildCardExtends rt       -> JP.ReferenceType rt
+    JP.ReferenceTypeArgument rt -> JP.RefType rt
+    JP.WildCardSuper rt         -> JP.RefType rt
+    JP.WildCardExtends rt       -> JP.RefType rt
 
 getPublicMethods : JP.ClassBody -> List Method
-getPublicMethods (JP.ClassBody declarations) = []
+getPublicMethods body = []
 
 -- we don't care about basic or array types... they can't be extended
 onlyRefTypes : JP.Type -> Maybe String
@@ -195,14 +204,14 @@ onlyRefTypes type_ =
   case type_ of
     JP.BasicType basic -> Nothing
     JP.ArrayType t -> Nothing
-    JP.ReferenceType (JP.RT name args) -> Just name
+    JP.RefType { name, typeArguments } -> Just name
 
 onlyMembers : JP.ClassBodyDeclaration -> Maybe (List JP.Modifier, JP.MemberDecl)
 onlyMembers dec =
   case dec of
     JP.CBSemicolon -> Nothing 
-    JP.CBMember modifier memberDecl -> Just (modifier, memberDecl)
-    JP.CBBlock mool mlock -> Nothing
+    JP.CBMember { modifiers, decl } -> Just (modifiers, decl)
+    JP.CBBlock { static, block } -> Nothing
 
 subgraphToExtension : Subgraph -> Maybe Vertex
 subgraphToExtension { entity, parent } =

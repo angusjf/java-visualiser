@@ -3,18 +3,114 @@ module JavaParser exposing (..)
 import Set exposing (Set)
 import Parser as P exposing (Parser, (|=), (|.), Step)
 
-type alias CompilationUnit
-  = { package : Maybe String
-    , imports : List ImportDeclaration
-    , types : List TypeDeclaration
-    }
+---- ---- i
 
-type ImportDeclaration
-  = ImportDeclaration Bool (List String) -- Bool: Static?
+type alias CompilationUnit =
+  { package : Maybe String
+  , imports : List ImportDeclaration
+  , types : List TypeDeclaration
+  }
+
+type alias ImportDeclaration =
+  { static : Bool
+  , identifier : String
+  }
 
 type TypeDeclaration
   = ClassOrInterface ClassOrInterfaceDeclaration
   | Semicolon
+
+type ClassOrInterfaceDeclaration
+  = Class (List Modifier) ClassDeclaration
+  | Interface (List Modifier) InterfaceDeclaration
+
+type ClassDeclaration
+  = NormalClass NormalClassDeclaration
+  | Enum EnumDeclaration
+
+type InterfaceDeclaration
+  = NormalID NormalInterfaceDeclaration
+  | AnnotationTD AnnotationTypeDeclaration
+
+type alias NormalClassDeclaration =
+  { identifier : String
+  , extends : Maybe Type
+  , implements : List Type
+  , body : ClassBody
+  }
+
+type alias EnumDeclaration =
+  { identifier : String
+  , implements : List Type
+  , body : EnumBody
+  }
+
+type alias NormalInterfaceDeclaration =
+  { identifier : String
+  , extends : List Type
+  , body : InterfaceBody
+  }
+
+type alias AnnotationTypeDeclaration =
+  { identifier : String
+  , body : AnnotationTypeBody
+  }
+
+---- ---- ii
+
+type Type
+  = BasicType BasicType
+  | RefType ReferenceType
+  | ArrayType Type
+
+type BasicType
+  = Byte
+  | Short
+  | Char
+  | Int
+  | Long
+  | Float
+  | Double
+  | Boolean
+
+type alias ReferenceType =
+  { name : String
+  , typeArguments : List TypeArgument
+  }
+
+type TypeArgument
+  = ReferenceTypeArgument ReferenceType
+  | WildCardSuper ReferenceType
+  | WildCardExtends ReferenceType
+
+----_---- iii
+
+{-
+NonWildcardTypeArguments:
+    < TypeList >
+
+TypeList:  
+    ReferenceType { , ReferenceType }
+
+TypeArgumentsOrDiamond:
+    < > 
+    TypeArguments
+
+NonWildcardTypeArgumentsOrDiamond:
+    < >
+    NonWildcardTypeArguments
+
+TypeParameters:
+    < TypeParameter { , TypeParameter } >
+
+TypeParameter:
+    Identifier [extends Bound]
+
+Bound:
+    ReferenceType { & ReferenceType }
+-}
+
+----_---- iv
 
 type Modifier
   = Annotation
@@ -30,97 +126,200 @@ type Modifier
   | Volatile
   | Strictfp
 
-type ClassOrInterfaceDeclaration
-  = Class (List Modifier) ClassDeclaration
-  | Interface (List Modifier) InterfaceDeclaration
+{-
+Annotations:
+    Annotation {Annotation}
 
-type ClassDeclaration
-  = NormalClass NormalClassDeclaration
-  | Enum EnumDeclaration
+Annotation:
+    @ QualifiedIdentifier [ ( [AnnotationElement] ) ]
 
-type InterfaceDeclaration
-  = InterfaceDec
+AnnotationElement:
+    ElementValuePairs
+    ElementValue
 
-type alias NormalClassDeclaration =
-  { identifier : String
-  , extends : Maybe Type
-  , implements : List Type
-  , body : ClassBody
+ElementValuePairs:
+    ElementValuePair { , ElementValuePair }
+
+ElementValuePair:
+    Identifier = ElementValue
+    
+ElementValue:
+    Annotation
+    Expression1 
+    ElementValueArrayInitializer
+
+ElementValueArrayInitializer:
+    { [ElementValues] [,] }
+
+ElementValues:
+    ElementValue { , ElementValue }
+-}
+
+---- ---- v
+
+type alias ClassBody =
+  { declarations : List ClassBodyDeclaration
   }
-
-type Type
-  = BasicType BasicType
-  | ReferenceType ReferenceType
-  | ArrayType Type
-
-type BasicType
-  = Byte
-  | Short
-  | Char
-  | Int
-  | Long
-  | Float
-  | Double
-  | Boolean
-
-type ReferenceType = RT String (List TypeArgument) -- TODO can be dotted
-
-type TypeArgument
-  = ReferenceTypeArgument ReferenceType
-  | WildCardSuper ReferenceType
-  | WildCardExtends ReferenceType
-
-type EnumDeclaration
-  = EnumDec
-
-type ClassBody = ClassBody (List ClassBodyDeclaration)
 
 type ClassBodyDeclaration
   = CBSemicolon
-  | CBMember (List Modifier) MemberDecl
-  | CBBlock Bool Block -- Bool: Static?
+  | CBMember
+    { modifiers : List Modifier
+    , decl : MemberDecl
+    }
+  | CBBlock
+    { static : Bool 
+    , block : Block
+    }
 
 type MemberDecl
   = MDMethodOrField MethodOrFieldDecl
-  | MDVoidMethod String VoidMethodDeclaratorRest -- String: Identifier
+  | MDVoidMethod
+    { identifier : String
+    , rest : VoidMethodDeclaratorRest
+    }
   | MDConstructor ConstructorDeclaratorRest
   | MDGenericMethodOrConstructor GenericMethodOrConstructorDecl
   | MDClass ClassDeclaration
   | MDInterface InterfaceDeclaration
 
-type MethodOrFieldDecl = MethodOrFieldDecl Type String MethodOrFieldRest
+type alias MethodOrFieldDecl =
+  { type_ : Type 
+  , identifier : String
+  , rest : MethodOrFieldRest
+  }
 
 type MethodOrFieldRest
   = FieldRest FieldDeclaratorsRest
   | MethodRest MethodDeclaratorRest
 
-type FieldDeclaratorsRest = TODO1
+type alias FieldDeclaratorsRest =
+  { varaibleRest : VariableDeclaratorRest
+  , more : List VariableDeclarator
+  }
 
-type MethodDeclaratorRest = TODO5
+type alias MethodDeclaratorRest =
+  { formalParameters : FormalParameters
+  , throws : List String
+  , block : Maybe Block
+  }
 
-type VoidMethodDeclaratorRest = TODO2
+type alias VoidMethodDeclaratorRest =
+  {
+  }
 
-type ConstructorDeclaratorRest = TODO3
+type alias ConstructorDeclaratorRest =
+  {
+  }
 
-type GenericMethodOrConstructorDecl = TODO4
+type alias GenericMethodOrConstructorDecl =
+  {
+  }
 
-type Block = Block
+type alias GenericMethodOrConstructorRest =
+  {
+  }
+
+---- ---- vi
+
+type InterfaceBody = TODO21
+{-
+InterfaceBodyDeclaration:
+    ; 
+    {Modifier} InterfaceMemberDecl
+
+InterfaceMemberDecl:
+    InterfaceMethodOrFieldDecl
+    void Identifier VoidInterfaceMethodDeclaratorRest
+    InterfaceGenericMethodDecl
+    ClassDeclaration
+    InterfaceDeclaration
+
+InterfaceMethodOrFieldDecl:
+    Type Identifier InterfaceMethodOrFieldRest
+
+InterfaceMethodOrFieldRest:
+    ConstantDeclaratorsRest ;
+    InterfaceMethodDeclaratorRest
+
+ConstantDeclaratorsRest: 
+    ConstantDeclaratorRest { , ConstantDeclarator }
+
+ConstantDeclaratorRest: 
+    {[]} = VariableInitializer
+
+ConstantDeclarator: 
+    Identifier ConstantDeclaratorRest
+
+InterfaceMethodDeclaratorRest:
+    FormalParameters {[]} [throws QualifiedIdentifierList] ; 
+
+VoidInterfaceMethodDeclaratorRest:
+    FormalParameters [throws QualifiedIdentifierList] ;  
+
+InterfaceGenericMethodDecl:
+    TypeParameters (Type | void) Identifier InterfaceMethodDeclaratorRest
+-}
+
+---- ---- vii
+
+type alias FormalParameters = Maybe FormalParameterDecls
+
+type alias FormalParameterDecls =
+  { modifiers : List VariableModifier
+  , type_ : Type
+  , rest : FormalParameterDeclsRest
+  }
+
+type VariableModifier
+  = VMFinal
+  | MVAnnotation --Annotation
+
+type FormalParameterDeclsRest
+  = NormalParams
+    { identifier : VariableDeclaratorId
+    , more : FormalParameterDecls
+    }
+  | VarParams VariableDeclaratorId
+
+type alias VariableDeclaratorId =
+ { identifier : String
+ , array : Int
+ }
 
 type VariableDeclarator =
   VariableDeclarator String VariableDeclaratorRest
 
-type VariableDeclaratorRest
-  = VariableDeclaratorRest (Int, (Maybe VariableInitializer))
+type alias VariableDeclaratorRest =
+  { arrayBrackets : Int
+  , initializer : Maybe VariableInitializer
+  }
 
 type VariableInitializer
   = VIArray ArrayInitializer
   | VIExpression Expression
 
-type ArrayInitializer =
-    Maybe (VariableInitializer, (List VariableInitializer))
+type alias ArrayInitializer = List VariableInitializer
 
-type Expression
-  = Expression Expression1 (Maybe (AssignmentOperator, Expression1))
+----_---- viii
+
+type Block = TODO33
+
+----_---- ix
+
+--- catches ...
+
+----_---- x
+
+--- switch
+
+---- ---- xi
+
+type Expression =
+  Expression
+    { exp : Expression1
+    , rest : Maybe (AssignmentOperator, Expression1)
+    }
 
 type AssignmentOperator
   = Assign
@@ -136,17 +335,114 @@ type AssignmentOperator
   | RShiftAssign
   | RShiftAssign2
 
-type Expression1 = Expression1 Expression2 (Maybe Expression1Rest)
+type Expression1 =
+  Expression1
+    { exp2 : Expression2
+    , rest : Maybe (Expression, Expression1)
+    }
 
-type Expression1Rest = Expression1Rest Expression Expression1
+type Expression2 =
+  Expression2
+    { exp3 : Expression3 
+    , rest : Expression2Rest
+    }
 
-type Expression2 = Expression2 Expression3 (Maybe Expression2Rest)
+type Expression2Rest
+  = E2RInfixOp (List (InfixOp, Expression3))
+  | E2RInstanceof Type
 
-type Expression2Rest = Expression2Rest (List (InfixOp, Expression3)) Type
+---- ---- xii
 
-type Expression3 = TODO10
+type InfixOp
+  = LogicalOr
+  | LogicalAnd
+  | BitwizeOr
+  | BitwizeXor
+  | BitwizeAnd
+  | Equal
+  | NotEqual
+  | LessThan
+  | GreaterThan
+  | LessThanEqual
+  | GreaterThanEqual
+  | LeftShift
+  | RightShift
+  | TripleRightShift
+  | Plus
+  | Minus
+  | Multiply
+  | Divide
+  | Mod
 
-type InfixOp = TODO11
+type Expression3
+  = E3Prefix
+    { op : PrefixOp
+    , exp3 : Expression3
+    }
+  | E3WHAT --( (Expression | Type) ) Expression3
+  | E3Primary Primary --{ Selector } { PostfixOp }
+
+type PrefixOp
+  = PreIncrement
+  | PreDecrement
+  | LogicalNot
+  | BitwizeNot
+  | PrefixPlus
+  | PrefixMinus
+
+type PostfixOp
+  = PostIncrement
+  | PostDecrement
+
+----_---- xiii
+
+type Primary
+  = PrimaryLiteral Literal
+{-| ParExpression
+  | this [Arguments]
+  | super SuperSuffix
+  | new Creator
+  | NonWildcardTypeArguments (ExplicitGenericInvocationSuffix | this Arguments)
+  | Identifier { . Identifier } [IdentifierSuffix]
+  | BasicType {[]} . class
+  | void . class
+-}
+
+type Literal
+  = IntegerLiteral Int
+  | FloatingPointLiteral Float
+  | CharacterLiteral Char
+  | StringLiteral String
+  | BooleanLiteral Bool
+  | NullLiteral
+
+{-
+ParExpression: 
+    ( Expression )
+
+Arguments:
+    ( [ Expression { , Expression } ] )
+
+SuperSuffix: 
+    Arguments 
+    . Identifier [Arguments]
+
+ExplicitGenericInvocationSuffix: 
+    super SuperSuffix
+    Identifier Arguments
+-}
+
+----_---- xiv
+
+--- creator
+
+----_---- xv
+
+type EnumBody = TODO20
+
+type AnnotationTypeBody = TODO22
+
+----
 
 reserved : Set String
 reserved = Set.fromList ["class", "package", "public", "static", "int"]
@@ -197,7 +493,7 @@ identifier : Parser String
 identifier =
   P.variable
     { start = \c -> Char.isAlpha c || c == '_'
-    , inner = \c -> Char.isAlphaNum c || c == 'c'
+    , inner = \c -> Char.isAlphaNum c || c == '_'
     , reserved = reserved
     }
 
@@ -213,7 +509,7 @@ imports = list <|
     |. P.spaces
     |= P.oneOf [P.map (always True) (P.keyword "static"), P.succeed False]
     |. P.spaces
-    |= dotted identifier -- TODO
+    |= P.map (String.join "") (dotted identifier)
     |. P.spaces
     |. P.symbol ";"
 
@@ -293,7 +589,7 @@ normalClassDeclaration =
       |. P.spaces
       |= optional ext
       |. P.spaces
-      |= P.map (Maybe.withDefault []) (optional impl)
+      |= optionalList impl
       |= classBody
 
 optional : Parser a -> Parser (Maybe a)
@@ -302,6 +598,9 @@ optional parser =
     [ P.map Just parser
     , P.succeed Nothing
     ]
+
+optionalList : Parser (List a) -> Parser (List a)
+optionalList parser = P.map (Maybe.withDefault []) (optional parser)
 
 typeList : Parser (List Type)
 typeList =
@@ -355,11 +654,9 @@ basicType =
 
 referenceType : Parser ReferenceType
 referenceType =
-  P.succeed RT
-  |= identifier
-  |= P.map (\x -> case x of
-                    Just xs -> xs
-                    Nothing -> []) (optional typeArguments)
+  P.succeed ReferenceType
+  |= P.map (String.join "") (dotted identifier)
+  |= optionalList typeArguments
 
 {- TypeArguments: 
     < TypeArgument { , TypeArgument } > -}
@@ -374,15 +671,14 @@ typeArguments =
 
 typeArgument : Parser TypeArgument
 typeArgument =
-  P.succeed (\i -> ReferenceTypeArgument (RT i [])) -- TODO fix for nesting
-  |= identifier
+  P.map ReferenceTypeArgument (P.lazy (\_ -> referenceType))
 
 type_ : Parser Type
 type_ =
   P.succeed (nTimes ArrayType)
   |= P.oneOf
        [ P.map BasicType basicType
-       , P.map ReferenceType referenceType
+       , P.map RefType referenceType
        ]
   |= brackets
 
@@ -391,10 +687,10 @@ brackets =
   P.map List.length <| repeated (P.symbol "[]")
 
 nTimes : (a -> a) -> a -> Int -> a
-nTimes f x n =
+nTimes func x n =
   case n of
     0 -> x
-    num -> nTimes f (f x) (num - 1)
+    num -> nTimes func (func x) (num - 1)
 
 {-
 ClassBody: 
@@ -417,7 +713,7 @@ classBodyDeclaration : Parser ClassBodyDeclaration
 classBodyDeclaration =
   P.oneOf
     [ P.succeed CBSemicolon |. P.symbol ";"
-    , P.succeed CBMember
+    , P.succeed (\mods decl -> CBMember { modifiers = mods, decl = decl})
         |= list modifier
         |. P.spaces
         |= memberDecl
@@ -454,7 +750,16 @@ methodOrFieldRest =
 FieldDeclaratorsRest:  
     VariableDeclaratorRest { , VariableDeclarator } -}
 fieldDeclaratorsRest : Parser FieldDeclaratorsRest
-fieldDeclaratorsRest = P.succeed TODO1
+fieldDeclaratorsRest =
+  P.succeed (\vRest more -> { varaibleRest = vRest , more = more })
+  |= variableDeclaratorRest
+  |= optionalList
+     ( P.succeed identity
+       |. P.spaces
+       |. P.symbol ","
+       |. P.spaces
+       |= list variableDeclarator
+     )
 
 {-
 VariableDeclarator:
@@ -471,7 +776,16 @@ VariableDeclaratorRest:
     {[]} [ = VariableInitializer ]
 -}
 variableDeclaratorRest : Parser VariableDeclaratorRest
-variableDeclaratorRest = Debug.todo ""
+variableDeclaratorRest =
+  P.succeed (\brkts init -> { arrayBrackets = brkts, initializer = init })
+  |= brackets
+  |= optional
+     ( P.succeed identity
+       |. P.spaces
+       |. P.symbol "="
+       |. P.spaces
+       |= variableInitializer
+     )
 
 {-
 VariableInitializer:
@@ -485,25 +799,38 @@ variableInitializer =
     , P.map VIExpression expression
     ]
 
+-- TODO pick up here
 {-
 ArrayInitializer:
     { [ VariableInitializer { , VariableInitializer } [,] ] }
 -}
 arrayInitializer : Parser ArrayInitializer
-arrayInitializer = Debug.todo ""
+arrayInitializer =
+  P.succeed identity
+  |. P.symbol "{"
+  |= optionalList
+      ( P.lazy
+        (\_ -> commas variableInitializer
+               |. optional (P.symbol ",")
+        )
+      )
+  |. P.symbol "}"
 
 {-
 Expression: 
     Expression1 [AssignmentOperator Expression1]
 -}
 expression : Parser Expression
-expression = Debug.todo ""
-{-
-  P.succeed Expression
+expression =
+  P.succeed (\exp rest -> Expression { exp = exp, rest = rest })
   |= expression1
   |. P.spaces
-  |= optional (assignmentOperator |. P.spaces |= expression1)
--}
+  |= optional
+     ( P.succeed Tuple.pair
+       |= assignmentOperator
+       |. P.spaces
+       |= expression1
+     )
 
 {-
 AssignmentOperator: 
@@ -529,42 +856,152 @@ assignmentOperator =
 {-
 Expression1: 
     Expression2 [Expression1Rest]
--}
-expression1 : Parser Expression1
-expression1 = Debug.todo ""
-    {-
-  P.succeed Expression1
-  |= expression2
-  |. P.spaces
-  |= optional expression1Rest
-  -}
-
-{-
 Expression1Rest: 
     ? Expression : Expression1
 -}
-expression1Rest : Parser Expression1
-expression1Rest = Debug.todo ""
-    {-
-  P.succeed Expression1Rest
+expression1 : Parser Expression1
+expression1 =
+  P.succeed (\exp2 rest -> Expression1 { exp2 = exp2, rest = rest })
+  |= expression2
+  |. P.spaces
+  |= optional expression1Rest
+
+expression1Rest : Parser (Expression, Expression1)
+expression1Rest =
+  P.succeed Tuple.pair
   |. P.symbol "?"
   |. P.spaces
-  |= expression
+  |= (P.lazy (\_ -> expression))
   |. P.spaces
   |. P.symbol ":"
   |. P.spaces
-  |= expression1
-  -}
+  |= (P.lazy (\_ -> expression1))
 
 {-
 Expression2:
     Expression3 [Expression2Rest]
 -}
-expression2 = Debug.todo ""
+expression2 : Parser Expression2
+expression2 =
+  P.succeed (\exp3 rest -> Expression2 { exp3 = exp3, rest = rest })
+  |= expression3
+  |. P.spaces
+  |= expression2Rest
 
 {-
 Expression2Rest:
     { InfixOp Expression3 }
     instanceof Type
 -}
-expression2Rest = Debug.todo ""
+expression2Rest : Parser Expression2Rest
+expression2Rest =
+  let
+    infix : Parser (InfixOp, Expression3)
+    infix =
+      P.succeed Tuple.pair
+      |= infixOp
+      |. P.spaces
+      |= expression3
+    instanceof : Parser Type
+    instanceof =
+      P.succeed identity
+      |. P.keyword "instanceof"
+      |= type_
+  in
+    P.oneOf
+      [ P.map E2RInfixOp (list infix)
+      , P.map E2RInstanceof instanceof
+      ]
+
+infixOp : Parser InfixOp
+infixOp =
+  P.oneOf
+    [ P.succeed LogicalOr        |. P.keyword " |"
+    , P.succeed LogicalAnd       |. P.keyword "&&"
+    , P.succeed BitwizeOr        |. P.keyword "|"
+    , P.succeed BitwizeXor       |. P.keyword "^"
+    , P.succeed BitwizeAnd       |. P.keyword "&"
+    , P.succeed Equal            |. P.keyword "=="
+    , P.succeed NotEqual         |. P.keyword "!="
+    , P.succeed LessThan         |. P.keyword "<"
+    , P.succeed GreaterThan      |. P.keyword ">"
+    , P.succeed LessThanEqual    |. P.keyword "<="
+    , P.succeed GreaterThanEqual |. P.keyword ">="
+    , P.succeed LeftShift        |. P.keyword "<<"
+    , P.succeed RightShift       |. P.keyword ">>"
+    , P.succeed TripleRightShift |. P.keyword ">>>"
+    , P.succeed Plus             |. P.keyword "+"
+    , P.succeed Minus            |. P.keyword "-"
+    , P.succeed Multiply         |. P.keyword "*"
+    , P.succeed Divide           |. P.keyword "/"
+    , P.succeed Mod              |. P.keyword "%"
+    ]
+
+{- 
+Expression3: 
+    PrefixOp Expression3
+    ( (Expression | Type) ) Expression3
+    Primary { Selector } { PostfixOp } -}
+expression3 : Parser Expression3
+expression3 = -- TODO
+  (P.succeed E3Primary) |= primary
+
+prefixOp : Parser PrefixOp
+prefixOp =
+  P.oneOf
+    [ P.succeed PreIncrement |. P.keyword "++"
+    , P.succeed PreDecrement |. P.keyword "--"
+    , P.succeed LogicalNot   |. P.keyword "!"
+    , P.succeed BitwizeNot   |. P.keyword "~"
+    , P.succeed PrefixPlus   |. P.keyword "+"
+    , P.succeed PrefixMinus  |. P.keyword "-"
+    ]
+
+postfixOp : Parser PostfixOp
+postfixOp =
+  P.oneOf
+    [ P.succeed PostIncrement |. P.keyword "++"
+    , P.succeed PostDecrement |. P.keyword "--"
+    ]
+
+primary : Parser Primary
+primary = -- TODO
+  P.map PrimaryLiteral literal
+
+literal : Parser Literal
+literal =
+  P.oneOf
+    [ P.map BooleanLiteral bool
+    , P.succeed NullLiteral |. P.keyword "null"
+    , P.map CharacterLiteral char
+    , P.map StringLiteral stringLiteral
+    , P.number
+      { int = Just IntegerLiteral
+      , hex = Nothing
+      , octal = Nothing
+      , binary = Nothing
+      , float = Just FloatingPointLiteral
+      }
+    ]
+
+char : Parser Char
+char =
+  P.succeed identity
+  |. P.symbol "\'"
+  |= P.map (Maybe.withDefault 'z' << Maybe.map Tuple.first << String.uncons)
+        (P.getChompedString (P.chompIf (always True)))
+  |. P.symbol "\'"
+
+bool : Parser Bool
+bool =
+  P.oneOf
+    [ P.succeed True  |. P.keyword "true"
+    , P.succeed False |. P.keyword "false"
+    ]
+
+stringLiteral : Parser String
+stringLiteral =
+  P.succeed identity
+  |. P.symbol "\""
+  |= P.getChompedString (P.chompWhile (\c -> c /= '\"'))
+  |. P.symbol "\""
