@@ -110,10 +110,10 @@ Bound:
     ReferenceType { & ReferenceType }
 -}
 
-----_---- iv
+---- ---- iv
 
 type Modifier
-  = Annotation
+  = ModifierAnnotation Annotation
   | Public
   | Protected
   | Private
@@ -126,34 +126,24 @@ type Modifier
   | Volatile
   | Strictfp
 
-{-
-Annotations:
-    Annotation {Annotation}
+type alias Annotation =
+  { identifier : String
+  , element : Maybe AnnotationElement
+  }
 
-Annotation:
-    @ QualifiedIdentifier [ ( [AnnotationElement] ) ]
+type AnnotationElement
+  = AEPairs (List ElementValuePair)
+  | AEValue ElementValue
 
-AnnotationElement:
-    ElementValuePairs
-    ElementValue
-
-ElementValuePairs:
-    ElementValuePair { , ElementValuePair }
-
-ElementValuePair:
-    Identifier = ElementValue
+type alias ElementValuePair =
+  { identifier : String
+  , value : ElementValue
+  }
     
-ElementValue:
-    Annotation
-    Expression1 
-    ElementValueArrayInitializer
-
-ElementValueArrayInitializer:
-    { [ElementValues] [,] }
-
-ElementValues:
-    ElementValue { , ElementValue }
--}
+type ElementValue
+  = ElementValueAnnotation Annotation
+  | ElementValueExpression Expression1 
+  | ElementValueArrayInitializer (List ElementValue)
 
 ---- ---- v
 
@@ -178,7 +168,10 @@ type MemberDecl
     { identifier : String
     , rest : VoidMethodDeclaratorRest
     }
-  | MDConstructor ConstructorDeclaratorRest
+  | MDConstructor 
+    { identifier : String
+    , rest : ConstructorDeclaratorRest
+    }
   | MDGenericMethodOrConstructor GenericMethodOrConstructorDecl
   | MDClass ClassDeclaration
   | MDInterface InterfaceDeclaration
@@ -199,17 +192,22 @@ type alias FieldDeclaratorsRest =
   }
 
 type alias MethodDeclaratorRest =
-  { formalParameters : FormalParameters
+  { formalParams : FormalParameters
+  , arrays : Int
   , throws : List String
   , block : Maybe Block
   }
 
 type alias VoidMethodDeclaratorRest =
-  {
+  { formalParams : FormalParameters
+  , throws : List String
+  , block : Maybe Block
   }
 
 type alias ConstructorDeclaratorRest =
-  {
+  { formalParams : FormalParameters
+  , throws : List String
+  , block : Block
   }
 
 type alias GenericMethodOrConstructorDecl =
@@ -273,19 +271,19 @@ type alias FormalParameterDecls =
 
 type VariableModifier
   = VMFinal
-  | MVAnnotation --Annotation
+  | MVAnnotation Annotation
 
 type FormalParameterDeclsRest
   = NormalParams
     { identifier : VariableDeclaratorId
-    , more : FormalParameterDecls
+    , more : Maybe FormalParameterDecls
     }
   | VarParams VariableDeclaratorId
 
 type alias VariableDeclaratorId =
- { identifier : String
- , array : Int
- }
+  { identifier : String
+  , array : Int
+  }
 
 type VariableDeclarator =
   VariableDeclarator String VariableDeclaratorRest
@@ -303,7 +301,56 @@ type alias ArrayInitializer = List VariableInitializer
 
 ----_---- viii
 
-type Block = TODO33
+type alias Block = List BlockStatement
+
+type BlockStatement
+  = BlockVaraible LocalVariableDeclarationStatement
+  | BlockClassOrInterface ClassOrInterfaceDeclaration
+  | BlockStatement
+    { label : Maybe String
+    , statement : Statement
+    }
+
+type alias LocalVariableDeclarationStatement =
+  { modifiers : List VariableModifier
+  , type_ : Type
+  , declararators : List VariableDeclarator
+  }
+
+type Statement
+  = StatementBlock Block
+  | StatementSemicolon
+  | StatementLabel
+    { label : String, statement : Statement }
+  | StatementExpression Expression
+  | StatementIf
+    { cond : ParExpression, if_ : Statement, else_ : Maybe Statement }
+  {-
+  | StatementAssert
+    { Expression [: Expression] ; }
+  | StatementSwitch
+    { ParExpression { SwitchBlockStatementGroups } 
+  | StatementWhile
+    { ParExpression Statement
+  | StatementDo
+    { Statement while ParExpression ;
+  | StatementFor
+    { ( ForControl ) Statement
+  | StatementBreak
+    { [Identifier] ;
+  | StatementContinue
+    { [Identifier] ;
+  | StatementReturn
+    { [Expression] ;
+  | StatementThrow
+    { Expression ;
+  | StatementSynchronized
+    { ParExpression Block
+  | StatementTry
+    { Block (Catches | [Catches] Finally)
+  | StatementTryResource
+    { ResourceSpecification Block [Catches] [Finally]
+  -}
 
 ----_---- ix
 
@@ -398,8 +445,8 @@ type PostfixOp
 
 type Primary
   = PrimaryLiteral Literal
-{-| ParExpression
-  | this [Arguments]
+  | PrimaryParExpression ParExpression
+{-| this [Arguments]
   | super SuperSuffix
   | new Creator
   | NonWildcardTypeArguments (ExplicitGenericInvocationSuffix | this Arguments)
@@ -416,10 +463,9 @@ type Literal
   | BooleanLiteral Bool
   | NullLiteral
 
-{-
-ParExpression: 
-    ( Expression )
+type ParExpression = Par Expression
 
+{-
 Arguments:
     ( [ Expression { , Expression } ] )
 
@@ -478,6 +524,16 @@ package =
 qualifiedIdentifier : Parser String
 qualifiedIdentifier = P.map (String.join ".") (dotted identifier)
 
+qualifiedIdentifierList : Parser (List String)
+qualifiedIdentifierList =
+  P.succeed (::)
+  |= qualifiedIdentifier
+  |= optionalList
+     ( P.succeed identity
+       |. P.keyword ","
+       |= commas qualifiedIdentifier
+     )
+ 
 dotted : Parser a -> Parser (List a)
 dotted item =
   P.sequence
@@ -602,6 +658,14 @@ optional parser =
 optionalList : Parser (List a) -> Parser (List a)
 optionalList parser = P.map (Maybe.withDefault []) (optional parser)
 
+optionalBool : Parser a -> Parser Bool
+optionalBool parser =
+  (optional parser)
+  |> P.map (\maybe ->
+      case maybe of
+        Just _ -> True
+        Nothing -> False)
+
 typeList : Parser (List Type)
 typeList =
   commas type_
@@ -717,13 +781,48 @@ classBodyDeclaration =
         |= list modifier
         |. P.spaces
         |= memberDecl
+    , P.succeed (\static blok -> CBBlock { static = static, block = blok })
+        |= optionalBool (P.keyword "static" |. P.spaces)
+        |. P.spaces
+        |= block
     ]
 
 memberDecl : Parser MemberDecl
 memberDecl =
   P.oneOf
     [ P.map MDMethodOrField methodOrFieldDecl
+    , P.succeed (\id rest -> MDVoidMethod { identifier = id, rest = rest })
+      |. P.keyword "void"
+      |. P.spaces
+      |= identifier
+      |. P.spaces
+      |= voidMethodDeclaratorRest
+    , P.succeed (\id rest -> MDConstructor { identifier = id, rest = rest })
+      |= identifier
+      |. P.spaces
+      |= constructorDeclaratorRest
+  --, P.map MDGenericMethodOrConstructor genericMethodOrConstructorDecl
+    , P.map MDClass (P.lazy (\_ -> classDeclaration))
+  --, P.map MDInterface interfaceDeclaration
     ]
+
+voidMethodDeclaratorRest : Parser VoidMethodDeclaratorRest
+voidMethodDeclaratorRest =
+  P.succeed (\formalParams throws blok ->
+                 { formalParams = formalParams, throws = throws, block = blok })
+    |= formalParameters
+    |. P.spaces
+    |= optionalList
+       ( P.succeed identity
+         |. P.keyword "throws"
+         |. P.spaces
+         |= qualifiedIdentifierList
+       )
+    |. P.spaces
+    |= P.oneOf
+       [ P.map Just block
+       , P.succeed Nothing |. P.symbol ";"
+       ]
 
 {-
 MethodOrFieldDecl:
@@ -760,6 +859,74 @@ fieldDeclaratorsRest =
        |. P.spaces
        |= list variableDeclarator
      )
+
+constructorDeclaratorRest : Parser ConstructorDeclaratorRest
+constructorDeclaratorRest
+  = P.succeed (\formalParams throws blok ->
+                 { formalParams = formalParams, throws = throws, block = blok })
+    |= formalParameters
+    |. P.spaces
+    |= optionalList
+       ( P.succeed identity
+         |. P.keyword "throws"
+         |. P.spaces
+         |= qualifiedIdentifierList
+       )
+    |. P.spaces
+    |= block
+
+formalParameters : Parser FormalParameters
+formalParameters =
+  P.succeed identity
+  |. P.symbol "("
+  |= optional formalParameterDecls
+  |. P.symbol ")"
+
+formalParameterDecls : Parser FormalParameterDecls
+formalParameterDecls =
+  P.succeed (\mods t rest -> { modifiers = mods, type_ = t, rest = rest})
+  |= optionalList (list variableModifier)
+  |. P.spaces
+  |= type_
+  |. P.spaces
+  |= formalParameterDeclsRest
+
+variableModifier : Parser VariableModifier
+variableModifier =
+  P.oneOf
+    [ P.succeed VMFinal |. P.keyword "final"
+    , P.map MVAnnotation annotation
+    ]
+
+annotation : Parser Annotation
+annotation = P.oneOf []
+
+formalParameterDeclsRest : Parser FormalParameterDeclsRest
+formalParameterDeclsRest =
+  P.oneOf
+    [ P.succeed (\id more -> NormalParams { identifier = id, more = more })
+      |= variableDeclaratorId
+      |= optional
+         ( P.succeed identity
+           |. P.spaces
+           |. P.symbol ","
+           |. P.spaces
+           |= P.lazy (\_ -> formalParameterDecls)
+         )
+    , P.map VarParams
+      ( P.succeed identity
+        |. P.symbol "..."
+        |. P.spaces
+        |= variableDeclaratorId
+      )
+    ]
+
+variableDeclaratorId : Parser VariableDeclaratorId
+variableDeclaratorId =
+  P.succeed VariableDeclaratorId
+  |= identifier
+  |. P.spaces
+  |= brackets
 
 {-
 VariableDeclarator:
@@ -894,7 +1061,7 @@ Expression2Rest:
     instanceof Type
 -}
 expression2Rest : Parser Expression2Rest
-expression2Rest =
+expression2Rest = 
   let
     infix : Parser (InfixOp, Expression3)
     infix =
@@ -1005,3 +1172,18 @@ stringLiteral =
   |. P.symbol "\""
   |= P.getChompedString (P.chompWhile (\c -> c /= '\"'))
   |. P.symbol "\""
+
+block : Parser Block
+block =
+  P.succeed identity
+  |. P.symbol "{"
+  |. P.spaces
+  |= list blockStatement
+  |. P.spaces
+  |. P.symbol "}"
+
+blockStatement : Parser BlockStatement
+blockStatement =
+  P.oneOf
+    [ P.map BlockClassOrInterface (P.lazy (\_ -> classOrInterfaceDeclaration))
+    ]
