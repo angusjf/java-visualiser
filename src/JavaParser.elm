@@ -29,11 +29,12 @@ type ClassDeclaration
   | Enum EnumDeclaration
 
 type InterfaceDeclaration
-  = NormalID NormalInterfaceDeclaration
-  | AnnotationTD AnnotationTypeDeclaration
+  = IDNormal NormalInterfaceDeclaration
+  | IDAnnotation AnnotationTypeDeclaration
 
 type alias NormalClassDeclaration =
   { identifier : String
+  , typeArgs : List TypeArgument
   , extends : Maybe Type
   , implements : List Type
   , body : ClassBody
@@ -47,6 +48,7 @@ type alias EnumDeclaration =
 
 type alias NormalInterfaceDeclaration =
   { identifier : String
+  , typeArgs : List TypeArgument
   , extends : List Type
   , body : InterfaceBody
   }
@@ -446,10 +448,10 @@ type PostfixOp
 type Primary
   = PrimaryLiteral Literal
   | PrimaryParExpression ParExpression
-{-| this [Arguments]
-  | super SuperSuffix
-  | new Creator
-  | NonWildcardTypeArguments (ExplicitGenericInvocationSuffix | this Arguments)
+  | PrimaryThis (List Expression)
+  | PrimarySuper SuperSuffix
+{-| new Creator
+  | NonWildcardTypeArguments (ExplicitGenericInvocationSuffix | this (List Expression))
   | Identifier { . Identifier } [IdentifierSuffix]
   | BasicType {[]} . class
   | void . class
@@ -465,18 +467,13 @@ type Literal
 
 type ParExpression = Par Expression
 
-{-
-Arguments:
-    ( [ Expression { , Expression } ] )
+type SuperSuffix
+  = SuperSuffixArgs (List Expression) 
+  | SuperSuffixDotArgs String (List Expression)
 
-SuperSuffix: 
-    Arguments 
-    . Identifier [Arguments]
-
-ExplicitGenericInvocationSuffix: 
-    super SuperSuffix
-    Identifier Arguments
--}
+type ExplicitGenericInvocationSuffix
+  = EGISSuper SuperSuffix
+  | EGISIdentifier -- String (List Expression) TODO
 
 ----_---- xiv
 
@@ -484,7 +481,17 @@ ExplicitGenericInvocationSuffix:
 
 ----_---- xv
 
-type EnumBody = TODO20
+type alias EnumBody =
+  { constants : List EnumConstant
+  , declarations : List ClassBodyDeclaration
+  }
+
+type alias EnumConstant =
+  { annotations : List Annotation
+  , identifier : String
+  , arguments : List Expression
+  , body : Maybe ClassBody
+  }
 
 type AnnotationTypeBody = TODO22
 
@@ -565,7 +572,7 @@ imports = list <|
     |. P.spaces
     |= P.oneOf [P.map (always True) (P.keyword "static"), P.succeed False]
     |. P.spaces
-    |= P.map (String.join "") (dotted identifier)
+    |= P.map (String.join ".") (dotted identifier)
     |. P.spaces
     |. P.symbol ";"
 
@@ -588,17 +595,13 @@ ClassOrInterfaceDeclaration:
 -}
 classOrInterfaceDeclaration : Parser ClassOrInterfaceDeclaration
 classOrInterfaceDeclaration =
-  let
-    modifiers = list modifier
-    modifiersAndClass =
-      P.succeed Class
-        |= modifiers
-        |. P.spaces
-        |= classDeclaration
-  in
-    P.oneOf
-      [ modifiersAndClass
-      ]
+  P.succeed (\a b -> b a)
+    |= list modifier
+    |. P.spaces
+    |= P.oneOf 
+       [ P.map (\x y -> Class y x) classDeclaration
+       , P.map (\x y -> Interface y x) interfaceDeclaration
+       ]
 
 modifier : Parser Modifier
 modifier =
@@ -617,7 +620,17 @@ modifier =
     ]
 
 classDeclaration : Parser ClassDeclaration
-classDeclaration = P.map NormalClass normalClassDeclaration
+classDeclaration =
+  P.oneOf
+    [ P.map NormalClass normalClassDeclaration
+    , P.map Enum enumDeclaration
+    ]
+
+interfaceDeclaration : Parser InterfaceDeclaration
+interfaceDeclaration =
+  P.oneOf
+    [ P.map IDNormal normalInterfaceDeclaration
+    ]
 
 {-
 NormalClassDeclaration: 
@@ -626,27 +639,37 @@ NormalClassDeclaration:
 -}
 normalClassDeclaration : Parser NormalClassDeclaration
 normalClassDeclaration =
-  let
-    ext : Parser Type
-    ext = P.succeed identity
-             |. P.keyword "extends"
-             |. P.spaces
-             |= type_
-    impl : Parser (List Type)
-    impl = P.succeed identity
-             |. P.keyword "implements"
-             |. P.spaces
-             |= typeList
-  in
-    P.succeed NormalClassDeclaration
-      |. P.keyword "class"
-      |. P.spaces
-      |= identifier
-      |. P.spaces
-      |= optional ext
-      |. P.spaces
-      |= optionalList impl
-      |= classBody
+  P.succeed NormalClassDeclaration
+  |. P.keyword "class"
+  |. P.spaces
+  |= identifier
+  |. P.spaces
+  |= optionalList typeArguments
+  |. P.spaces
+  |= optional
+     (P.succeed identity |. P.keyword "extends" |. P.spaces |= type_)
+  |. P.spaces
+  |= optionalList
+     (P.succeed identity |. P.keyword "implements" |. P.spaces |= typeList)
+  |. P.spaces
+  |= classBody
+ 
+normalInterfaceDeclaration : Parser NormalInterfaceDeclaration
+normalInterfaceDeclaration =
+  P.succeed NormalInterfaceDeclaration
+  |. P.keyword "interface"
+  |. P.spaces
+  |= identifier
+  |. P.spaces
+  |= optionalList typeArguments
+  |. P.spaces
+  |= optionalList 
+     (P.succeed identity |. P.keyword "extends" |. P.spaces |= typeList)
+  |. P.spaces
+  |= interfaceBody
+
+interfaceBody : Parser InterfaceBody
+interfaceBody = P.oneOf []
 
 optional : Parser a -> Parser (Maybe a)
 optional parser =
@@ -719,7 +742,7 @@ basicType =
 referenceType : Parser ReferenceType
 referenceType =
   P.succeed ReferenceType
-  |= P.map (String.join "") (dotted identifier)
+  |= P.map (String.join ".") (dotted identifier)
   |= optionalList typeArguments
 
 {- TypeArguments: 
@@ -787,29 +810,27 @@ classBodyDeclaration =
         |= block
     ]
 
-memberDecl : Parser MemberDecl
+memberDecl : Parser MemberDecl -- TODO backtrack
 memberDecl =
   P.oneOf
-    [ P.map MDMethodOrField methodOrFieldDecl
+    [ P.map MDClass (P.lazy (\_ -> classDeclaration))
+    , P.map MDInterface interfaceDeclaration
     , P.succeed (\id rest -> MDVoidMethod { identifier = id, rest = rest })
       |. P.keyword "void"
       |. P.spaces
       |= identifier
       |. P.spaces
       |= voidMethodDeclaratorRest
-    , P.succeed (\id rest -> MDConstructor { identifier = id, rest = rest })
-      |= identifier
-      |. P.spaces
-      |= constructorDeclaratorRest
-  --, P.map MDGenericMethodOrConstructor genericMethodOrConstructorDecl
-    , P.map MDClass (P.lazy (\_ -> classDeclaration))
-  --, P.map MDInterface interfaceDeclaration
+    , P.map MDGenericMethodOrConstructor genericMethodOrConstructorDecl
+    , methodFieldOrConstructor
     ]
+
+genericMethodOrConstructorDecl : Parser GenericMethodOrConstructorDecl
+genericMethodOrConstructorDecl = P.oneOf []
 
 voidMethodDeclaratorRest : Parser VoidMethodDeclaratorRest
 voidMethodDeclaratorRest =
-  P.succeed (\formalParams throws blok ->
-                 { formalParams = formalParams, throws = throws, block = blok })
+  P.succeed VoidMethodDeclaratorRest
     |= formalParameters
     |. P.spaces
     |= optionalList
@@ -819,10 +840,24 @@ voidMethodDeclaratorRest =
          |= qualifiedIdentifierList
        )
     |. P.spaces
-    |= P.oneOf
-       [ P.map Just block
-       , P.succeed Nothing |. P.symbol ";"
-       ]
+    |= blockOrSemi
+
+blockOrSemi : Parser (Maybe Block)
+blockOrSemi =
+  P.oneOf
+    [ P.map Just block
+    , P.succeed Nothing |. P.symbol ";"
+    ]
+
+methodFieldOrConstructor : Parser MemberDecl
+methodFieldOrConstructor =
+  P.oneOf -- TODO remove backtracking
+    [ P.backtrackable <| P.map MDMethodOrField methodOrFieldDecl
+    , P.succeed (\id rest -> MDConstructor { identifier = id, rest = rest })
+        |= identifier
+        |. P.spaces
+        |= constructorDeclaratorRest
+    ]
 
 {-
 MethodOrFieldDecl:
@@ -833,37 +868,12 @@ methodOrFieldDecl =
     |= type_
     |. P.spaces
     |= identifier
+    |. P.spaces
     |= methodOrFieldRest
-
-{-
-MethodOrFieldRest:  
-    FieldDeclaratorsRest ;
-    MethodDeclaratorRest -}
-methodOrFieldRest : Parser MethodOrFieldRest
-methodOrFieldRest =
-  P.oneOf
-    [ P.map FieldRest (fieldDeclaratorsRest |. P.spaces |. P.symbol ";")
-    ]
-
-{-
-FieldDeclaratorsRest:  
-    VariableDeclaratorRest { , VariableDeclarator } -}
-fieldDeclaratorsRest : Parser FieldDeclaratorsRest
-fieldDeclaratorsRest =
-  P.succeed (\vRest more -> { varaibleRest = vRest , more = more })
-  |= variableDeclaratorRest
-  |= optionalList
-     ( P.succeed identity
-       |. P.spaces
-       |. P.symbol ","
-       |. P.spaces
-       |= list variableDeclarator
-     )
 
 constructorDeclaratorRest : Parser ConstructorDeclaratorRest
 constructorDeclaratorRest
-  = P.succeed (\formalParams throws blok ->
-                 { formalParams = formalParams, throws = throws, block = blok })
+  = P.succeed ConstructorDeclaratorRest
     |= formalParameters
     |. P.spaces
     |= optionalList
@@ -874,6 +884,48 @@ constructorDeclaratorRest
        )
     |. P.spaces
     |= block
+
+{-
+MethodOrFieldRest:  
+    FieldDeclaratorsRest ;
+    MethodDeclaratorRest -}
+methodOrFieldRest : Parser MethodOrFieldRest
+methodOrFieldRest =
+  P.oneOf
+    [ P.map FieldRest (fieldDeclaratorsRest |. P.spaces |. P.symbol ";")
+    , P.map MethodRest methodDeclaratorsRest
+    ]
+
+{-
+FieldDeclaratorsRest:  
+    VariableDeclaratorRest { , VariableDeclarator } -}
+fieldDeclaratorsRest : Parser FieldDeclaratorsRest
+fieldDeclaratorsRest =
+  P.succeed FieldDeclaratorsRest --(\vRest more -> { varaibleRest = vRest , more = more })
+  |= variableDeclaratorRest
+  |= optionalList
+     ( P.succeed identity
+       |. P.spaces
+       |. P.symbol ","
+       |. P.spaces
+       |= list variableDeclarator
+     )
+
+methodDeclaratorsRest : Parser MethodDeclaratorRest
+methodDeclaratorsRest =
+  P.succeed MethodDeclaratorRest
+  |= formalParameters
+  |. P.spaces
+  |= brackets
+  |. P.spaces
+  |= optionalList
+     ( P.succeed identity
+       |. P.keyword "throws"
+       |. P.spaces
+       |= qualifiedIdentifierList
+     )
+  |. P.spaces
+  |= blockOrSemi
 
 formalParameters : Parser FormalParameters
 formalParameters =
@@ -1135,6 +1187,21 @@ primary : Parser Primary
 primary = -- TODO
   P.map PrimaryLiteral literal
 
+superSuffix : Parser SuperSuffix
+superSuffix = P.oneOf [] -- use `arguments` function
+
+explicitGenericInvocationSuffix : Parser ExplicitGenericInvocationSuffix
+explicitGenericInvocationSuffix = P.oneOf [] -- use `arguments`
+
+arguments : Parser (List Expression)
+arguments =
+  P.succeed identity
+  |. P.symbol "("
+  |. P.spaces
+  |= commas expression
+  |. P.spaces
+  |. P.symbol ")"
+
 literal : Parser Literal
 literal =
   P.oneOf
@@ -1187,3 +1254,38 @@ blockStatement =
   P.oneOf
     [ P.map BlockClassOrInterface (P.lazy (\_ -> classOrInterfaceDeclaration))
     ]
+
+enumDeclaration : Parser EnumDeclaration
+enumDeclaration =
+  P.succeed EnumDeclaration
+  |. P.keyword "enum"
+  |. P.spaces
+  |= identifier
+  |. P.spaces
+  |= optionalList
+     (P.succeed identity |. P.keyword "implements" |. P.spaces |= typeList)
+  |. P.spaces
+  |= enumBody
+
+enumBody : Parser EnumBody
+enumBody =
+  P.succeed EnumBody
+  |. P.symbol "{"
+  |= commas enumConstant
+  |. optional (P.symbol ",")
+  |= commas classBodyDeclaration
+  |. P.symbol "}"
+
+{-
+EnumConstant:
+    [Annotations] Identifier [Arguments] [ClassBody] -}
+enumConstant : Parser EnumConstant
+enumConstant =
+  P.succeed EnumConstant
+  |= list annotation
+  |. P.spaces
+  |= identifier
+  |. P.spaces
+  |= optionalList arguments
+  |. P.spaces
+  |= optional classBody

@@ -21,8 +21,8 @@ fromSources srcs =
     subgraphs : List Subgraph
     subgraphs =
       srcs
+      |> List.filterMap (removeCommentsAndTabs >> toAst)
       |> Debug.log "asts: "
-      |> List.filterMap (removeComments >> toAst)
       |> List.concatMap compUnitToSubgraph
   in
     { entities = List.map .entity subgraphs
@@ -31,11 +31,11 @@ fromSources srcs =
     , references = List.concatMap subgraphToReferences subgraphs
     }
 
-removeComments : String -> String
-removeComments src =
+removeCommentsAndTabs : String -> String
+removeCommentsAndTabs src =
   let
     re =
-      "(\\/\\*(.|\\n)*?\\*\\/|\\/\\/.*$)"
+      "(\\/\\*(.|\\n)*?\\*\\/|\\/\\/.*$|\\t)"
       |> Regex.fromStringWith
          { caseInsensitive = False, multiline = True }
       |> Maybe.withDefault Regex.never

@@ -31,35 +31,37 @@ type Msg
   | Stop
   | Move (Float, Float)
 
-wrap : Entity -> Float -> Float -> Node
-wrap class x y =
-  { data = class
-  , x = x
-  , y = y
-  , vx = 0
-  , vy = 0
-  , id = class.id
-  }
-
 init : Graph -> Model
 init graph =
-  let
-    len = List.length graph.entities
-    gen = Random.list len (Random.float -1 1)
-    seed = Random.initialSeed 1975
-    (xs, seed2) = Random.step gen seed
-    (ys, _) = Random.step gen seed2
-    nodes = List.map3 wrap graph.entities xs ys
-  in
-  { nodes = arrange nodes graph.extensions
+  { nodes = arrange (withRandomPositions graph.entities) graph.extensions
   , extensions = graph.extensions
   , implements = graph.implements
   , references = graph.references 
   , draggedNode = Nothing
   }
 
+diff : List Node -> List Entity -> (List Node, List Entity)
+diff old new =
+  let
+    newIds = List.map .id new
+    oldIds = List.map .id old
+    same    = List.filter (\node   ->      List.member node.id newIds   ) old
+    changed = List.filter (\entity -> not (List.member entity.id oldIds)) new
+  in
+    (same, changed)
+
 withGraph : Graph -> Model -> Model
-withGraph graph model = init graph -- TODO
+withGraph graph model =
+  let
+    (keep, new) = diff model.nodes graph.entities
+    nodes = keep ++ arrange (withRandomPositions new) graph.extensions
+  in 
+    { nodes = nodes
+    , extensions = graph.extensions
+    , implements = graph.implements
+    , references = graph.references 
+    , draggedNode = Nothing
+    }
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
@@ -173,3 +175,30 @@ arrange nodes extensions =
       ]
   in
     Force.computeSimulation (Force.simulation forces) nodes
+
+wrap : Entity -> Float -> Float -> Node
+wrap class x y =
+  { data = class
+  , x = x
+  , y = y
+  , vx = 0
+  , vy = 0
+  , id = class.id
+  }
+
+getRandomPositions : Int -> (List Float, List Float)
+getRandomPositions n =
+  let
+    gen = Random.list n (Random.float -1 1)
+    seed = Random.initialSeed 1975
+    (xs, seed2) = Random.step gen seed
+    (ys, _) = Random.step gen seed2
+  in
+    (xs, ys)
+
+withRandomPositions : List Entity -> List Node
+withRandomPositions entities =
+  let
+    (xs, ys) = getRandomPositions (List.length entities)
+  in
+    List.map3 wrap entities xs ys
