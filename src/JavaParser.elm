@@ -222,44 +222,63 @@ type alias GenericMethodOrConstructorRest =
 
 ---- ---- vi
 
-type InterfaceBody = TODO21
-{-
-InterfaceBodyDeclaration:
-    ; 
-    {Modifier} InterfaceMemberDecl
+type alias InterfaceBody =
+  { declarations : List InterfaceBodyDeclaration
+  }
 
-InterfaceMemberDecl:
-    InterfaceMethodOrFieldDecl
-    void Identifier VoidInterfaceMethodDeclaratorRest
-    InterfaceGenericMethodDecl
-    ClassDeclaration
-    InterfaceDeclaration
+type InterfaceBodyDeclaration
+  = InterfaceSemi 
+  | InterfaceBodyMember
+    { modifiers : List Modifier
+    , decl : InterfaceMemberDecl
+    }
 
-InterfaceMethodOrFieldDecl:
-    Type Identifier InterfaceMethodOrFieldRest
+type InterfaceMemberDecl
+  = IMDMethodOrField InterfaceMethodOrFieldDecl
+  | IMDGeneric InterfaceGenericMethodDecl
+  | IMDClass ClassDeclaration
+  | IMDInterface InterfaceDeclaration
+  | IMDVoid 
+    { identifier : String
+    , rest : VoidInterfaceMethodDeclaratorRest
+    }
 
-InterfaceMethodOrFieldRest:
-    ConstantDeclaratorsRest ;
-    InterfaceMethodDeclaratorRest
+type alias InterfaceMethodOrFieldDecl =
+  { type_ : Type
+  , identifier : String
+  , rest : InterfaceMethodOrFieldRest
+  }
 
-ConstantDeclaratorsRest: 
-    ConstantDeclaratorRest { , ConstantDeclarator }
+type InterfaceMethodOrFieldRest
+  = IMDOFRConstant (List ConstantDeclarator)
+  | IMDOFR InterfaceMethodDeclaratorRest
 
-ConstantDeclaratorRest: 
-    {[]} = VariableInitializer
+type alias ConstantDeclaratorRest =
+  { arrays : Int
+  , initializer : VariableInitializer
+  }
 
-ConstantDeclarator: 
-    Identifier ConstantDeclaratorRest
+type alias ConstantDeclarator =
+  { identifier : String
+  , rest : ConstantDeclaratorRest
+  }
 
-InterfaceMethodDeclaratorRest:
-    FormalParameters {[]} [throws QualifiedIdentifierList] ; 
+type alias InterfaceMethodDeclaratorRest =
+  { formalParams : FormalParameters
+  , arrays : Int
+  , throws : List String
+  }
 
-VoidInterfaceMethodDeclaratorRest:
-    FormalParameters [throws QualifiedIdentifierList] ;  
+type alias VoidInterfaceMethodDeclaratorRest =
+  { formalParams : FormalParameters
+  , throws : List String
+  }
 
-InterfaceGenericMethodDecl:
-    TypeParameters (Type | void) Identifier InterfaceMethodDeclaratorRest
--}
+type alias InterfaceGenericMethodDecl =
+  { typeParams : Maybe Type
+  , identifier : String
+  , rest : InterfaceMethodDeclaratorRest
+  }
 
 ---- ---- vii
 
@@ -301,7 +320,7 @@ type VariableInitializer
 
 type alias ArrayInitializer = List VariableInitializer
 
-----_---- viii
+---- ---- viii
 
 type alias Block = List BlockStatement
 
@@ -327,31 +346,44 @@ type Statement
   | StatementExpression Expression
   | StatementIf
     { cond : ParExpression, if_ : Statement, else_ : Maybe Statement }
-  {-
   | StatementAssert
-    { Expression [: Expression] ; }
+    { expression : Expression
+    , throws : Maybe Expression
+    }
   | StatementSwitch
-    { ParExpression { SwitchBlockStatementGroups } 
+    { expression : ParExpression
+    , groups : List SwitchBlockStatementGroups
+    }
   | StatementWhile
-    { ParExpression Statement
+    { cond : ParExpression
+    , statement : Statement
+    }
   | StatementDo
-    { Statement while ParExpression ;
+    { cond : ParExpression
+    , statement : Statement
+    }
   | StatementFor
-    { ( ForControl ) Statement
-  | StatementBreak
-    { [Identifier] ;
-  | StatementContinue
-    { [Identifier] ;
-  | StatementReturn
-    { [Expression] ;
-  | StatementThrow
-    { Expression ;
+    { control : ForControl
+    , statement : Statement
+    }
+  | StatementBreak (Maybe String)
+  | StatementContinue (Maybe String)
+  | StatementReturn (Maybe Expression)
+  | StatementThrow Expression
   | StatementSynchronized
-    { ParExpression Block
+    { expression : ParExpression
+    , block : Block
+    }
+  {-
   | StatementTry
-    { Block (Catches | [Catches] Finally)
+    { block : Block
+    , (Catches | [Catches] Finally)
+    }
   | StatementTryResource
-    { ResourceSpecification Block [Catches] [Finally]
+    { spec : ResourceSpecification
+    , block : Block
+    , [Catches] [Finally]
+    }
   -}
 
 ----_---- ix
@@ -360,7 +392,38 @@ type Statement
 
 ----_---- x
 
---- switch
+type alias SwitchBlockStatementGroups =
+  List SwitchBlockStatementGroup
+
+type alias SwitchBlockStatementGroup =
+  { labels : List SwitchLabel
+  --, blockStatements : BlockStatements
+  }
+
+type SwitchLabel
+  = SwitchLabelExp Expression
+  | SwitchLabelEnum String
+  | SwitchLabelDefault
+
+type ForControl = TODO1
+{-
+    ForVarControl
+    ForInit ; [Expression] ; [ForUpdate]
+
+ForVarControl:
+    {VariableModifier} Type VariableDeclaratorId  ForVarControlRest
+
+ForVarControlRest:
+    ForVariableDeclaratorsRest ; [Expression] ; [ForUpdate]
+    : Expression
+
+ForVariableDeclaratorsRest:
+    [= VariableInitializer] { , VariableDeclarator }
+
+ForInit: 
+ForUpdate:
+    StatementExpression { , StatementExpression }    
+  -}
 
 ---- ---- xi
 
@@ -669,7 +732,13 @@ normalInterfaceDeclaration =
   |= interfaceBody
 
 interfaceBody : Parser InterfaceBody
-interfaceBody = P.oneOf []
+interfaceBody =
+  P.succeed InterfaceBody
+  |. P.symbol "{"
+  |. P.spaces
+  |= list interfaceBodyDeclaration
+  |. P.spaces
+  |. P.symbol "}"
 
 optional : Parser a -> Parser (Maybe a)
 optional parser =
@@ -809,6 +878,18 @@ classBodyDeclaration =
         |. P.spaces
         |= block
     ]
+
+interfaceBodyDeclaration : Parser InterfaceBodyDeclaration
+interfaceBodyDeclaration =
+  P.oneOf
+    [ P.succeed InterfaceSemi |. P.symbol ";"
+    , P.succeed (\mods decl -> InterfaceBodyMember { modifiers = mods, decl = decl})
+        |= list modifier
+        |. P.spaces
+        |= interfaceMemberDecl
+    ]
+
+interfaceMemberDecl = P.oneOf []
 
 memberDecl : Parser MemberDecl -- TODO backtrack
 memberDecl =
