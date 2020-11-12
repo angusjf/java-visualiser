@@ -3,7 +3,7 @@ module JavaParser exposing (..)
 import Set exposing (Set)
 import Parser as P exposing (Parser, (|=), (|.), Step)
 
----- ---- i
+-- types i
 
 type alias CompilationUnit =
   { package : Maybe String
@@ -58,7 +58,7 @@ type alias AnnotationTypeDeclaration =
   , body : AnnotationTypeBody
   }
 
----- ---- ii
+-- types ii
 
 type Type
   = BasicType BasicType
@@ -85,34 +85,27 @@ type TypeArgument
   | WildCardSuper ReferenceType
   | WildCardExtends ReferenceType
 
-----_---- iii
+-- types iii
 
-{-
-NonWildcardTypeArguments:
-    < TypeList >
+type alias NonWildcardTypeArguments = List ReferenceType
 
-TypeList:  
-    ReferenceType { , ReferenceType }
+type OrDiamond a = Diamond | Types a
 
-TypeArgumentsOrDiamond:
-    < > 
-    TypeArguments
+type alias TypeArgumentsOrDiamond = OrDiamond (List TypeArgument)
 
-NonWildcardTypeArgumentsOrDiamond:
-    < >
-    NonWildcardTypeArguments
+type alias NonWildcardTypeArgumentsOrDiamond = OrDiamond NonWildcardTypeArguments
 
-TypeParameters:
-    < TypeParameter { , TypeParameter } >
+type alias TypeParameter =
+  { identifier : String
+  , extends : Maybe Bound
+  }
 
-TypeParameter:
-    Identifier [extends Bound]
+type alias Bound =
+  { type_ : ReferenceType
+  , and : ReferenceType
+  }
 
-Bound:
-    ReferenceType { & ReferenceType }
--}
-
----- ---- iv
+-- types iv
 
 type Modifier
   = ModifierAnnotation Annotation
@@ -147,7 +140,7 @@ type ElementValue
   | ElementValueExpression Expression1 
   | ElementValueArrayInitializer (List ElementValue)
 
----- ---- v
+-- types v
 
 type alias ClassBody =
   { declarations : List ClassBodyDeclaration
@@ -220,7 +213,7 @@ type alias GenericMethodOrConstructorRest =
   {
   }
 
----- ---- vi
+-- types vi
 
 type alias InterfaceBody =
   { declarations : List InterfaceBodyDeclaration
@@ -280,7 +273,7 @@ type alias InterfaceGenericMethodDecl =
   , rest : InterfaceMethodDeclaratorRest
   }
 
----- ---- vii
+-- types vii
 
 type alias FormalParameters = Maybe FormalParameterDecls
 
@@ -320,7 +313,7 @@ type VariableInitializer
 
 type alias ArrayInitializer = List VariableInitializer
 
----- ---- viii
+-- types viii
 
 type alias Block = List BlockStatement
 
@@ -377,27 +370,50 @@ type Statement
   {-
   | StatementTry
     { block : Block
-    , (Catches | [Catches] Finally)
+    ,   List Catch | 
+        { (Maybe (List Catch))
+        , finally : Block
+        }
     }
+  -}
   | StatementTryResource
     { spec : ResourceSpecification
     , block : Block
-    , [Catches] [Finally]
+    , catches : List CatchClause
+    , finally : Maybe Block
     }
-  -}
 
-----_---- ix
+-- types ix
 
---- catches ...
+type alias CatchClause =
+  { modifiers : List VariableModifier
+  , type_ : CatchType
+  , identifier : String
+  , block : Block
+  }
 
-----_---- x
+type alias CatchType =
+  { identifier : String
+  , more : List String
+  }
+
+type alias ResourceSpecification = List Resource
+
+type alias Resource =
+  { modifiers : List VariableModifier
+  , type_ : ReferenceType
+  , identifier: VariableDeclaratorId
+  , expression : Expression
+  }
+
+-- types x
 
 type alias SwitchBlockStatementGroups =
   List SwitchBlockStatementGroup
 
 type alias SwitchBlockStatementGroup =
   { labels : List SwitchLabel
-  --, blockStatements : BlockStatements
+  , blockStatements : List BlockStatement
   }
 
 type SwitchLabel
@@ -405,27 +421,39 @@ type SwitchLabel
   | SwitchLabelEnum String
   | SwitchLabelDefault
 
-type ForControl = TODO1
-{-
-    ForVarControl
-    ForInit ; [Expression] ; [ForUpdate]
+type ForControl
+  = FCForVarControl ForVarControl
+  | FCForInit
+    { init : ForInit 
+    , condition : Maybe Expression
+    , update : Maybe ForUpdate
+    }
 
-ForVarControl:
-    {VariableModifier} Type VariableDeclaratorId  ForVarControlRest
+type alias ForVarControl =
+  { modifiers : List VariableModifier
+  , type_ : Type
+  , decl : VariableDeclaratorId
+  , rest : ForVarControlRest
+  }
 
-ForVarControlRest:
-    ForVariableDeclaratorsRest ; [Expression] ; [ForUpdate]
-    : Expression
+type ForVarControlRest
+  = ForClassic
+    { rest : ForVariableDeclaratorsRest
+    , cond : Maybe Expression
+    , loop : ForUpdate
+    }
+  | ForEach Expression
 
-ForVariableDeclaratorsRest:
-    [= VariableInitializer] { , VariableDeclarator }
+type alias ForVariableDeclaratorsRest =
+  { init : Maybe VariableInitializer
+  , vars : List VariableDeclarator
+  }
 
-ForInit: 
-ForUpdate:
-    StatementExpression { , StatementExpression }    
-  -}
+type alias ForInit = ForUpdate
 
----- ---- xi
+type alias ForUpdate = List Expression
+
+-- types xi
 
 type Expression =
   Expression
@@ -463,7 +491,7 @@ type Expression2Rest
   = E2RInfixOp (List (InfixOp, Expression3))
   | E2RInstanceof Type
 
----- ---- xii
+-- types xii
 
 type InfixOp
   = LogicalOr
@@ -491,8 +519,19 @@ type Expression3
     { op : PrefixOp
     , exp3 : Expression3
     }
-  | E3WHAT --( (Expression | Type) ) Expression3
-  | E3Primary Primary --{ Selector } { PostfixOp }
+  | E3BracketedExpression
+    { expression : Expression
+    , exp3 : Expression3
+    }
+  | E3BracketedType
+    { type_ : Type
+    , exp3 : Expression3
+    }
+  | E3Primary
+    { primary : Primary
+    , selectors : List Selector
+    , ops : List PostfixOp
+    }
 
 type PrefixOp
   = PreIncrement
@@ -506,7 +545,7 @@ type PostfixOp
   = PostIncrement
   | PostDecrement
 
-----_---- xiii
+-- types xiii
 
 type Primary
   = PrimaryLiteral Literal
@@ -538,11 +577,50 @@ type ExplicitGenericInvocationSuffix
   = EGISSuper SuperSuffix
   | EGISIdentifier -- String (List Expression) TODO
 
-----_---- xiv
+-- types xiv
 
---- creator
+{-
+type Creator:  
+    NonWildcardTypeArguments CreatedName ClassCreatorRest
+    CreatedName (ClassCreatorRest | ArrayCreatorRest)
 
-----_---- xv
+CreatedName:   
+    Identifier [TypeArgumentsOrDiamond] { . Identifier [TypeArgumentsOrDiamond] }
+
+ClassCreatorRest: 
+    Arguments [ClassBody]
+
+ArrayCreatorRest:
+    [ (] {[]} ArrayInitializer  |  Expression ] {[ Expression ]} {[]})
+
+
+
+IdentifierSuffix:
+    [ ({[]} . class | Expression) ]
+    Arguments 
+    . (class | ExplicitGenericInvocation | this | super Arguments |
+                                new [NonWildcardTypeArguments] InnerCreator)
+
+ExplicitGenericInvocation:
+    NonWildcardTypeArguments ExplicitGenericInvocationSuffix
+
+InnerCreator:  
+    Identifier [NonWildcardTypeArgumentsOrDiamond] ClassCreatorRest
+
+-}
+
+type Selector
+  = SelectorId
+    { identifier : String
+    , args : List Expression
+    }
+--| SelectorEGI ExplicitGenericInvocation
+  | SelectorThis
+  | SelectorSuper SuperSuffix
+--| SelectorId new [NonWildcardTypeArguments] InnerCreator
+  | SelectorExp (Maybe Expression)
+
+-- types xv
 
 type alias EnumBody =
   { constants : List EnumConstant
@@ -556,9 +634,33 @@ type alias EnumConstant =
   , body : Maybe ClassBody
   }
 
-type AnnotationTypeBody = TODO22
+type alias AnnotationTypeBody = List AnnotationTypeElementDeclarations
 
-----
+type alias AnnotationTypeElementDeclarations =
+  List AnnotationTypeElementDeclaration
+
+type alias AnnotationTypeElementDeclaration =
+  { modifiers : List Modifier
+  , rest : AnnotationTypeElementRest
+  }
+
+type AnnotationTypeElementRest = TODO0
+{-
+  = Type Identifier AnnotationMethodOrConstantRest ;
+  | ClassDeclaration
+  | InterfaceDeclaration
+  | EnumDeclaration  
+  | AnnotationTypeDeclaration
+-}
+
+type AnnotationMethodOrConstantRest
+  = AnnotationRest AnnotationMethodRest
+  | ConstantRest (List ConstantDeclaratorRest)
+
+type alias AnnotationMethodRest =
+  { brackets : Bool
+  , default : Maybe ElementValue
+  }
 
 reserved : Set String
 reserved = Set.fromList ["class", "package", "public", "static", "int"]
@@ -889,9 +991,40 @@ interfaceBodyDeclaration =
         |= interfaceMemberDecl
     ]
 
-interfaceMemberDecl = P.oneOf []
+interfaceMemberDecl : Parser InterfaceMemberDecl
+interfaceMemberDecl =
+  P.oneOf
+    [ P.map IMDMethodOrField interfaceMethodOrFieldDecl
+    , P.map IMDGeneric interfaceGenericMethodDecl
+    , P.map IMDClass (P.lazy (\_ -> classDeclaration))
+    , P.map IMDInterface (P.lazy (\_ -> interfaceDeclaration))
+    , P.succeed (\id rest -> IMDVoid { identifier = id , rest = rest })
+      |. P.keyword "void"
+      |. P.spaces
+      |= identifier
+      |. P.spaces
+      |= voidInterfaceMethodDeclaratorRest
+    ]
 
-memberDecl : Parser MemberDecl -- TODO backtrack
+interfaceMethodOrFieldDecl : Parser InterfaceMethodOrFieldDecl
+interfaceMethodOrFieldDecl =
+  P.succeed InterfaceMethodOrFieldDecl
+  |= type_
+  |. P.spaces
+  |= identifier
+  |. P.spaces
+  |= interfaceMethodOrFieldRest
+
+interfaceGenericMethodDecl : Parser InterfaceGenericMethodDecl
+interfaceGenericMethodDecl = P.oneOf []
+
+voidInterfaceMethodDeclaratorRest : Parser VoidInterfaceMethodDeclaratorRest
+voidInterfaceMethodDeclaratorRest = P.oneOf []
+
+interfaceMethodOrFieldRest : Parser InterfaceMethodOrFieldRest
+interfaceMethodOrFieldRest = P.oneOf []
+
+memberDecl : Parser MemberDecl
 memberDecl =
   P.oneOf
     [ P.map MDClass (P.lazy (\_ -> classDeclaration))
@@ -1009,11 +1142,7 @@ methodDeclaratorsRest =
   |= blockOrSemi
 
 formalParameters : Parser FormalParameters
-formalParameters =
-  P.succeed identity
-  |. P.symbol "("
-  |= optional formalParameterDecls
-  |. P.symbol ")"
+formalParameters = bracketed (optional formalParameterDecls)
 
 formalParameterDecls : Parser FormalParameterDecls
 formalParameterDecls =
@@ -1099,7 +1228,6 @@ variableInitializer =
     , P.map VIExpression expression
     ]
 
--- TODO pick up here
 {-
 ArrayInitializer:
     { [ VariableInitializer { , VariableInitializer } [,] ] }
@@ -1243,8 +1371,34 @@ Expression3:
     ( (Expression | Type) ) Expression3
     Primary { Selector } { PostfixOp } -}
 expression3 : Parser Expression3
-expression3 = -- TODO
-  (P.succeed E3Primary) |= primary
+expression3 =
+  P.oneOf
+    [ P.succeed (\op exp3 ->
+                 E3Prefix { op = op, exp3 = exp3 })
+      |= prefixOp
+      |. P.spaces
+      |= P.lazy (\_ -> expression3)
+    , P.succeed (\exp exp3 ->
+                 E3BracketedExpression { expression = exp, exp3 = exp3 })
+      |= bracketed (P.lazy (\_ -> expression))
+      |. P.spaces
+      |= P.lazy (\_ -> expression3)
+    , P.succeed (\t exp3 ->
+                 E3BracketedType { type_ = t , exp3 = exp3 })
+      |= bracketed type_
+      |. P.spaces
+      |= P.lazy (\_ -> expression3)
+    , P.succeed (\pri sels ops ->
+                 E3Primary { primary = pri, selectors = sels, ops = ops })
+      |= primary
+      |. P.spaces
+      |= list selector
+      |. P.spaces
+      |= list postfixOp
+    ]
+
+selector : Parser Selector
+selector = P.oneOf []
 
 prefixOp : Parser PrefixOp
 prefixOp =
@@ -1275,11 +1429,14 @@ explicitGenericInvocationSuffix : Parser ExplicitGenericInvocationSuffix
 explicitGenericInvocationSuffix = P.oneOf [] -- use `arguments`
 
 arguments : Parser (List Expression)
-arguments =
+arguments = bracketed (commas expression)
+
+bracketed : Parser a -> Parser a
+bracketed parser =
   P.succeed identity
   |. P.symbol "("
   |. P.spaces
-  |= commas expression
+  |= parser
   |. P.spaces
   |. P.symbol ")"
 
