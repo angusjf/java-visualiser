@@ -1,4 +1,4 @@
-port module Visualiser exposing (Model, Msg, init, view, update, withGraph)
+port module Visualiser exposing (Model, Msg, init, view, update, withGraph, tick)
 
 import Html exposing (Html)
 import Html.Attributes
@@ -26,6 +26,7 @@ type alias Model =
   , implements : List Vertex
   , references : List Vertex
   , draggedNode : Maybe Node
+  , simulation : Force.State NodeId
   }
 
 type Msg
@@ -37,12 +38,16 @@ type Msg
 port exportSvg : () -> Cmd msg
 
 init : Config -> Graph -> Model
-init conf graph =
-  { nodes = arrange conf (withRandomPositions graph.entities) graph.extensions
+init config graph =
+  { nodes = withRandomPositions graph.entities
   , extensions = graph.extensions
   , implements = graph.implements
   , references = graph.references 
   , draggedNode = Nothing
+  , simulation = getInitialSimulation
+                   config
+                   (withRandomPositions graph.entities)
+                   (graph.extensions ++ graph.implements ++ graph.references)
   }
 
 diff : List Node -> List Entity -> (List Node, List Entity)
@@ -56,17 +61,22 @@ diff old new =
     (same, changed)
 
 withGraph : Config -> Graph -> Model -> Model
-withGraph conf graph model =
+withGraph config graph model =
   let
     updatedNodes = List.map (updateNode graph.entities) model.nodes
     (keep, new) = diff updatedNodes graph.entities
-    nodes = keep ++ arrange conf (withRandomPositions new) graph.extensions
+    nodes = keep ++ withRandomPositions new
   in 
-    { nodes = nodes
-    , extensions = graph.extensions
-    , implements = graph.implements
-    , references = graph.references 
-    , draggedNode = Nothing
+    { model
+      | nodes = nodes
+      , extensions = graph.extensions
+      , implements = graph.implements
+      , references = graph.references 
+      , draggedNode = Nothing
+      , simulation = getInitialSimulation
+                      config
+                      (withRandomPositions graph.entities)
+                      (graph.extensions ++ graph.implements ++ graph.references)
     }
 
 updateNode : List Entity -> Node -> Node
@@ -81,7 +91,12 @@ update msg model =
     Start node ->
       ({ model | draggedNode = Just node }, Cmd.none)
     Stop ->
-      ({ model | draggedNode = Nothing }, Cmd.none)
+      ( { model
+          | draggedNode = Nothing
+          , simulation = Force.reheat model.simulation
+        }
+      , Cmd.none
+      )
     Move (x, y) ->
       case model.draggedNode of
         Just old ->
@@ -99,15 +114,15 @@ update msg model =
       (model, exportSvg ())
 
 view : Config -> Model -> Html Msg
-view conf model =
+view config model =
   Html.div
     []
     [ viewOverlay model
     , G.render
         { move = Move
         , up = Stop
-        , width = conf.width
-        , height = conf.height
+        , width = config.width
+        , height = config.height
         }
         [ G.group
             [ G.group <| List.map (viewExtension model.nodes) model.extensions
@@ -196,25 +211,6 @@ upsert new nodes =
     [] ->
       [new]
 
-arrange : Config -> List Node -> List Vertex -> List Node
-arrange config nodes extensions =
-  let
-    f {from, to} =
-      { source = from
-      , target = to
-      , distance = 300
-      , strength = Nothing
-      }
-    edges = List.map f extensions
-    nodeIds = List.map .id nodes
-    forces =
-      [ Force.center (config.width / 2) (config.height / 2)
-      , Force.customLinks 1 edges
-      , Force.manyBodyStrength (-60) nodeIds
-      ]
-  in
-    Force.computeSimulation (Force.simulation forces) nodes
-
 wrap : Entity -> Float -> Float -> Node
 wrap class x y =
   { data = class
@@ -254,3 +250,38 @@ withRandomPositions entities =
     (xs, ys) = getRandomPositions (List.length entities)
   in
     List.map3 wrap entities xs ys
+
+tick : Model -> Model
+tick model =
+  let
+    (newState, newNodes) = Force.tick model.simulation model.nodes
+  in
+    { model
+      | nodes = newNodes
+      , simulation = newState
+    }
+
+arrange : Config -> List Node -> List Vertex -> List Node
+arrange config nodes extensions =
+  Force.computeSimulation (getInitialSimulation config nodes extensions) nodes
+
+getInitialSimulation : Config -> List Node -> List Vertex -> Force.State NodeId
+getInitialSimulation config nodes extensions =
+  let
+    edges =
+      extensions
+      |> List.map (\{from, to} ->
+                      { source = from
+                      , target = to
+                      , distance = 300
+                      , strength = Nothing
+                      }
+                   )
+    nodeIds = List.map .id nodes
+    forces =
+      [ Force.center (config.width / 2) (config.height / 2)
+      , Force.customLinks 1 edges
+      , Force.manyBodyStrength (-60) nodeIds
+      ]
+  in
+    Force.simulation forces

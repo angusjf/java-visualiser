@@ -690,10 +690,10 @@ type alias AnnotationMethodRest =
   , default : Maybe ElementValue
   }
 
+-- }}}
+
 reserved : Set String
 reserved = Set.fromList ["class", "package", "public", "static", "int"]
-
--- }}}
 
 {-
 CompilationUnit: 
@@ -1379,7 +1379,7 @@ expression2Rest =
 infixOp : Parser InfixOp
 infixOp =
   P.oneOf
-    [ P.succeed LogicalOr        |. P.keyword " |"
+    [ P.succeed LogicalOr        |. P.keyword "||"
     , P.succeed LogicalAnd       |. P.keyword "&&"
     , P.succeed BitwizeOr        |. P.keyword "|"
     , P.succeed BitwizeXor       |. P.keyword "^"

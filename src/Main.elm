@@ -1,6 +1,7 @@
 port module Main exposing (main)
 
 import Browser
+import Browser.Events
 import Html
 
 import File exposing (File, Uri)
@@ -21,6 +22,7 @@ type Msg
   | RenameFile (Uri, Uri)
   | ConfigChanged Config
   | VisualiserMsg Visualiser.Msg
+  | Tick Float
 
 init : (Config, List File) -> (Model, Cmd Msg)
 init (config, files) =
@@ -65,6 +67,10 @@ update msg model =
         )
     ConfigChanged cfg ->
       ( { model | config = cfg }
+      , Cmd.none
+      )
+    Tick _ ->
+      ( { model | visualiser = Visualiser.tick model.visualiser }
       , Cmd.none
       )
 
@@ -124,6 +130,7 @@ subscriptions model =
     , deleteFile DeleteFile
     , renameFile RenameFile
     , configChanged ConfigChanged
+    , Browser.Events.onAnimationFrameDelta Tick
     ]
 
 main =
