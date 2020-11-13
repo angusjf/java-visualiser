@@ -3,7 +3,7 @@ module JavaParser exposing (..)
 import Set exposing (Set)
 import Parser as P exposing (Parser, (|=), (|.), Step)
 
--- types i
+-- types i {{{
 
 type alias CompilationUnit =
   { package : Maybe String
@@ -58,7 +58,9 @@ type alias AnnotationTypeDeclaration =
   , body : AnnotationTypeBody
   }
 
--- types ii
+-- }}}
+
+-- types ii {{{
 
 type Type
   = BasicType BasicType
@@ -85,7 +87,9 @@ type TypeArgument
   | WildCardSuper ReferenceType
   | WildCardExtends ReferenceType
 
--- types iii
+-- }}}
+
+-- types iii {{{
 
 type alias NonWildcardTypeArguments = List ReferenceType
 
@@ -105,7 +109,9 @@ type alias Bound =
   , and : ReferenceType
   }
 
--- types iv
+-- }}}
+
+-- types iv {{{
 
 type Modifier
   = ModifierAnnotation Annotation
@@ -140,7 +146,9 @@ type ElementValue
   | ElementValueExpression Expression1 
   | ElementValueArrayInitializer (List ElementValue)
 
--- types v
+-- }}}
+
+-- types v {{{
 
 type alias ClassBody =
   { declarations : List ClassBodyDeclaration
@@ -213,7 +221,9 @@ type alias GenericMethodOrConstructorRest =
   {
   }
 
--- types vi
+-- }}}
+
+-- types vi {{{
 
 type alias InterfaceBody =
   { declarations : List InterfaceBodyDeclaration
@@ -273,7 +283,9 @@ type alias InterfaceGenericMethodDecl =
   , rest : InterfaceMethodDeclaratorRest
   }
 
--- types vii
+-- }}}
+
+-- types vii {{{
 
 type alias FormalParameters = Maybe FormalParameterDecls
 
@@ -313,7 +325,9 @@ type VariableInitializer
 
 type alias ArrayInitializer = List VariableInitializer
 
--- types viii
+-- }}}
+
+-- types viii {{{
 
 type alias Block = List BlockStatement
 
@@ -383,7 +397,9 @@ type Statement
     , finally : Maybe Block
     }
 
--- types ix
+-- }}}
+
+-- types ix {{{
 
 type alias CatchClause =
   { modifiers : List VariableModifier
@@ -406,7 +422,9 @@ type alias Resource =
   , expression : Expression
   }
 
--- types x
+-- }}}
+
+-- types x {{{
 
 type alias SwitchBlockStatementGroups =
   List SwitchBlockStatementGroup
@@ -453,7 +471,9 @@ type alias ForInit = ForUpdate
 
 type alias ForUpdate = List Expression
 
--- types xi
+-- }}}
+
+-- types xi {{{
 
 type Expression =
   Expression
@@ -491,7 +511,9 @@ type Expression2Rest
   = E2RInfixOp (List (InfixOp, Expression3))
   | E2RInstanceof Type
 
--- types xii
+-- }}}
+
+-- types xii {{{
 
 type InfixOp
   = LogicalOr
@@ -545,7 +567,9 @@ type PostfixOp
   = PostIncrement
   | PostDecrement
 
--- types xiii
+-- }}}
+
+-- types xiii {{{
 
 type Primary
   = PrimaryLiteral Literal
@@ -577,7 +601,9 @@ type ExplicitGenericInvocationSuffix
   = EGISSuper SuperSuffix
   | EGISIdentifier -- String (List Expression) TODO
 
--- types xiv
+-- }}}
+
+-- types xiv {{{
 
 {-
 type Creator:  
@@ -620,7 +646,9 @@ type Selector
 --| SelectorId new [NonWildcardTypeArguments] InnerCreator
   | SelectorExp (Maybe Expression)
 
--- types xv
+-- }}}
+
+-- types xv {{{
 
 type alias EnumBody =
   { constants : List EnumConstant
@@ -665,9 +693,12 @@ type alias AnnotationMethodRest =
 reserved : Set String
 reserved = Set.fromList ["class", "package", "public", "static", "int"]
 
+-- }}}
+
 {-
 CompilationUnit: 
     package imports types
+
 -}
 compilationUnit : Parser CompilationUnit
 compilationUnit =
@@ -1198,6 +1229,7 @@ variableDeclarator : Parser VariableDeclarator
 variableDeclarator =
   P.succeed VariableDeclarator
   |= identifier
+  |. P.spaces
   |= variableDeclaratorRest
 
 {-
@@ -1236,12 +1268,14 @@ arrayInitializer : Parser ArrayInitializer
 arrayInitializer =
   P.succeed identity
   |. P.symbol "{"
+  |. P.spaces
   |= optionalList
       ( P.lazy
         (\_ -> commas variableInitializer
                |. optional (P.symbol ",")
         )
       )
+  |. P.spaces
   |. P.symbol "}"
 
 {-
@@ -1334,6 +1368,7 @@ expression2Rest =
     instanceof =
       P.succeed identity
       |. P.keyword "instanceof"
+      |. P.spaces
       |= type_
   in
     P.oneOf

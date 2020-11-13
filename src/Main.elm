@@ -6,10 +6,12 @@ import Html
 import File exposing (File, Uri)
 import JavaToGraph
 import Visualiser
+import Config exposing (Config)
 
 type alias Model =
   { files : List File
   , visualiser : Visualiser.Model
+  , config : Config
   }
 
 type Msg
@@ -17,12 +19,14 @@ type Msg
   | UpdateFile File
   | DeleteFile Uri
   | RenameFile (Uri, Uri)
+  | ConfigChanged Config
   | VisualiserMsg Visualiser.Msg
 
-init : List File -> (Model, Cmd Msg)
-init files =
+init : (Config, List File) -> (Model, Cmd Msg)
+init (config, files) =
   ({ files = files
-   , visualiser = Visualiser.init (filesToGraph files)
+   , visualiser = Visualiser.init config (filesToGraph files)
+   , config = config
    }
   , Cmd.none
   )
@@ -31,6 +35,7 @@ port newFile : (File -> msg) -> Sub msg
 port updateFile : (File -> msg) -> Sub msg
 port deleteFile : (Uri -> msg) -> Sub msg
 port renameFile : ((Uri, Uri) -> msg) -> Sub msg
+port configChanged : (Config -> msg) -> Sub msg
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
@@ -44,7 +49,7 @@ update msg model =
       , Cmd.none
       )
     DeleteFile uri ->
-      ( Debug.log "" setFiles (delete uri model.files) model
+      ( setFiles (delete uri model.files) model
       , Cmd.none
       )
     RenameFile (from, to) ->
@@ -58,12 +63,19 @@ update msg model =
         ( { model | visualiser = mo }
         , Cmd.map VisualiserMsg me
         )
+    ConfigChanged cfg ->
+      ( { model | config = cfg }
+      , Cmd.none
+      )
 
 setFiles : List File -> Model -> Model
 setFiles files model =
   { model
     | files = files
-    , visualiser = Visualiser.withGraph (filesToGraph files) model.visualiser
+    , visualiser = Visualiser.withGraph
+                     model.config
+                     (filesToGraph files)
+                     model.visualiser
   }
 
 insert : File -> List File -> List File
@@ -99,7 +111,8 @@ filesToGraph files =
 view : Model -> Browser.Document Msg
 view model =
   { title = "I don't think you can see this"
-  , body = [ Visualiser.view model.visualiser |> Html.map VisualiserMsg
+  , body = [ Visualiser.view model.config model.visualiser
+             |> Html.map VisualiserMsg
            ]
   }
 
@@ -110,6 +123,7 @@ subscriptions model =
     , updateFile UpdateFile
     , deleteFile DeleteFile
     , renameFile RenameFile
+    , configChanged ConfigChanged
     ]
 
 main =

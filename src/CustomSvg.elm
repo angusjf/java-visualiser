@@ -1,93 +1,168 @@
 module CustomSvg exposing (..)
 
-import Svg as S
-import Svg.Attributes as A
-import Svg.Events as E
+import Svg
+import TypedSvg as S
+import TypedSvg.Attributes as A
+import TypedSvg.Events as E
+import TypedSvg.Types as T
 import Json.Decode
+import VirtualDom
+import Svg.Attributes as UntypedA
 
-type alias Svg msg = S.Svg msg
+type alias Svg a = Svg.Svg a
 
+render : { width : Float, height : Float, move : (Float, Float) -> msg, up : msg }
+      -> List (Svg msg) -> Svg msg
 render opts things =
   S.svg
-    [ A.width "600"
-    , A.height "800"
-    , E.on "mousemove" opts.move
-    , E.on "mouseup" opts.up
+    [ A.width (T.px opts.width)
+    , A.height (T.px opts.height)
+    , E.on "mousemove" (moveEventDecoder opts.move)
+    , E.onMouseUp opts.up
     ]
-    [ S.g [ ] things ]
+    [ S.defs
+      []
+      [ S.marker
+        [ A.id "arrowHeadFill"
+        , A.viewBox 0 0 10 10
+        , A.refX "1"
+        , A.refY "5"
+        , UntypedA.markerUnits "strokeWidth"
+        , UntypedA.markerWidth "10"
+        , UntypedA.markerHeight "10"
+        , UntypedA.orient "auto"
+        ]
+        [ S.path
+          [ A.d "M 0 0 L 10 5 L 0 10"
+          , UntypedA.fill "#fff"
+          ] []
+        ]
+      , S.marker
+        [ A.id "arrowHeadLine"
+        , A.viewBox 0 0 10 10
+        , A.refX "1"
+        , A.refY "3"
+        , UntypedA.markerUnits "strokeWidth"
+        , UntypedA.markerWidth "10"
+        , UntypedA.markerHeight "10"
+        , UntypedA.orient "auto"
+        ]
+        [ S.path
+          [ A.d "M 0 0 L 6 3 L 0 6"
+          , UntypedA.stroke "#fff"
+          , UntypedA.fill "none"
+          ] []
+        ]
+      ]
+    , S.g [ ] things
+    ]
+
+--moveEventDecoder : ((Float, Float) -> msg) -> VirtualDom.Handler msg
+moveEventDecoder msg =
+  VirtualDom.Custom <|
+    Json.Decode.map (\m -> { message = msg m
+                           , preventDefault = True
+                           , stopPropagation = True
+                           }
+                    )<|
+      Json.Decode.map2 Tuple.pair
+        (Json.Decode.field "clientX" Json.Decode.float)
+        (Json.Decode.field "clientY" Json.Decode.float)
 
 group things =
   S.g [] things
 
 text1 x y str =
   S.text_
-    [ A.x <| String.fromFloat x
-    , A.y <| String.fromFloat y
-    , A.stroke "none" 
-    , A.fill "black"
+    [ A.x <| T.px x
+    , A.y <| T.px y
+    , UntypedA.stroke "none" 
+    , UntypedA.fill "black"
     ]
-    [ S.text str
+    [ Svg.text str
     ]
 
 text2 x y str =
   S.text_
-    [ A.x <| String.fromFloat x
-    , A.y <| String.fromFloat y
-    , A.stroke "none" 
-    , A.fill "white"
+    [ A.x <| T.px x
+    , A.y <| T.px y
+    , UntypedA.stroke "none" 
+    , UntypedA.fill "white"
     ]
-    [ S.text str
+    [ Svg.text str
     ]
 
 rect1 x y w h =
   S.rect
-    [ A.x <| String.fromFloat x
-    , A.y <| String.fromFloat y
-    , A.width <| String.fromFloat w
-    , A.height <| String.fromFloat h
-    , A.rx <| String.fromFloat 15
-    , A.stroke "white" 
-    , A.fill "white"
-    , A.strokeWidth "3" 
+    [ A.x <| T.px x
+    , A.y <| T.px y
+    , A.width <| T.px w
+    , A.height <| T.px h
+    , A.rx <| T.px 15
+    , UntypedA.stroke "white" 
+    , UntypedA.fill "white"
+    , UntypedA.strokeWidth "3" 
     ]
     []
 
 rect2 x y w h =
   S.rect
-    [ A.x <| String.fromFloat x
-    , A.y <| String.fromFloat y
-    , A.width <| String.fromFloat w
-    , A.height <| String.fromFloat h
-    , A.rx <| String.fromFloat 15
-    , A.stroke "red" 
-    , A.fill "white"
-    , A.strokeWidth "3" 
+    [ A.x <| T.px x
+    , A.y <| T.px y
+    , A.width <| T.px w
+    , A.height <| T.px h
+    , A.rx <| T.px 15
+    , UntypedA.stroke "red" 
+    , UntypedA.fill "white"
+    , UntypedA.strokeWidth "3" 
     ]
     []
 
-rectClick1 x y w h decoder =
+rectClick1 x y w h msg =
    S.g
-     [ E.on "mousedown" decoder
+     [ E.onMouseDown msg
      ]
      [ rect1 x y w h ]
 
-rectClick2 x y w h decoder =
+rectClick2 x y w h msg =
    S.g
-     [ E.on "mousedown" decoder
+     [ E.onMouseDown msg
      ]
      [ rect2 x y w h ]
 
-arrow1 (x1, y1) (x2, y2) =
-  S.line
-    [ A.x1 <| String.fromFloat x1
-    , A.y1 <| String.fromFloat y1
-    , A.x2 <| String.fromFloat x2
-    , A.y2 <| String.fromFloat y2
-    , A.strokeDasharray "20,10,5,5,5,10"
-    , A.stroke "white" 
-    , A.strokeWidth "2" 
-    ]
-    []
+arrow1 =
+  arrow [ UntypedA.stroke "white" 
+        , UntypedA.strokeWidth "2" 
+        , UntypedA.markerEnd "url(#arrowHeadFill)"
+        ]
 
-on2 str decoder =
-  E.stopPropagationOn str (Json.Decode.map (\x -> (x, True)) decoder)
+arrow2 =
+  arrow [ UntypedA.strokeDasharray "5,10"
+        , UntypedA.stroke "#ff4444" 
+        , UntypedA.strokeWidth "2" 
+        , UntypedA.markerEnd "url(#arrowHeadLine)"
+        ]
+
+arrow attrs (x1, y1) (x2, y2) =
+  let
+    xm = (x1 + x2) / 2
+    ym = (y1 + y2) / 2
+  in S.g
+    []
+    [ S.line
+        ( [ A.x1 <| T.px xm
+          , A.y1 <| T.px ym
+          , A.x2 <| T.px x2
+          , A.y2 <| T.px y2
+          ] ++ attrs
+        )
+        [ ]
+    , S.line
+        ( [ A.x1 <| T.px x1
+          , A.y1 <| T.px y1
+          , A.x2 <| T.px xm
+          , A.y2 <| T.px ym
+          ] ++ attrs
+        )
+        [ ]
+    ]

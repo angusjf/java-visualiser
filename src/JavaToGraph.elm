@@ -22,7 +22,7 @@ fromSources srcs =
     subgraphs =
       srcs
       |> List.filterMap (removeCommentsAndTabs >> toAst)
-      |> Debug.log "asts: "
+      --|> Debug.log "asts: "
       |> List.concatMap compUnitToSubgraph
   in
     { entities = List.map .entity subgraphs

@@ -1,13 +1,15 @@
-module Visualiser exposing (Model, Msg, init, view, update, withGraph)
+port module Visualiser exposing (Model, Msg, init, view, update, withGraph)
 
 import Html exposing (Html)
-import Json.Decode as Decode
+import Html.Attributes
 import Random
 import Force
+import CustomSvg as G exposing (Svg)
+import Html.Events
 import Graph exposing ( Graph, Entity, NodeId, Vertex
                       , Kind(..), Access(..), Attribute
                       )
-import CustomSvg as G exposing (Svg)
+import Config exposing (Config)
 
 type alias Node =
   { data : Entity
@@ -30,10 +32,13 @@ type Msg
   = Start Node
   | Stop
   | Move (Float, Float)
+  | ExportSvg
 
-init : Graph -> Model
-init graph =
-  { nodes = arrange (withRandomPositions graph.entities) graph.extensions
+port exportSvg : () -> Cmd msg
+
+init : Config -> Graph -> Model
+init conf graph =
+  { nodes = arrange conf (withRandomPositions graph.entities) graph.extensions
   , extensions = graph.extensions
   , implements = graph.implements
   , references = graph.references 
@@ -43,18 +48,19 @@ init graph =
 diff : List Node -> List Entity -> (List Node, List Entity)
 diff old new =
   let
-    newIds = List.map .id new
-    oldIds = List.map .id old
+    newIds  = List.map .id new
+    oldIds  = List.map .id old
     same    = List.filter (\node   ->      List.member node.id newIds   ) old
     changed = List.filter (\entity -> not (List.member entity.id oldIds)) new
   in
     (same, changed)
 
-withGraph : Graph -> Model -> Model
-withGraph graph model =
+withGraph : Config -> Graph -> Model -> Model
+withGraph conf graph model =
   let
-    (keep, new) = diff model.nodes graph.entities
-    nodes = keep ++ arrange (withRandomPositions new) graph.extensions
+    updatedNodes = List.map (updateNode graph.entities) model.nodes
+    (keep, new) = diff updatedNodes graph.entities
+    nodes = keep ++ arrange conf (withRandomPositions new) graph.extensions
   in 
     { nodes = nodes
     , extensions = graph.extensions
@@ -62,6 +68,12 @@ withGraph graph model =
     , references = graph.references 
     , draggedNode = Nothing
     }
+
+updateNode : List Entity -> Node -> Node
+updateNode entities node = 
+  case List.filter (\{id} -> id == node.id) entities of
+    match :: _ -> { node | data = match }
+    []         -> node
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
@@ -83,26 +95,38 @@ update msg model =
             ({ model | nodes = upsert new model.nodes }, Cmd.none)
         Nothing ->
           (model, Cmd.none)
+    ExportSvg ->
+      (model, exportSvg ())
 
-moveEventDecoder : Decode.Decoder Msg
-moveEventDecoder =
-  Decode.map Move <|
-    Decode.map2 Tuple.pair
-      (Decode.field "clientX" Decode.float)
-      (Decode.field "clientY" Decode.float)
-
-view : Model -> Html Msg
-view model =
-  G.render
-    { move = moveEventDecoder
-    , up = Decode.succeed Stop
-    }
-    [ G.text2 10 10 (getDesc model.nodes)
-    , G.group
-        [ G.group <| List.map (viewVertex model.nodes) model.extensions
-        , G.group <| List.map (viewVertex model.nodes) model.references
-        , G.group <| List.map viewNode model.nodes
+view : Config -> Model -> Html Msg
+view conf model =
+  Html.div
+    []
+    [ viewOverlay model
+    , G.render
+        { move = Move
+        , up = Stop
+        , width = conf.width
+        , height = conf.height
+        }
+        [ G.group
+            [ G.group <| List.map (viewExtension model.nodes) model.extensions
+            , G.group <| List.map (viewReference model.nodes) model.references
+            , G.group <| List.map viewNode model.nodes
+            ]
         ]
+    ]
+
+viewOverlay : Model -> Html Msg
+viewOverlay model =
+  Html.div
+    [ Html.Attributes.id "overlay" ]
+    [ Html.button
+        [ Html.Events.onClick ExportSvg
+        ]
+        [ Html.text "Save SVG"
+        ]
+    , Html.text (getDesc model.nodes)
     ]
 
 getDesc : List Node -> String
@@ -117,7 +141,7 @@ viewNode node =
              Public    -> G.rectClick2
              Private   -> G.rectClick1
              Protected -> G.rectClick1
-    box = rect x y 120 (toFloat (50 + l * 20)) (Decode.succeed (Start node))
+    box = rect x y 120 (toFloat (50 + l * 20)) (Start node)
     l = List.length node.data.publicAttributes
     offsets = List.map (\a -> toFloat (a + 1) * 20) <| List.range 0 l
     attrs = List.map2 (viewAttr x y) node.data.publicAttributes offsets
@@ -129,22 +153,37 @@ viewAttr x y attr offset =
     G.text1 (x + 10) (y + 30 + offset) <|
         attr.prettyTypeName ++ " " ++ attr.identifier
 
-viewVertex : List Node -> Vertex -> Svg Msg
-viewVertex nodes vertex =
+viewExtension : List Node -> Vertex -> Svg Msg
+viewExtension nodes vertex =
+  Maybe.withDefault (G.group []) <|
+    Maybe.map2
+      (viewArrow G.arrow1)
+      (getNode vertex.from nodes)
+      (getNode vertex.to nodes)
+
+viewReference : List Node -> Vertex -> Svg Msg
+viewReference nodes vertex =
+  Maybe.withDefault (G.group []) <|
+    Maybe.map2
+      (viewArrow G.arrow2)
+      (getNode vertex.from nodes)
+      (getNode vertex.to nodes)
+
+viewArrow : ((Float, Float) -> (Float, Float) -> Svg Msg)
+           -> Node -> Node -> Svg Msg
+viewArrow arrow from to =
   let
     moveTop (a, b) = (a + 70, b + 25)
     moveBottom (a, b) = (a + 70, b + 25)
-    childPos = Maybe.map moveTop <| getPos nodes vertex.from
-    parentPos = Maybe.map moveBottom <| getPos nodes vertex.to
+    startPos = (\{x, y} -> moveTop (x, y)) from
+    endPos = (\{x, y} -> moveBottom (x, y)) to
   in
-    case (childPos, parentPos) of
-      (Just c, Just p) -> G.arrow1 c p
-      _ -> G.group []
+    arrow startPos endPos
 
-getPos : List Node -> NodeId -> Maybe (Float, Float)
-getPos nodes id =
+getNode : NodeId -> List Node -> Maybe Node
+getNode id nodes =
   case List.filter (\n -> n.data.id == id) nodes of
-    node :: _ -> Just (node.x, node.y)
+    node :: _ -> Just node
     [] -> Nothing
 
 upsert : Node -> List Node -> List Node
@@ -157,8 +196,8 @@ upsert new nodes =
     [] ->
       [new]
 
-arrange : List Node -> List Vertex -> List Node
-arrange nodes extensions =
+arrange : Config -> List Node -> List Vertex -> List Node
+arrange config nodes extensions =
   let
     f {from, to} =
       { source = from
@@ -169,9 +208,9 @@ arrange nodes extensions =
     edges = List.map f extensions
     nodeIds = List.map .id nodes
     forces =
-      [ Force.center 150 200
+      [ Force.center (config.width / 2) (config.height / 2)
       , Force.customLinks 1 edges
-      , Force.manyBodyStrength (-10) nodeIds
+      , Force.manyBodyStrength (-60) nodeIds
       ]
   in
     Force.computeSimulation (Force.simulation forces) nodes
@@ -186,15 +225,28 @@ wrap class x y =
   , id = class.id
   }
 
+unique : List comparable -> Bool
+unique l =
+  case l of
+    x::xs -> not (List.member x xs) && unique xs
+    [] -> True
+
 getRandomPositions : Int -> (List Float, List Float)
-getRandomPositions n =
+getRandomPositions num_ =
   let
-    gen = Random.list n (Random.float -1 1)
-    seed = Random.initialSeed 1975
-    (xs, seed2) = Random.step gen seed
-    (ys, _) = Random.step gen seed2
-  in
-    (xs, ys)
+    helper : Random.Seed -> Int -> (List Float, List Float)
+    helper seed n =
+      let
+        ns = List.map toFloat (List.range 0 n)
+        gen = Random.list n (Random.uniform 0 ns)
+        (xs, seed2) = Random.step gen seed
+        (ys, seed3) = Random.step gen seed2
+      in
+       if unique (List.map2 Tuple.pair xs ys)
+         then (xs, ys)
+         else helper seed3 n
+   in
+     helper (Random.initialSeed 1975) num_
 
 withRandomPositions : List Entity -> List Node
 withRandomPositions entities =
