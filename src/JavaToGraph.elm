@@ -136,12 +136,20 @@ memberToAttribute memberDecl =
                              JP.ArrayType _ -> True
                              _              -> False
               }
-    JP.MDVoidMethod _
-      -> Nothing
-    JP.MDConstructor constructorDeclaratorRest
-      -> Nothing
+    JP.MDVoidMethod { identifier, rest }
+      -> Just { identifier = identifier
+              , prettyTypeName = "void"
+              , typeIdentifiers = []
+              , multiple = False
+              }
+    JP.MDConstructor { identifier, rest }
+      -> Just { identifier = ""
+              , prettyTypeName = identifier
+              , typeIdentifiers = []
+              , multiple = False
+              }
     JP.MDGenericMethodOrConstructor genericMethodOrConstructorDecl
-      -> Nothing
+      -> Nothing -- TODO
     JP.MDClass classDeclaration
       -> Nothing
     JP.MDInterface interfaceDeclaration

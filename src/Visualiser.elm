@@ -151,7 +151,7 @@ viewNode : Node -> Svg Msg
 viewNode node =
   let
     (x, y) = (node.x, node.y)
-    text = G.text1 (x + 10) (y + 30) ("*" ++ node.data.name ++ "*")
+    text = G.text2 (x + 10) (y + 30) node.data.name
     rect = case node.data.access of
              Public    -> G.rectClick2
              Private   -> G.rectClick1

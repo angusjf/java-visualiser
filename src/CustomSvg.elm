@@ -34,7 +34,7 @@ render opts things =
         ]
         [ S.path
           [ A.d "M 0 0 L 10 5 L 0 10"
-          , UntypedA.fill "#fff"
+          , UntypedA.fill (vsColor White)
           ] []
         ]
       , S.marker
@@ -49,12 +49,19 @@ render opts things =
         ]
         [ S.path
           [ A.d "M 0 0 L 6 3 L 0 6"
-          , UntypedA.stroke "#fff"
+          , UntypedA.stroke (vsColor White)
           , UntypedA.fill "none"
           ] []
         ]
       ]
-    , S.g [ ] things
+    , S.g [] <|
+        ( S.rect
+          [ UntypedA.width "100%"
+          , UntypedA.height "100%"
+          , UntypedA.fill (vsColor Background)
+          ]
+          []
+        ) :: things
     ]
 
 --moveEventDecoder : ((Float, Float) -> msg) -> VirtualDom.Handler msg
@@ -64,7 +71,7 @@ moveEventDecoder msg =
                            , preventDefault = True
                            , stopPropagation = True
                            }
-                    )<|
+                    ) <|
       Json.Decode.map2 Tuple.pair
         (Json.Decode.field "clientX" Json.Decode.float)
         (Json.Decode.field "clientY" Json.Decode.float)
@@ -72,12 +79,56 @@ moveEventDecoder msg =
 group things =
   S.g [] things
 
+type VsColor
+  = Background
+  | Foreground
+  | Black
+  | Blue
+  | BrightBlack
+  | BrightBlue
+  | BrightCyan
+  | BrightGreen
+  | BrightMagenta
+  | BrightRed
+  | BrightWhite
+  | BrightYellow
+  | Cyan
+  | Green
+  | Magenta
+  | Red
+  | White
+  | Yellow
+
+vsColor : VsColor -> String
+vsColor color =
+  case color of 
+    Background    ->
+        "var(--vscode-terminal-background, var(--vscode-editor-background, black))"
+    Foreground    ->
+        "var(--vscode-terminal-foreground, var(--vscode-editor-foreground, white))"
+    Black         -> "var(--vscode-terminal-ansiBlack, black)"
+    Blue          -> "var(--vscode-terminal-ansiBlue, blue)"
+    BrightBlack   -> "var(--vscode-terminal-ansiBrightBlack, black)"
+    BrightBlue    -> "var(--vscode-terminal-ansiBrightBlue, blue)"
+    BrightCyan    -> "var(--vscode-terminal-ansiBrightCyan, cyan)"
+    BrightGreen   -> "var(--vscode-terminal-ansiBrightGreen, green)"
+    BrightMagenta -> "var(--vscode-terminal-ansiBrightMagenta, magenta)"
+    BrightRed     -> "var(--vscode-terminal-ansiBrightRed, red)"
+    BrightWhite   -> "var(--vscode-terminal-ansiBrightWhite, white)"
+    BrightYellow  -> "var(--vscode-terminal-ansiBrightYellow, yellow)"
+    Cyan          -> "var(--vscode-terminal-ansiCyan, cyan)"
+    Green         -> "var(--vscode-terminal-ansiGreen, green)"
+    Magenta       -> "var(--vscode-terminal-ansiMagenta, magenta)"
+    Red           -> "var(--vscode-terminal-ansiRed, red)"
+    White         -> "var(--vscode-terminal-ansiWhite, white)"
+    Yellow        -> "var(--vscode-terminal-ansiYellow, yellow)"
+
 text1 x y str =
   S.text_
     [ A.x <| T.px x
     , A.y <| T.px y
     , UntypedA.stroke "none" 
-    , UntypedA.fill "black"
+    , UntypedA.fill (vsColor Foreground)
     ]
     [ Svg.text str
     ]
@@ -87,7 +138,8 @@ text2 x y str =
     [ A.x <| T.px x
     , A.y <| T.px y
     , UntypedA.stroke "none" 
-    , UntypedA.fill "white"
+    , UntypedA.fill (vsColor Foreground)
+    , A.fontWeight T.FontWeightBold
     ]
     [ Svg.text str
     ]
@@ -99,8 +151,8 @@ rect1 x y w h =
     , A.width <| T.px w
     , A.height <| T.px h
     , A.rx <| T.px 15
-    , UntypedA.stroke "white" 
-    , UntypedA.fill "white"
+    , UntypedA.stroke (vsColor Foreground)
+    , UntypedA.fill (vsColor Background)
     , UntypedA.strokeWidth "3" 
     ]
     []
@@ -112,8 +164,8 @@ rect2 x y w h =
     , A.width <| T.px w
     , A.height <| T.px h
     , A.rx <| T.px 15
-    , UntypedA.stroke "red" 
-    , UntypedA.fill "white"
+    , UntypedA.stroke (vsColor Red)
+    , UntypedA.fill (vsColor Background)
     , UntypedA.strokeWidth "3" 
     ]
     []
@@ -131,29 +183,27 @@ rectClick2 x y w h msg =
      [ rect2 x y w h ]
 
 arrow1 =
-  arrow [ UntypedA.stroke "white" 
+  arrow "url(#arrowHeadFill)" [ UntypedA.stroke (vsColor White) 
         , UntypedA.strokeWidth "2" 
-        , UntypedA.markerEnd "url(#arrowHeadFill)"
         ]
 
 arrow2 =
-  arrow [ UntypedA.strokeDasharray "5,10"
-        , UntypedA.stroke "#ff4444" 
+  arrow "url(#arrowHeadLine)" [ UntypedA.strokeDasharray "5,10"
+        , UntypedA.stroke (vsColor Red)
         , UntypedA.strokeWidth "2" 
-        , UntypedA.markerEnd "url(#arrowHeadLine)"
         ]
 
-arrow attrs (x1, y1) (x2, y2) =
+arrow head attrs (x1, y1) (x2, y2) =
   let
     xm = (x1 + x2) / 2
     ym = (y1 + y2) / 2
   in S.g
     []
     [ S.line
-        ( [ A.x1 <| T.px xm
-          , A.y1 <| T.px ym
-          , A.x2 <| T.px x2
-          , A.y2 <| T.px y2
+        ( [ A.x2 <| T.px xm
+          , A.y2 <| T.px ym
+          , A.x1 <| T.px x2
+          , A.y1 <| T.px y2
           ] ++ attrs
         )
         [ ]
@@ -162,6 +212,7 @@ arrow attrs (x1, y1) (x2, y2) =
           , A.y1 <| T.px y1
           , A.x2 <| T.px xm
           , A.y2 <| T.px ym
+          , UntypedA.markerEnd head
           ] ++ attrs
         )
         [ ]
