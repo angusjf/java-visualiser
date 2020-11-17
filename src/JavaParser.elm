@@ -725,7 +725,6 @@ reserved =
 {-
 CompilationUnit: 
     package imports types
-
 -}
 compilationUnit : Parser CompilationUnit
 compilationUnit =
@@ -753,7 +752,7 @@ package =
 
 qualifiedIdentifier : Parser String
 qualifiedIdentifier =
-  P.succeed (\first rest -> first ++ String.join "." rest)
+  P.succeed (\first rest -> first ++ "." ++ String.join "." rest)
   |= identifier
   |= optionalList
      ( P.succeed identity

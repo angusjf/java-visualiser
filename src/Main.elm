@@ -3,35 +3,31 @@ port module Main exposing (main)
 import Browser
 import Browser.Events
 import Html
-
 import File exposing (File, Uri)
-import JavaToGraph
 import Visualiser
 import Config exposing (Config)
+import Graph
 
-type alias Model =
+import Package.JavaToGraph
+import Package.Visualiser
+
+type alias Model n v =
   { files : List File
-  , visualiser : Visualiser.Model
+  , visualiser : Visualiser.Model n v
   , config : Config
+  , nodeViewer : Visualiser.NodeViewer n
+  , vertexViewer : Visualiser.VertexViewer n v
+  , filesToGraph : List File -> Graph.Graph n v
   }
 
-type Msg
+type Msg n
   = NewFile File
   | UpdateFile File
   | DeleteFile Uri
   | RenameFile (Uri, Uri)
   | ConfigChanged Config
-  | VisualiserMsg Visualiser.Msg
+  | VisualiserMsg (Visualiser.Msg n)
   | Tick Float
-
-init : (Config, List File) -> (Model, Cmd Msg)
-init (config, files) =
-  ({ files = files
-   , visualiser = Visualiser.init config (filesToGraph files)
-   , config = config
-   }
-  , Cmd.none
-  )
 
 port newFile : (File -> msg) -> Sub msg
 port updateFile : (File -> msg) -> Sub msg
@@ -39,7 +35,31 @@ port deleteFile : (Uri -> msg) -> Sub msg
 port renameFile : ((Uri, Uri) -> msg) -> Sub msg
 port configChanged : (Config -> msg) -> Sub msg
 
-update : Msg -> Model -> (Model, Cmd Msg)
+current =
+  { viewNode = Package.Visualiser.viewNode
+  , viewVertex = Package.Visualiser.viewVertex
+  , filesToGraph = \files -> Package.JavaToGraph.fromSources
+                                    (List.map .content files)
+  }
+
+--init : (Config, List File) -> (Model n v, Cmd (Msg n))
+init (config, files) =
+  ({ files = files
+   , config = config
+   , visualiser =
+       Visualiser.init
+       config
+       (current.filesToGraph files)
+       current.viewNode
+       current.viewVertex
+   , nodeViewer = current.viewNode
+   , vertexViewer = current.viewVertex
+   , filesToGraph = current.filesToGraph
+   }
+  , Cmd.none
+  )
+
+update : Msg n -> Model n v -> (Model n v, Cmd (Msg n))
 update msg model =
   case msg of 
     NewFile file ->
@@ -74,13 +94,13 @@ update msg model =
       , Cmd.none
       )
 
-setFiles : List File -> Model -> Model
+setFiles : List File -> Model n v -> Model n v
 setFiles files model =
   { model
     | files = files
     , visualiser = Visualiser.withGraph
                      model.config
-                     (filesToGraph files)
+                     (model.filesToGraph files)
                      model.visualiser
   }
 
@@ -111,10 +131,7 @@ rename from to files =
         else x :: rename from to xs
     [] -> []
 
-filesToGraph files = 
-  List.map (\f -> f.content) files |> JavaToGraph.fromSources
-
-view : Model -> Browser.Document Msg
+view : Model n v -> Browser.Document (Msg n)
 view model =
   { title = "I don't think you can see this"
   , body = [ Visualiser.view model.config model.visualiser
@@ -122,7 +139,7 @@ view model =
            ]
   }
 
-subscriptions : Model -> Sub Msg
+subscriptions : Model n v -> Sub (Msg n)
 subscriptions model =
   Sub.batch
     [ newFile NewFile

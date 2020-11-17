@@ -1,55 +1,25 @@
 module Graph exposing
  ( NodeId
  , Graph
- , Entity
  , Vertex
+ , Node
  , mkNodeId
- , Kind(..)
- , Access (..)
- , Method
- , Attribute
  )
 
-type alias NodeId = String
-
-type alias Graph =
-  { entities : List Entity
-  , extensions : List Vertex
-  , implements : List Vertex
-  , references : List Vertex
+type alias Graph n v =
+  { nodes : List (Node n)
+  , vertices : List (Vertex v)
   }
 
-type Kind = Class | Interface | Enum
-
-type Access = Public | Protected | Private
-
-type alias Entity =
-  { id : NodeId
-  , name : String
-  , publicMethods : List Method
-  , publicAttributes : List Attribute
-  , kind : Kind
-  , access : Access
-  , abstract : Bool
-  , final : Bool
-  , static : Bool
-  }
-
-type alias Vertex =
+type alias Vertex a =
   { from : NodeId
   , to : NodeId
+  , data : a
   }
 
-type alias Method =
-  { identifier : String
-  }
+type alias Node n = { n | id : NodeId }
 
-type alias Attribute =
-  { typeIdentifiers : List String
-  , prettyTypeName : String
-  , identifier : String
-  , multiple : Bool
-  }
+type alias NodeId = String
 
 mkNodeId : String -> String -> NodeId
 mkNodeId pkg class = pkg ++ "." ++ class

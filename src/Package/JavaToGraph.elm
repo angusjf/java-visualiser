@@ -1,21 +1,19 @@
-module JavaToGraph exposing (fromSources)
+module Package.JavaToGraph exposing (fromSources)
 
-import Graph exposing ( Graph, NodeId, mkNodeId, Kind(..)
-                      , Vertex, Attribute, Method, Entity
-                      , Access(..)
-                      )
+import Graph exposing (NodeId, mkNodeId)
+import Package.Graph exposing (..)
 import JavaParser as JP
 import Parser
 import Regex
 
 type alias Subgraph =
-  { entity : Graph.Entity
+  { entity : Entity
   , parent : Maybe NodeId
   , interfaces : List NodeId
   , references : List NodeId
   }
 
-fromSources : List String -> Graph
+fromSources : List String -> PackageGraph
 fromSources srcs =
   let
     subgraphs : List Subgraph
@@ -25,10 +23,13 @@ fromSources srcs =
       --|> Debug.log "asts: "
       |> List.concatMap compUnitToSubgraph
   in
-    { entities = List.map .entity subgraphs
-    , extensions = List.filterMap subgraphToExtension  subgraphs
-    , implements = List.concatMap subgraphToImplements subgraphs
-    , references = List.concatMap subgraphToReferences subgraphs
+    { nodes = List.map .entity subgraphs
+    , vertices = 
+        (List.filterMap subgraphToExtension subgraphs)
+        ++
+        (List.concatMap subgraphToImplements subgraphs)
+        ++
+        (List.concatMap subgraphToReferences subgraphs)
     }
 
 removeCommentsAndTabs : String -> String
@@ -223,12 +224,15 @@ onlyMembers dec =
 
 subgraphToExtension : Subgraph -> Maybe Vertex
 subgraphToExtension { entity, parent } =
-  Maybe.map (\p -> { from = entity.id, to = p }) parent
+  parent
+  |> Maybe.map (\p -> { from = entity.id, to = p, data = Extends })
 
 subgraphToImplements : Subgraph -> List Vertex
 subgraphToImplements { entity, interfaces } =
-  List.map (\i -> { from = entity.id, to = i }) interfaces
+  interfaces
+  |> List.map (\i -> { from = entity.id, to = i, data = Implements })
 
 subgraphToReferences : Subgraph -> List Vertex
 subgraphToReferences { entity, references } =
-  List.map (\ref -> { from = entity.id, to = ref }) references
+  references
+  |> List.map (\ref -> { from = entity.id, to = ref, data = References })
