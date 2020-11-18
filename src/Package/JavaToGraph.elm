@@ -5,6 +5,7 @@ import Package.Graph exposing (..)
 import JavaParser as JP
 import Parser
 import Regex
+import List.Nonempty as Nonempty exposing (Nonempty(..))
 
 type alias Subgraph =
   { entity : Entity
@@ -25,10 +26,8 @@ fromSources srcs =
   in
     { nodes = List.map .entity subgraphs
     , vertices = 
-        (List.filterMap subgraphToExtension subgraphs)
-        ++
-        (List.concatMap subgraphToImplements subgraphs)
-        ++
+        (List.filterMap subgraphToExtension subgraphs) ++
+        (List.concatMap subgraphToImplements subgraphs) ++
         (List.concatMap subgraphToReferences subgraphs)
     }
 
@@ -168,11 +167,16 @@ typeToIdentifiers type_ =
     JP.BasicType JP.Float   -> [ "float" ]
     JP.BasicType JP.Double  -> [ "double" ]
     JP.BasicType JP.Boolean -> [ "boolean" ]
-    JP.ArrayType t -> typeToIdentifiers t
-    JP.RefType { name, typeArguments } ->
-        if List.isEmpty typeArguments
-          then [ name ]
-          else name :: List.concatMap (unnamed >> typeToIdentifiers) typeArguments
+    JP.ArrayType t          -> typeToIdentifiers t
+    JP.RefType refType      -> refTypeToIdentifiers refType
+
+refTypeToIdentifiers : JP.ReferenceType -> List String
+refTypeToIdentifiers refType =
+ refType
+ |> Nonempty.map (\(name, typeArguments) ->
+     name :: List.concatMap (unnamed >> typeToIdentifiers) typeArguments)
+ |> Nonempty.toList
+ |> List.concatMap identity
 
 -- no brackets: typeToString (Array Int) = "int[]"
 typeToPrettyString : JP.Type -> String
@@ -186,16 +190,28 @@ typeToPrettyString type_ =
     JP.BasicType JP.Float   -> "float"
     JP.BasicType JP.Double  -> "double"
     JP.BasicType JP.Boolean -> "boolean"
-    JP.ArrayType t ->
-        typeToPrettyString t ++ "[]"
-    JP.RefType { name, typeArguments } ->
-        name ++ if List.isEmpty typeArguments
-                  then ""
-                  else
-                    let
-                      types = List.map (unnamed >> typeToPrettyString) typeArguments
-                    in
-                      "<" ++ String.join ", " types ++ ">"
+    JP.ArrayType t          -> typeToPrettyString t ++ "[]"
+    JP.RefType refType      -> refTypeToPrettyString refType
+
+nempJoin : String -> Nonempty String -> String
+nempJoin join (Nonempty str rest) =
+    case rest of 
+        [] -> str
+        _  -> str ++ join ++ String.join join rest
+
+typeArgsToPrettyString : List JP.TypeArgument -> String
+typeArgsToPrettyString args =
+ args
+ |> List.map (unnamed >> typeToPrettyString)
+ |> String.join ", "
+ |> (\str -> if String.isEmpty str then "" else "<" ++ str ++ ">")
+
+refTypeToPrettyString : JP.ReferenceType -> String
+refTypeToPrettyString refType =
+ refType
+ |> Nonempty.map (\(name, typeArguments) ->
+     name ++ typeArgsToPrettyString typeArguments)
+ |> nempJoin "."
 
 unnamed : JP.TypeArgument -> JP.Type
 unnamed typeArg =
@@ -213,7 +229,8 @@ onlyRefTypes type_ =
   case type_ of
     JP.BasicType basic -> Nothing
     JP.ArrayType t -> Nothing
-    JP.RefType { name, typeArguments } -> Just name
+    JP.RefType (Nonempty (id, _) rest) ->
+        Just <| id ++ String.join "." (List.map Tuple.first rest)
 
 onlyMembers : JP.ClassBodyDeclaration -> Maybe (List JP.Modifier, JP.MemberDecl)
 onlyMembers dec =

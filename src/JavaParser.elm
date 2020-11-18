@@ -2,6 +2,7 @@ module JavaParser exposing (..)
 
 import Set exposing (Set)
 import Parser as P exposing (Parser, (|=), (|.), Step)
+import List.Nonempty as Nonempty exposing (Nonempty(..))
 
 -- types i {{{
 
@@ -77,11 +78,7 @@ type BasicType
   | Double
   | Boolean
 
-type alias ReferenceType =
-  { name : String
-  , typeArguments : List TypeArgument
-  , more : List (String, List TypeArgument)
-  }
+type alias ReferenceType = Nonempty (String, List TypeArgument)
 
 type TypeArgument
   = ReferenceTypeArgument ReferenceType
@@ -91,14 +88,6 @@ type TypeArgument
 -- }}}
 
 -- types iii {{{
-
-type alias NonWildcardTypeArguments = List ReferenceType
-
-type OrDiamond a = Diamond | Types a
-
-type alias TypeArgumentsOrDiamond = OrDiamond (List TypeArgument)
-
-type alias NonWildcardTypeArgumentsOrDiamond = OrDiamond NonWildcardTypeArguments
 
 type alias TypeParameter =
   { identifier : String
@@ -439,9 +428,9 @@ type SwitchLabel
 type ForControl
   = FCForVarControl ForVarControl
   | FCForInit
-    { init : ForInit 
+    { init : Nonempty Expression
     , condition : Maybe Expression
-    , update : Maybe ForUpdate
+    , update : List Expression
     }
 
 type alias ForVarControl =
@@ -455,7 +444,7 @@ type ForVarControlRest
   = ForClassic
     { rest : ForVariableDeclaratorsRest
     , cond : Maybe Expression
-    , loop : ForUpdate
+    , loop : List Expression
     }
   | ForEach Expression
 
@@ -463,10 +452,6 @@ type alias ForVariableDeclaratorsRest =
   { init : Maybe VariableInitializer
   , vars : List VariableDeclarator
   }
-
-type alias ForInit = ForUpdate
-
-type alias ForUpdate = List Expression
 
 -- }}}
 
@@ -573,8 +558,13 @@ type Primary
   | PrimaryParExpression ParExpression
   | PrimaryThis (List Expression)
   | PrimarySuper SuperSuffix
---| new Creator
---| NonWildcardTypeArguments (ExplicitGenericInvocationSuffix | this (List Expression))
+  | PrimaryNew Creator
+  {-
+  | PrimaryTODOWHAT
+    { NonWildcardTypeArguments
+    , (ExplicitGenericInvocationSuffix | this (List Expression))
+    }
+  -}
   | PrimaryIdentifier
     { identifier : String
     , suffix : Maybe IdentifierSuffix
@@ -607,25 +597,29 @@ type ExplicitGenericInvocationSuffix
 
 -- types xiv {{{
 
-{-
-type Creator:  
-    NonWildcardTypeArguments CreatedName ClassCreatorRest
-    CreatedName (ClassCreatorRest | ArrayCreatorRest)
-
-CreatedName:   
-    Identifier [TypeArgumentsOrDiamond] { . Identifier [TypeArgumentsOrDiamond] }
-
--}
+type Creator
+  = CreatorTypeArgs
+    { typeArgs : Nonempty TypeArgument
+    , name : ReferenceType
+    , rest : ClassCreatorRest
+    }
+  | CreatorNormalClass
+    { name : ReferenceType
+    , rest : ClassCreatorRest
+    }
+  | CreatorNormalArray
+    { name : ReferenceType
+    , rest : ArrayCreatorRest
+    }
 
 type alias ClassCreatorRest =
   { arguments : List Expression
   , body : Maybe ClassBody
   }
 
+type alias ArrayCreatorRest = ()
 {-
-ArrayCreatorRest:
     [ (] {[]} ArrayInitializer  |  Expression ] {[ Expression ]} {[]})
-
 -}
 
 type IdentifierSuffix
@@ -638,18 +632,18 @@ type IdentifierSuffix
   | IdSuffixDotThis
   | IdSuffixDotSuper (List Expression)
   | IdSuffixDotNew
-    { typeArgs : Maybe NonWildcardTypeArguments
+    { typeArgs : List TypeArgument
     , innerCreator : InnerCreator
     }
 
 type alias ExplicitGenericInvocation =
-  { typeArgs : NonWildcardTypeArguments
+  { typeArgs : List TypeArgument
   , suffix : ExplicitGenericInvocationSuffix
   }
 
 type alias InnerCreator =
   { identifier : String
-  , typeArgs : Maybe NonWildcardTypeArgumentsOrDiamond
+  , typeArgs : List ReferenceType
   , rest : ClassCreatorRest
   }
 
@@ -658,10 +652,13 @@ type Selector
     { identifier : String
     , arguments : List Expression
     }
---| SelectorEGI ExplicitGenericInvocation
+  | SelectorEGI ExplicitGenericInvocation
   | SelectorThis
   | SelectorSuper SuperSuffix
---| SelectorId new [NonWildcardTypeArguments] InnerCreator
+  | SelectorNew
+    { typeArgs : List TypeArgument
+    , innerCreator : InnerCreator
+    }
   | SelectorArray Expression
 
 -- }}}
@@ -690,14 +687,16 @@ type alias AnnotationTypeElementDeclaration =
   , rest : AnnotationTypeElementRest
   }
 
-type AnnotationTypeElementRest = TODO0
-{-
-  = Type Identifier AnnotationMethodOrConstantRest ;
-  | ClassDeclaration
-  | InterfaceDeclaration
-  | EnumDeclaration  
-  | AnnotationTypeDeclaration
--}
+type AnnotationTypeElementRest
+  = AnnotationMethodOrConstant
+    { type_ : Type
+    , identifier : String
+    , more : AnnotationMethodOrConstantRest
+    }
+  | AnnotationClass ClassDeclaration
+  | AnnotationInterface InterfaceDeclaration
+  | AnnotationEnum EnumDeclaration  
+  | AnnotationAnnotation AnnotationTypeDeclaration
 
 type AnnotationMethodOrConstantRest
   = AnnotationRest AnnotationMethodRest
@@ -752,7 +751,7 @@ package =
 
 qualifiedIdentifier : Parser String
 qualifiedIdentifier =
-  P.succeed (\first rest -> first ++ "." ++ String.join "." rest)
+  P.succeed (\first rest -> String.join "." (first :: rest))
   |= identifier
   |= optionalList
      ( P.succeed identity
@@ -847,6 +846,7 @@ modifier =
     , P.succeed Transient    |. P.keyword "transient"
     , P.succeed Volatile     |. P.keyword "volatile"
     , P.succeed Strictfp     |. P.keyword "strictfp"
+    , P.map ModifierAnnotation annotation
     ]
 
 classDeclaration : Parser ClassDeclaration
@@ -977,12 +977,24 @@ basicType =
 
 referenceType : Parser ReferenceType
 referenceType =
-  P.succeed ReferenceType
-  |= P.map (String.join ".") (dotted identifier)
+  sepByNemp "." <|
+    P.succeed Tuple.pair
+    |= identifier
+    |. P.spaces
+    |= optionalList typeArguments
+
+sepByNemp : String -> Parser a -> Parser (Nonempty a)
+sepByNemp sep parser =
+  P.succeed Nonempty
+  |= parser
   |. P.spaces
-  |= optionalList typeArguments
-  |. P.spaces
-  |= P.succeed [] -- TODO 
+  |= list
+     ( P.succeed identity
+       |. P.symbol sep
+       |. P.spaces
+       |= parser
+       |. P.spaces
+     )
 
 {- TypeArguments: 
     < TypeArgument { , TypeArgument } > -}
@@ -1184,14 +1196,14 @@ FieldDeclaratorsRest:
     VariableDeclaratorRest { , VariableDeclarator } -}
 fieldDeclaratorsRest : Parser FieldDeclaratorsRest
 fieldDeclaratorsRest =
-  P.succeed FieldDeclaratorsRest --(\vRest more -> { varaibleRest = vRest , more = more })
+  P.succeed FieldDeclaratorsRest
   |= variableDeclaratorRest
   |. P.spaces
   |= optionalList
-     ( P.succeed identity
+     ( list <| P.succeed identity
        |. P.symbol ","
        |. P.spaces
-       |= list variableDeclarator
+       |= variableDeclarator 
        |. P.spaces
      )
 
@@ -1230,8 +1242,50 @@ variableModifier =
     , P.map MVAnnotation annotation
     ]
 
+{- @ QualifiedIdentifier [ ( [AnnotationElement] ) ] -}
 annotation : Parser Annotation
-annotation = P.oneOf []
+annotation =
+  P.succeed Annotation
+  |. P.symbol "@"
+  |= qualifiedIdentifier
+  |. P.spaces
+  |= P.map flatten
+     ( optional
+       ( P.succeed identity
+         |. P.symbol "("
+         |. P.spaces
+         |= optional annotationElement
+         |. P.spaces
+         |. P.symbol ")"
+       )
+     )
+
+flatten : Maybe (Maybe a) -> Maybe a
+flatten m = Maybe.withDefault Nothing m
+
+annotationElement : Parser AnnotationElement
+annotationElement =
+  P.oneOf
+    [ P.map AEPairs (commas elementValuePair)
+    , P.map AEValue elementValue
+    ]
+
+elementValuePair : Parser ElementValuePair
+elementValuePair = 
+  P.succeed ElementValuePair
+  |= identifier
+  |. P.spaces
+  |. P.symbol "="
+  |. P.spaces
+  |= elementValue
+
+elementValue : Parser ElementValue
+elementValue =
+  P.oneOf
+    [ P.map ElementValueAnnotation (P.lazy (\_ -> annotation))
+    , P.map ElementValueExpression (P.lazy (\_ -> expression1))
+    , P.map ElementValueArrayInitializer (P.lazy (\_ -> list elementValue))
+    ]
 
 formalParameterDeclsRest : Parser FormalParameterDeclsRest
 formalParameterDeclsRest =
@@ -1296,7 +1350,7 @@ variableInitializer : Parser VariableInitializer
 variableInitializer =
   P.oneOf
     [ P.map VIArray arrayInitializer
-    , P.map VIExpression expression
+    , P.map VIExpression (P.lazy (\_ -> expression))
     ]
 
 {-
@@ -1555,6 +1609,10 @@ primary =
       |. P.keyword "this"
       |. P.spaces
       |= optionalList (P.lazy (\_ -> arguments))
+    , P.succeed PrimaryNew
+      |. P.keyword "new"
+      |. P.spaces
+      |= creator
     , P.succeed VoidDotClass
       |. P.keyword "void"
       |. P.spaces
@@ -1568,6 +1626,22 @@ primary =
       |= optional identifierSuffix
     ]
 
+creator : Parser Creator
+creator =
+  P.oneOf
+    [ P.succeed (\name rest -> CreatorNormalClass { name = name, rest = rest })
+      |= referenceType
+      |. P.spaces
+      |= classCreatorRest
+    ]
+
+classCreatorRest : Parser ClassCreatorRest
+classCreatorRest =
+  P.succeed ClassCreatorRest
+  |= P.lazy (\_ -> arguments)
+  |. P.spaces
+  |= optional classBody
+
 superSuffix : Parser SuperSuffix
 superSuffix = P.oneOf [] -- use `arguments` function
 
@@ -1575,7 +1649,7 @@ explicitGenericInvocationSuffix : Parser ExplicitGenericInvocationSuffix
 explicitGenericInvocationSuffix = P.oneOf [] -- use `arguments`
 
 arguments : Parser (List Expression)
-arguments = bracketed (commas expression)
+arguments = bracketed (commas (P.lazy (\_ -> expression)))
 
 bracketed : Parser a -> Parser a
 bracketed parser =
@@ -1641,7 +1715,7 @@ blockStatement =
     , P.succeed (\label stmt -> BlockStatement { label = label, statement = stmt })
       |= optional
           (P.backtrackable (identifier |. P.spaces |. P.symbol ":" |. P.spaces))
-      |= statement
+      |= P.lazy (\_ -> statement)
     ]
 
 statement : Parser Statement
@@ -1696,20 +1770,31 @@ statement =
      |= list switchBlockStatementGroup
      |. P.spaces
      |. P.symbol "}"
-     {-
-   | StatementWhile
-     { cond : ParExpression
-     , statement : Statement
-     }
-   | StatementDo
-     { cond : ParExpression
-     , statement : Statement
-     }
-   | StatementFor
-     { control : ForControl
-     , statement : Statement
-     }
-   -}
+   , P.succeed (\cond stmt -> StatementWhile { cond = cond, statement = stmt })
+     |. P.keyword "while"
+     |. P.spaces
+     |= parExpression
+     |. P.spaces
+     |= P.lazy (\_ -> statement)
+   , P.succeed (\stmt cond-> StatementDo { cond = cond, statement = stmt })
+     |. P.keyword "do"
+     |. P.spaces
+     |= P.lazy (\_ -> statement)
+     |. P.spaces
+     |. P.keyword "while"
+     |. P.spaces
+     |= parExpression
+     |. P.symbol ";"
+   , P.succeed (\ctrl stmt -> StatementFor { control = ctrl, statement = stmt })
+     |. P.keyword "for"
+     |. P.spaces
+     |. P.symbol "("
+     |. P.spaces
+     |= forControl
+     |. P.spaces
+     |. P.symbol ")"
+     |. P.spaces
+     |= P.lazy (\_ -> statement)
    , P.succeed StatementBreak
      |. P.keyword "break"
      |. P.spaces
@@ -1734,12 +1819,63 @@ statement =
      |= expression
      |. P.spaces
      |. P.symbol ";"
-   {-
    , P.succeed (\exp blok -> StatementSynchronized
                                { expression = exp, block = blok })
-     |.
-   -}
+     |. P.keyword "synchronized"
+     |. P.spaces
+     |= parExpression
+     |. P.spaces
+     |= P.lazy (\_ -> block)
    ]
+
+forControl : Parser ForControl
+forControl =
+  P.oneOf
+    [ P.map FCForVarControl forVarControl
+    , P.succeed (\init cond update -> FCForInit
+                       { init = init, condition = cond, update = update })
+      |= sepByNemp "," expression
+      |. P.spaces |. P.symbol ";" |. P.spaces
+      |= optional expression
+      |. P.spaces |. P.symbol ";" |. P.spaces
+      |= optionalList (commas expression)
+    ]
+
+forVarControl : Parser ForVarControl
+forVarControl =
+  P.succeed ForVarControl
+  |= list variableModifier
+  |. P.spaces
+  |= type_
+  |. P.spaces
+  |= variableDeclaratorId
+  |. P.spaces
+  |= forVarControlRest
+
+forVarControlRest : Parser ForVarControlRest
+forVarControlRest =
+  P.oneOf
+    [ P.succeed ForEach
+      |. P.symbol ":"
+      |. P.spaces
+      |= expression
+    , P.succeed (\rest cond loop -> ForClassic
+                                    { rest = rest, cond = cond, loop = loop })
+      |= forVariableDeclaratorsRest
+      |. P.spaces |. P.symbol ";" |. P.spaces
+      |= optional expression
+      |. P.spaces |. P.symbol ";" |. P.spaces
+      |= optionalList (commas expression)
+    ]
+
+forVariableDeclaratorsRest : Parser ForVariableDeclaratorsRest
+forVariableDeclaratorsRest =
+  P.succeed ForVariableDeclaratorsRest
+  |= optional
+     (P.succeed identity |. P.symbol "=" |. P.spaces |= variableInitializer)
+  |. P.spaces
+  |= list
+     (P.succeed identity |. P.symbol "," |. P.spaces |= variableDeclarator)
 
 parExpression : Parser ParExpression
 parExpression =

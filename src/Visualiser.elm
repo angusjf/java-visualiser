@@ -1,11 +1,10 @@
 port module Visualiser exposing (..)
 
-import Html exposing (Html)
-import Html.Attributes
 import Random
+import Element exposing (Element)
+import Element.Input
 import Force
 import CustomSvg
-import Html.Events
 import Graph exposing (Graph)
 import Config exposing (Config)
 
@@ -108,12 +107,12 @@ update msg model =
     ExportSvg ->
       (model, exportSvg ())
 
-view : Config -> Model n v -> Html (Msg n)
+view : Config -> Model n v -> Element (Msg n)
 view config model =
-  Html.div
-    []
+  Element.column
+    [ ]
     [ viewOverlay model
-    , CustomSvg.render
+    , Element.html <| CustomSvg.render
         { move = Move
         , up = Stop
         , width = config.width
@@ -128,17 +127,26 @@ view config model =
         ]
     ]
 
-viewOverlay : Model n v -> Html (Msg n)
+viewOverlay : Model n v -> Element (Msg n)
 viewOverlay model =
-  Html.div
-    [ Html.Attributes.id "overlay" ]
-    [ Html.button
-        [ Html.Events.onClick ExportSvg
-        ]
-        [ Html.text "Save SVG"
-        ]
-    , Html.text (" " ++ String.fromInt (List.length model.nodes) ++ " nodes")
+  Element.row
+    []
+    [ Element.Input.button
+        []
+        { onPress = Just ExportSvg
+        , label = Element.text "Save SVG"
+        }
+    , Element.text (getInfo model)
     ]
+
+getInfo : Model n v -> String
+getInfo model =
+  " " ++ String.fromInt (List.length model.nodes) ++ " nodes & " ++ 
+  String.fromInt (List.length model.vertices) ++ " vertices (simulation" ++
+  if Force.isCompleted model.simulation
+    then " completed)"
+    else " calculating ...)"
+
 
 getNode : Graph.NodeId -> List (PosNode n) -> Maybe (PosNode n)
 getNode id nodes =
@@ -219,7 +227,7 @@ getInitialSimulation config nodes extensions =
       |> List.map (\{from, to} ->
                       { source = from
                       , target = to
-                      , distance = 300
+                      , distance = 200
                       , strength = Nothing
                       }
                    )

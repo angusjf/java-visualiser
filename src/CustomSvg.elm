@@ -129,6 +129,8 @@ text1 x y str =
     , A.y <| T.px y
     , UntypedA.stroke "none" 
     , UntypedA.fill (vsColor Foreground)
+    , A.fontFamily [ "Monaco", "Consolas", "Menlo", "Courier New", "monospace" ]
+    , A.fontSize (T.px 12)
     ]
     [ Svg.text str
     ]
@@ -140,6 +142,8 @@ text2 x y str =
     , UntypedA.stroke "none" 
     , UntypedA.fill (vsColor Foreground)
     , A.fontWeight T.FontWeightBold
+    , A.fontFamily [ "Monaco", "Consolas", "Menlo", "Courier New", "monospace" ]
+    , A.fontSize (T.px 12)
     ]
     [ Svg.text str
     ]
@@ -150,10 +154,10 @@ rect1 x y w h =
     , A.y <| T.px y
     , A.width <| T.px w
     , A.height <| T.px h
-    , A.rx <| T.px 15
+    , A.rx <| T.px 6
     , UntypedA.stroke (vsColor Foreground)
     , UntypedA.fill (vsColor Background)
-    , UntypedA.strokeWidth "3" 
+    , UntypedA.strokeWidth "2" 
     ]
     []
 
@@ -163,10 +167,10 @@ rect2 x y w h =
     , A.y <| T.px y
     , A.width <| T.px w
     , A.height <| T.px h
-    , A.rx <| T.px 15
+    , A.rx <| T.px 6
     , UntypedA.stroke (vsColor Red)
     , UntypedA.fill (vsColor Background)
-    , UntypedA.strokeWidth "3" 
+    , UntypedA.strokeWidth "2" 
     ]
     []
 

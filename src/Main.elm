@@ -2,22 +2,29 @@ port module Main exposing (main)
 
 import Browser
 import Browser.Events
-import Html
-import File exposing (File, Uri)
+import Element exposing (Element)
+import Element.Input
 import Visualiser
 import Config exposing (Config)
-import Graph
+import Graph exposing (Graph)
 
 import Package.JavaToGraph
 import Package.Visualiser
+import Package.Graph
+
+type alias Uri = String
+
+type alias File =
+  { uri : Uri
+  , content : String
+  }
 
 type alias Model n v =
-  { files : List File
+  { files : List (File, Bool)
   , visualiser : Visualiser.Model n v
   , config : Config
-  , nodeViewer : Visualiser.NodeViewer n
-  , vertexViewer : Visualiser.VertexViewer n v
-  , filesToGraph : List File -> Graph.Graph n v
+  , fromSources : List String -> Graph n v
+  , selectFilesPopup : Bool
   }
 
 type Msg n
@@ -28,6 +35,8 @@ type Msg n
   | ConfigChanged Config
   | VisualiserMsg (Visualiser.Msg n)
   | Tick Float
+  | ViewSelectFiles Bool
+  | SetFileSelected File Bool
 
 port newFile : (File -> msg) -> Sub msg
 port updateFile : (File -> msg) -> Sub msg
@@ -38,23 +47,29 @@ port configChanged : (Config -> msg) -> Sub msg
 current =
   { viewNode = Package.Visualiser.viewNode
   , viewVertex = Package.Visualiser.viewVertex
-  , filesToGraph = \files -> Package.JavaToGraph.fromSources
-                                    (List.map .content files)
+  , fromSources = Package.JavaToGraph.fromSources
   }
 
---init : (Config, List File) -> (Model n v, Cmd (Msg n))
+toGraph : (List String -> Graph n v) -> List (File, Bool) -> Graph n v
+toGraph fromSources =
+  List.filterMap (\(f, b) -> if b then Just f else Nothing)
+  >> List.map .content
+  >> fromSources
+
+init : (Config, List File) -> ( Model Package.Graph.Entity Package.Graph.Link
+                              , Cmd (Msg Package.Graph.Entity)
+                              )
 init (config, files) =
-  ({ files = files
+  ({ files = List.map (\f -> (f, True)) files
    , config = config
    , visualiser =
        Visualiser.init
        config
-       (current.filesToGraph files)
+       (toGraph current.fromSources (List.map (\f -> (f, True)) files))
        current.viewNode
        current.viewVertex
-   , nodeViewer = current.viewNode
-   , vertexViewer = current.viewVertex
-   , filesToGraph = current.filesToGraph
+   , fromSources = current.fromSources
+   , selectFilesPopup = False
    }
   , Cmd.none
   )
@@ -63,7 +78,7 @@ update : Msg n -> Model n v -> (Model n v, Cmd (Msg n))
 update msg model =
   case msg of 
     NewFile file ->
-      ( setFiles (file :: model.files) model
+      ( setFiles (insert file model.files) model
       , Cmd.none
       )
     UpdateFile file ->
@@ -93,51 +108,113 @@ update msg model =
       ( { model | visualiser = Visualiser.tick model.visualiser }
       , Cmd.none
       )
+    ViewSelectFiles bool ->
+      ( { model | selectFilesPopup = bool }
+      , Cmd.none
+      )
+    SetFileSelected file selected ->
+      let
+        files =
+          model.files
+          |> List.map (\(f, s) -> if f.uri == file.uri
+                                    then (file, selected) else (f, s))
+      in
+        ( setFiles files model
+        , Cmd.none
+        )
 
-setFiles : List File -> Model n v -> Model n v
+{-
+matchUp : List (File, Bool) -> File -> (File, Bool)
+matchUp oldFiles new =
+  case List.filter (\(f, _) -> f.uri == new.uri) oldFiles of
+    item::_ -> item
+    [] -> (new, True)
+-}
+
+setFiles : List (File, Bool) -> Model n v -> Model n v
 setFiles files model =
   { model
     | files = files
     , visualiser = Visualiser.withGraph
                      model.config
-                     (model.filesToGraph files)
+                     (toGraph model.fromSources files)
                      model.visualiser
   }
 
-insert : File -> List File -> List File
+insert : File -> List (File, Bool) -> List (File, Bool)
 insert file files =
   case files of
-    x::xs ->
+    (x, b)::xs ->
       if file.uri == x.uri
-        then file :: xs
-        else x :: insert file xs
-    [] -> [ file ]
+        then (file, True) :: xs
+        else (x, b) :: insert file xs
+    [] -> [ (file, True) ]
 
-delete : Uri -> List File -> List File
+delete : Uri -> List (File, Bool) -> List (File, Bool)
 delete uri files =
   case files of
-    x::xs ->
+    (x, b)::xs ->
       if x.uri == uri
         then xs
-        else x :: delete uri xs
+        else (x, b) :: delete uri xs
     [] -> []
 
-rename : Uri -> Uri -> List File -> List File
+rename : Uri -> Uri -> List (File, Bool) -> List (File, Bool)
 rename from to files =
   case files of
-    x::xs ->
+    (x, b)::xs ->
       if x.uri == from
-        then { x | uri = to } :: xs
-        else x :: rename from to xs
+        then ({ x | uri = to }, b) :: xs
+        else (x, b) :: rename from to xs
     [] -> []
 
 view : Model n v -> Browser.Document (Msg n)
 view model =
-  { title = "I don't think you can see this"
-  , body = [ Visualiser.view model.config model.visualiser
-             |> Html.map VisualiserMsg
+  { title = "Visualiser"
+  , body = [ Element.layoutWith { options = [{-Element.noStaticStyleSheet-}] }
+             [] <|
+             if model.selectFilesPopup then
+               viewSelectFilesPopup model.files
+             else
+               Element.column []
+                 [ Element.Input.button 
+                   []
+                   { onPress = Just (ViewSelectFiles True)
+                   , label = Element.text "Select Files..."
+                   }
+                 , Visualiser.view model.config model.visualiser
+                   |> Element.map VisualiserMsg
+                 ]
            ]
   }
+
+viewSelectFilesPopup : List (File, Bool) -> Element (Msg n)
+viewSelectFilesPopup files =
+  Element.column
+    [] <|
+    (List.map viewFileSelect files) ++ 
+    [ Element.Input.button
+      []
+      { onPress = Just (ViewSelectFiles False)
+      , label = Element.text "back"
+      }
+    ]
+
+viewFileSelect : (File, Bool) -> Element (Msg n)
+viewFileSelect (file, sel) =
+  Element.row
+    []
+    [ Element.text file.uri
+    , toggleFileButton (file, sel)
+    ]
+
+toggleFileButton : (File, Bool) -> Element (Msg n)
+toggleFileButton (file, sel) =
+  Element.Input.button
+    []
+    { onPress = Just <| SetFileSelected file (not sel)
+    , label = Element.text <| if sel then "yes" else "no"
+    }
 
 subscriptions : Model n v -> Sub (Msg n)
 subscriptions model =
