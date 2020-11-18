@@ -24,6 +24,7 @@ type alias Model n v =
   , simulation : Force.State Graph.NodeId
   , viewNode : NodeViewer n
   , viewVertex : VertexViewer n v
+  , scale : Float
   }
 
 type alias NodeViewer n =
@@ -37,6 +38,7 @@ type Msg n
   | Stop
   | Move (Float, Float)
   | ExportSvg
+  | Scroll Float
 
 port exportSvg : () -> Cmd msg
 
@@ -49,6 +51,7 @@ init config graph viewNode viewVertex =
                    config (withRandomPositions graph.nodes) graph.vertices
   , viewNode = viewNode
   , viewVertex = viewVertex
+  , scale = 1
   }
 
 diff : List (PosNode n) -> List (Graph.Node n)
@@ -106,6 +109,20 @@ update msg model =
           (model, Cmd.none)
     ExportSvg ->
       (model, exportSvg ())
+    Scroll deltaY ->
+      ( { model | scale = clamp (0.2, 5) (model.scale + (deltaY / 200)) }
+      , Cmd.none
+      )
+
+clamp : (comparable, comparable) -> comparable -> comparable
+clamp (min, max) value =
+    if value <= min then
+      min
+    else if value >= max then
+      max
+    else
+      value
+
 
 view : Config -> Model n v -> Element (Msg n)
 view config model =
@@ -115,8 +132,10 @@ view config model =
     , Element.html <| CustomSvg.render
         { move = Move
         , up = Stop
+        , scroll = Scroll
         , width = config.width
         , height = config.height
+        , scale = model.scale
         }
         [ CustomSvg.group
             [ CustomSvg.group

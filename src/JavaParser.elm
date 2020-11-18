@@ -371,15 +371,11 @@ type Statement
     { expression : ParExpression
     , block : Block
     }
-  {-
   | StatementTry
     { block : Block
-    ,   List Catch | 
-        { (Maybe (List Catch))
-        , finally : Block
-        }
+    , catches : List CatchClause
+    , finally : Maybe Block
     }
-  -}
   | StatementTryResource
     { spec : ResourceSpecification
     , block : Block
@@ -618,7 +614,7 @@ type alias ClassCreatorRest =
   }
 
 type alias ArrayCreatorRest = ()
-{-
+{- TODO
     [ (] {[]} ArrayInitializer  |  Expression ] {[ Expression ]} {[]})
 -}
 
@@ -1472,25 +1468,25 @@ expression2Rest =
 infixOp : Parser InfixOp
 infixOp =
   P.oneOf
-    [ P.succeed LogicalOr        |. P.keyword "||"
-    , P.succeed LogicalAnd       |. P.keyword "&&"
-    , P.succeed BitwizeOr        |. P.keyword "|"
-    , P.succeed BitwizeXor       |. P.keyword "^"
-    , P.succeed BitwizeAnd       |. P.keyword "&"
-    , P.succeed Equal            |. P.keyword "=="
-    , P.succeed NotEqual         |. P.keyword "!="
-    , P.succeed LessThanEqual    |. P.keyword "<="
-    , P.succeed GreaterThanEqual |. P.keyword ">="
-    , P.succeed LessThan         |. P.keyword "<"
-    , P.succeed GreaterThan      |. P.keyword ">"
-    , P.succeed TripleRightShift |. P.keyword ">>>"
-    , P.succeed RightShift       |. P.keyword ">>"
-    , P.succeed LeftShift        |. P.keyword "<<"
-    , P.succeed Plus             |. P.keyword "+"
-    , P.succeed Minus            |. P.keyword "-"
-    , P.succeed Multiply         |. P.keyword "*"
-    , P.succeed Divide           |. P.keyword "/"
-    , P.succeed Mod              |. P.keyword "%"
+    [ P.succeed LogicalOr        |. P.symbol "||"
+    , P.succeed LogicalAnd       |. P.symbol "&&"
+    , P.succeed BitwizeOr        |. P.symbol "|"
+    , P.succeed BitwizeXor       |. P.symbol "^"
+    , P.succeed BitwizeAnd       |. P.symbol "&"
+    , P.succeed Equal            |. P.symbol "=="
+    , P.succeed NotEqual         |. P.symbol "!="
+    , P.succeed LessThanEqual    |. P.symbol "<="
+    , P.succeed GreaterThanEqual |. P.symbol ">="
+    , P.succeed LessThan         |. P.symbol "<"
+    , P.succeed GreaterThan      |. P.symbol ">"
+    , P.succeed TripleRightShift |. P.symbol ">>>"
+    , P.succeed RightShift       |. P.symbol ">>"
+    , P.succeed LeftShift        |. P.symbol "<<"
+    , P.succeed Plus             |. P.symbol "+"
+    , P.succeed Minus            |. P.symbol "-"
+    , P.succeed Multiply         |. P.symbol "*"
+    , P.succeed Divide           |. P.symbol "/"
+    , P.succeed Mod              |. P.symbol "%"
     ]
 
 {- 
@@ -1506,14 +1502,14 @@ expression3 =
       |= prefixOp
       |. P.spaces
       |= P.lazy (\_ -> expression3)
-    , P.succeed (\exp exp3 ->
-                 E3BracketedExpression { expression = exp, exp3 = exp3 })
-      |= bracketed (P.lazy (\_ -> expression))
-      |. P.spaces
-      |= P.lazy (\_ -> expression3)
-    , P.succeed (\t exp3 ->
+    , P.backtrackable <| P.succeed (\t exp3 ->
                  E3BracketedType { type_ = t , exp3 = exp3 })
       |= bracketed type_
+      |. P.spaces
+      |= P.lazy (\_ -> expression3)
+    , P.backtrackable <| P.succeed (\exp exp3 ->
+                 E3BracketedExpression { expression = exp, exp3 = exp3 })
+      |= bracketed (P.lazy (\_ -> expression))
       |. P.spaces
       |= P.lazy (\_ -> expression3)
     , P.succeed (\pri sels ops ->
@@ -1557,19 +1553,19 @@ selector =
 prefixOp : Parser PrefixOp
 prefixOp =
   P.oneOf
-    [ P.succeed PreIncrement |. P.keyword "++"
-    , P.succeed PreDecrement |. P.keyword "--"
-    , P.succeed LogicalNot   |. P.keyword "!"
-    , P.succeed BitwizeNot   |. P.keyword "~"
-    , P.succeed PrefixPlus   |. P.keyword "+"
-    , P.succeed PrefixMinus  |. P.keyword "-"
+    [ P.succeed PreIncrement |. P.symbol "++"
+    , P.succeed PreDecrement |. P.symbol "--"
+    , P.succeed LogicalNot   |. P.symbol "!"
+    , P.succeed BitwizeNot   |. P.symbol "~"
+    , P.succeed PrefixPlus   |. P.symbol "+"
+    , P.succeed PrefixMinus  |. P.symbol "-"
     ]
 
 postfixOp : Parser PostfixOp
 postfixOp =
   P.oneOf
-    [ P.succeed PostIncrement |. P.keyword "++"
-    , P.succeed PostDecrement |. P.keyword "--"
+    [ P.succeed PostIncrement |. P.symbol "++"
+    , P.succeed PostDecrement |. P.symbol "--"
     ]
 
 identifierSuffix : Parser IdentifierSuffix
@@ -1613,6 +1609,10 @@ primary =
       |. P.keyword "new"
       |. P.spaces
       |= creator
+    , P.succeed PrimarySuper
+      |. P.keyword "super"
+      |. P.spaces
+      |= superSuffix
     , P.succeed VoidDotClass
       |. P.keyword "void"
       |. P.spaces
@@ -1643,7 +1643,16 @@ classCreatorRest =
   |= optional classBody
 
 superSuffix : Parser SuperSuffix
-superSuffix = P.oneOf [] -- use `arguments` function
+superSuffix =
+  P.oneOf
+    [ P.map SuperSuffixArgs arguments
+    , P.succeed SuperSuffixDotArgs
+      |. P.symbol "."
+      |. P.spaces
+      |= identifier
+      |. P.spaces
+      |= optionalList arguments
+    ]
 
 explicitGenericInvocationSuffix : Parser ExplicitGenericInvocationSuffix
 explicitGenericInvocationSuffix = P.oneOf [] -- use `arguments`
@@ -1673,7 +1682,7 @@ literal =
       , octal = Nothing
       , binary = Nothing
       , float = Just FloatingPointLiteral
-      }
+      } |. optional (P.oneOf (List.map P.symbol ["F", "f", "d", "D", "l", "L"]))
     ]
 
 char : Parser Char
@@ -1826,7 +1835,47 @@ statement =
      |= parExpression
      |. P.spaces
      |= P.lazy (\_ -> block)
+   , P.succeed (\blok catches finally -> StatementTry
+                     { block = blok, catches = catches, finally = finally })
+     |. P.keyword "try"
+     |. P.spaces
+     |= block
+     |. P.spaces
+     |= list catchClause
+     |. P.spaces
+     |= optional block
    ]
+
+catchClause : Parser CatchClause
+catchClause =
+  P.succeed CatchClause
+  |. P.keyword "catch"
+  |. P.spaces
+  |. P.symbol "("
+  |. P.spaces
+  |= list variableModifier
+  |. P.spaces
+  |= catchType
+  |. P.spaces
+  |= identifier
+  |. P.spaces
+  |. P.symbol ")"
+  |. P.spaces
+  |= block
+
+catchType : Parser CatchType
+catchType =
+  P.succeed CatchType
+  |= qualifiedIdentifier
+  |. P.spaces
+  |= list
+    ( P.succeed identity
+      |. P.symbol "|"
+      |. P.spaces
+      |= qualifiedIdentifier
+      |. P.spaces
+    )
+
 
 forControl : Parser ForControl
 forControl =

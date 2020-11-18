@@ -4,9 +4,11 @@ import Browser
 import Browser.Events
 import Element exposing (Element)
 import Element.Input
+import Element.Font
 import Visualiser
 import Config exposing (Config)
 import Graph exposing (Graph)
+import VsColor
 
 import Package.JavaToGraph
 import Package.Visualiser
@@ -123,14 +125,6 @@ update msg model =
         , Cmd.none
         )
 
-{-
-matchUp : List (File, Bool) -> File -> (File, Bool)
-matchUp oldFiles new =
-  case List.filter (\(f, _) -> f.uri == new.uri) oldFiles of
-    item::_ -> item
-    [] -> (new, True)
--}
-
 setFiles : List (File, Bool) -> Model n v -> Model n v
 setFiles files model =
   { model
@@ -172,7 +166,9 @@ view : Model n v -> Browser.Document (Msg n)
 view model =
   { title = "Visualiser"
   , body = [ Element.layoutWith { options = [{-Element.noStaticStyleSheet-}] }
-             [] <|
+             [ VsColor.fontColor VsColor.Foreground
+             , Element.Font.size 13
+             ] <|
              if model.selectFilesPopup then
                viewSelectFilesPopup model.files
              else
@@ -204,16 +200,35 @@ viewFileSelect : (File, Bool) -> Element (Msg n)
 viewFileSelect (file, sel) =
   Element.row
     []
-    [ Element.text file.uri
+    [ Element.text <| trimUntilRev (\c -> c == '/') file.uri
     , toggleFileButton (file, sel)
     ]
+
+trimUntilRev fn str =
+  let prefix = String.reverse <| trimUntil fn <| String.reverse str
+  in String.replace prefix "" str
+
+trimUntil : (Char -> Bool) -> String -> String
+trimUntil f str =
+  let
+    helper : List Char -> List Char
+    helper chars =
+      case chars of 
+        x::xs -> if f x then xs
+                        else helper xs
+        [] -> []
+  in
+    str
+    |> String.toList
+    |> helper
+    |> String.fromList
 
 toggleFileButton : (File, Bool) -> Element (Msg n)
 toggleFileButton (file, sel) =
   Element.Input.button
     []
     { onPress = Just <| SetFileSelected file (not sel)
-    , label = Element.text <| if sel then "yes" else "no"
+    , label = Element.text <| if sel then " [exclude]" else " [include]"
     }
 
 subscriptions : Model n v -> Sub (Msg n)
