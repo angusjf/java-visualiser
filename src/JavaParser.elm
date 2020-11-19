@@ -3,6 +3,7 @@ module JavaParser exposing (..)
 import Set exposing (Set)
 import Parser as P exposing (Parser, (|=), (|.), Step)
 import List.Nonempty as Nonempty exposing (Nonempty(..))
+import Regex
 
 -- types i {{{
 
@@ -716,6 +717,20 @@ reserved =
     , "final", "interface", "static", "void", "class", "finally", "long"
     , "strictfp", "volatile", "const", "float", "native", "super", "while"
     ]
+
+parse : Parser a -> String -> Result (List P.DeadEnd) a
+parse parser = P.run parser << removeCommentsAndTabs
+
+removeCommentsAndTabs : String -> String
+removeCommentsAndTabs src =
+  let
+    re =
+      "(\\/\\*(.|\\n)*?\\*\\/|\\/\\/.*$|\\t)"
+      |> Regex.fromStringWith
+         { caseInsensitive = False, multiline = True }
+      |> Maybe.withDefault Regex.never
+  in
+    Regex.replace re (always "") src
 
 {-
 CompilationUnit: 
@@ -1547,6 +1562,7 @@ selector =
            |= identifier
            |. P.spaces
            |= optionalList arguments
+         , P.map SelectorEGI explicitGenericInvocation
          ]
     ]
 
@@ -1655,7 +1671,10 @@ superSuffix =
     ]
 
 explicitGenericInvocationSuffix : Parser ExplicitGenericInvocationSuffix
-explicitGenericInvocationSuffix = P.oneOf [] -- use `arguments`
+explicitGenericInvocationSuffix = P.oneOf [] -- TODO use `arguments`
+
+explicitGenericInvocation : Parser ExplicitGenericInvocation
+explicitGenericInvocation = P.oneOf [] -- TODO
 
 arguments : Parser (List Expression)
 arguments = bracketed (commas (P.lazy (\_ -> expression)))
@@ -1676,11 +1695,11 @@ literal =
     , P.succeed NullLiteral |. P.keyword "null"
     , P.map CharacterLiteral char
     , P.map StringLiteral stringLiteral
-    , P.number
+    , P.backtrackable <| P.number
       { int = Just IntegerLiteral
-      , hex = Nothing
-      , octal = Nothing
-      , binary = Nothing
+      , hex = Just IntegerLiteral
+      , octal = Just IntegerLiteral
+      , binary = Just IntegerLiteral
       , float = Just FloatingPointLiteral
       } |. optional (P.oneOf (List.map P.symbol ["F", "f", "d", "D", "l", "L"]))
     ]

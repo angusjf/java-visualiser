@@ -48,7 +48,7 @@ port configChanged : (Config -> msg) -> Sub msg
 
 current =
   { viewNode = Package.Visualiser.viewNode
-  , viewVertex = Package.Visualiser.viewVertex
+  , viewEdge = Package.Visualiser.viewEdge
   , fromSources = Package.JavaToGraph.fromSources
   }
 
@@ -69,7 +69,7 @@ init (config, files) =
        config
        (toGraph current.fromSources (List.map (\f -> (f, True)) files))
        current.viewNode
-       current.viewVertex
+       current.viewEdge
    , fromSources = current.fromSources
    , selectFilesPopup = False
    }

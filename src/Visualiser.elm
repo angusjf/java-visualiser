@@ -19,19 +19,19 @@ type alias PosNode n =
 
 type alias Model n v =
   { nodes : List (PosNode n)
-  , vertices : List (Graph.Vertex v)
+  , edges : List (Graph.Edge v)
   , draggedNode : Maybe (PosNode n)
   , simulation : Force.State Graph.NodeId
   , viewNode : NodeViewer n
-  , viewVertex : VertexViewer n v
+  , viewEdge : EdgeViewer n v
   , scale : Float
   }
 
 type alias NodeViewer n =
    PosNode n -> CustomSvg.Svg (Msg n)
 
-type alias VertexViewer n v =
-   List (PosNode n) -> Graph.Vertex v -> CustomSvg.Svg (Msg n)
+type alias EdgeViewer n v =
+   List (PosNode n) -> Graph.Edge v -> CustomSvg.Svg (Msg n)
 
 type Msg n
   = Start (PosNode n)
@@ -42,15 +42,15 @@ type Msg n
 
 port exportSvg : () -> Cmd msg
 
-init : Config -> Graph n v -> NodeViewer n -> VertexViewer n v -> Model n v
-init config graph viewNode viewVertex =
+init : Config -> Graph n v -> NodeViewer n -> EdgeViewer n v -> Model n v
+init config graph viewNode viewEdge =
   { nodes = withRandomPositions graph.nodes
-  , vertices = graph.vertices 
+  , edges = graph.edges 
   , draggedNode = Nothing
   , simulation = getInitialSimulation
-                   config (withRandomPositions graph.nodes) graph.vertices
+                   config (withRandomPositions graph.nodes) graph.edges
   , viewNode = viewNode
-  , viewVertex = viewVertex
+  , viewEdge = viewEdge
   , scale = 1
   }
 
@@ -74,10 +74,10 @@ withGraph config graph model =
   in 
     { model
       | nodes = nodes
-      , vertices = graph.vertices 
+      , edges = graph.edges 
       , draggedNode = Nothing
       , simulation = getInitialSimulation
-                      config (withRandomPositions graph.nodes) graph.vertices
+                      config (withRandomPositions graph.nodes) graph.edges
     }
 
 updateNode : List (Graph.Node n) -> PosNode n -> PosNode n
@@ -110,7 +110,7 @@ update msg model =
     ExportSvg ->
       (model, exportSvg ())
     Scroll deltaY ->
-      ( { model | scale = clamp (0.2, 5) (model.scale + (deltaY / 200)) }
+      ( { model | scale = clamp (0.2, 5) (model.scale + (deltaY / 300)) }
       , Cmd.none
       )
 
@@ -139,7 +139,7 @@ view config model =
         }
         [ CustomSvg.group
             [ CustomSvg.group
-                (List.map (model.viewVertex model.nodes) model.vertices)
+                (List.map (model.viewEdge model.nodes) model.edges)
             , CustomSvg.group
                 (List.map model.viewNode model.nodes)
             ]
@@ -161,7 +161,7 @@ viewOverlay model =
 getInfo : Model n v -> String
 getInfo model =
   " " ++ String.fromInt (List.length model.nodes) ++ " nodes & " ++ 
-  String.fromInt (List.length model.vertices) ++ " vertices (simulation" ++
+  String.fromInt (List.length model.edges) ++ " edges (simulation" ++
   if Force.isCompleted model.simulation
     then " completed)"
     else " calculating ...)"
@@ -233,11 +233,11 @@ tick model =
       , simulation = newState
     }
 
-arrange : Config -> List (PosNode n) -> List (Graph.Vertex v) -> List (PosNode n)
+arrange : Config -> List (PosNode n) -> List (Graph.Edge v) -> List (PosNode n)
 arrange config nodes extensions =
   Force.computeSimulation (getInitialSimulation config nodes extensions) nodes
 
-getInitialSimulation : Config -> List (PosNode n) -> List (Graph.Vertex v)
+getInitialSimulation : Config -> List (PosNode n) -> List (Graph.Edge v)
                                                   -> Force.State Graph.NodeId
 getInitialSimulation config nodes extensions =
   let

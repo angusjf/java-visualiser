@@ -1,4 +1,4 @@
-module Package.Visualiser exposing (viewNode, viewVertex)
+module Package.Visualiser exposing (viewNode, viewEdge)
 
 import Visualiser exposing (Msg(..), getNode)
 import Package.Graph exposing (..)
@@ -26,8 +26,8 @@ viewNode node =
   in
     G.group <| [ box, text ] ++ attrs
 
-viewVertex : List PosNode -> Vertex -> Svg (Msg Entity)
-viewVertex nodes vertex =
+viewEdge : List PosNode -> Edge -> Svg (Msg Entity)
+viewEdge nodes vertex =
   case vertex.data of 
     Extends -> viewExtension nodes vertex
     References -> viewReference nodes vertex
@@ -38,7 +38,7 @@ viewAttr x y attr offset =
     G.text1 (x + 8) (y + 14 + offset) <|
         attr.prettyTypeName ++ " " ++ attr.identifier
 
-viewExtension : List PosNode -> Vertex -> Svg (Msg Entity)
+viewExtension : List PosNode -> Edge -> Svg (Msg Entity)
 viewExtension nodes vertex =
   Maybe.withDefault (G.group []) <|
     Maybe.map2
@@ -46,7 +46,7 @@ viewExtension nodes vertex =
       (getNode vertex.from nodes)
       (getNode vertex.to nodes)
 
-viewReference : List PosNode -> Vertex -> Svg (Msg Entity)
+viewReference : List PosNode -> Edge -> Svg (Msg Entity)
 viewReference nodes vertex =
   Maybe.withDefault (G.group [ ]) <|
     Maybe.map2

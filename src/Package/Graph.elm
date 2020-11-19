@@ -4,7 +4,7 @@ import Graph
 
 type alias PackageGraph = Graph.Graph Entity Link
 
-type alias Vertex = Graph.Vertex Link
+type alias Edge = Graph.Edge Link
 
 type Link = Extends | Implements | References
 

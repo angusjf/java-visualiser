@@ -1,17 +1,17 @@
 module Graph exposing
  ( NodeId
  , Graph
- , Vertex
+ , Edge
  , Node
  , mkNodeId
  )
 
 type alias Graph n v =
   { nodes : List (Node n)
-  , vertices : List (Vertex v)
+  , edges : List (Edge v)
   }
 
-type alias Vertex a =
+type alias Edge a =
   { from : NodeId
   , to : NodeId
   , data : a

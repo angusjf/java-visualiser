@@ -4,7 +4,6 @@ import Graph exposing (NodeId, mkNodeId)
 import Package.Graph exposing (..)
 import JavaParser as JP
 import Parser
-import Regex
 import List.Nonempty as Nonempty exposing (Nonempty(..))
 
 type alias Subgraph =
@@ -20,30 +19,19 @@ fromSources srcs =
     subgraphs : List Subgraph
     subgraphs =
       srcs
-      |> List.filterMap (removeCommentsAndTabs >> toAst)
+      |> List.filterMap toAst
       --|> Debug.log "asts: "
       |> List.concatMap compUnitToSubgraph
   in
     { nodes = List.map .entity subgraphs
-    , vertices = 
+    , edges = 
         (List.filterMap subgraphToExtension subgraphs) ++
         (List.concatMap subgraphToImplements subgraphs) ++
         (List.concatMap subgraphToReferences subgraphs)
     }
 
-removeCommentsAndTabs : String -> String
-removeCommentsAndTabs src =
-  let
-    re =
-      "(\\/\\*(.|\\n)*?\\*\\/|\\/\\/.*$|\\t)"
-      |> Regex.fromStringWith
-         { caseInsensitive = False, multiline = True }
-      |> Maybe.withDefault Regex.never
-  in
-    Regex.replace re (always "") src
-
 toAst : String -> Maybe JP.CompilationUnit
-toAst src = toMaybeLog (Parser.run JP.compilationUnit src)
+toAst src = toMaybeLog <| JP.parse JP.compilationUnit src
 
 toMaybeLog : Result a b -> Maybe b
 toMaybeLog res =
@@ -239,17 +227,17 @@ onlyMembers dec =
     JP.CBMember { modifiers, decl } -> Just (modifiers, decl)
     JP.CBBlock { static, block } -> Nothing
 
-subgraphToExtension : Subgraph -> Maybe Vertex
+subgraphToExtension : Subgraph -> Maybe Edge
 subgraphToExtension { entity, parent } =
   parent
   |> Maybe.map (\p -> { from = entity.id, to = p, data = Extends })
 
-subgraphToImplements : Subgraph -> List Vertex
+subgraphToImplements : Subgraph -> List Edge
 subgraphToImplements { entity, interfaces } =
   interfaces
   |> List.map (\i -> { from = entity.id, to = i, data = Implements })
 
-subgraphToReferences : Subgraph -> List Vertex
+subgraphToReferences : Subgraph -> List Edge
 subgraphToReferences { entity, references } =
   references
   |> List.map (\ref -> { from = entity.id, to = ref, data = References })
