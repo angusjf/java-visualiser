@@ -1,10 +1,6 @@
-module Graph exposing
- ( NodeId
- , Graph
- , Edge
- , Node
- , mkNodeId
- )
+module Graph exposing (NodeId, Graph, Edge, Node)
+
+type alias NodeId = String
 
 type alias Graph n v =
   { nodes : List (Node n)
@@ -17,9 +13,7 @@ type alias Edge a =
   , data : a
   }
 
-type alias Node n = { n | id : NodeId }
-
-type alias NodeId = String
-
-mkNodeId : String -> String -> NodeId
-mkNodeId pkg class = pkg ++ "." ++ class
+type alias Node n =
+  { id : NodeId
+  , data : n
+  }

@@ -1,4 +1,6 @@
-port module Visualiser exposing (..)
+port module Visualiser exposing ( init, withGraph, view, update, tick
+                                , Model, Msg
+                                )
 
 import Random
 import Element exposing (Element)
@@ -7,6 +9,8 @@ import Force
 import CustomSvg
 import Graph exposing (Graph)
 import Config exposing (Config)
+import Geometry as G exposing (Point, Rect)
+import Instance exposing (Instance)
 
 type alias PosNode n =
   { data : Graph.Node n
@@ -17,21 +21,15 @@ type alias PosNode n =
   , id : Graph.NodeId
   }
 
-type alias Model n v =
+type alias Model n e =
   { nodes : List (PosNode n)
-  , edges : List (Graph.Edge v)
+  , edges : List (Graph.Edge e)
   , draggedNode : Maybe (PosNode n)
   , simulation : Force.State Graph.NodeId
-  , viewNode : NodeViewer n
-  , viewEdge : EdgeViewer n v
   , scale : Float
+  , movedBetweenClicks : Bool
+  , instance : Instance n e (Msg n)
   }
-
-type alias NodeViewer n =
-   PosNode n -> CustomSvg.Svg (Msg n)
-
-type alias EdgeViewer n v =
-   List (PosNode n) -> Graph.Edge v -> CustomSvg.Svg (Msg n)
 
 type Msg n
   = Start (PosNode n)
@@ -42,16 +40,16 @@ type Msg n
 
 port exportSvg : () -> Cmd msg
 
-init : Config -> Graph n v -> NodeViewer n -> EdgeViewer n v -> Model n v
-init config graph viewNode viewEdge =
+init : Config -> Graph n e -> Instance n e (Msg n) -> Model n e
+init config graph instance =
   { nodes = withRandomPositions graph.nodes
   , edges = graph.edges 
   , draggedNode = Nothing
   , simulation = getInitialSimulation
-                   config (withRandomPositions graph.nodes) graph.edges
-  , viewNode = viewNode
-  , viewEdge = viewEdge
+                   config instance (withRandomPositions graph.nodes) graph.edges
   , scale = 1
+  , movedBetweenClicks = False
+  , instance = instance
   }
 
 diff : List (PosNode n) -> List (Graph.Node n)
@@ -65,19 +63,19 @@ diff old new =
   in
     (same, changed)
 
-withGraph : Config -> Graph n v -> Model n v -> Model n v
+withGraph : Config -> Graph n e -> Model n e -> Model n e
 withGraph config graph model =
   let
     updatedNodes = List.map (updateNode graph.nodes) model.nodes
     (keep, new) = diff updatedNodes graph.nodes
-    nodes = keep ++ withRandomPositions new
+    newNodes = keep ++ withRandomPositions new
   in 
     { model
-      | nodes = nodes
+      | nodes = newNodes
       , edges = graph.edges 
       , draggedNode = Nothing
-      , simulation = getInitialSimulation
-                      config (withRandomPositions graph.nodes) graph.edges
+      , simulation = getInitialSimulation config model.instance
+                                   (withRandomPositions graph.nodes) graph.edges
     }
 
 updateNode : List (Graph.Node n) -> PosNode n -> PosNode n
@@ -86,27 +84,60 @@ updateNode entities node =
     match :: _ -> { node | data = match }
     []         -> node
 
-update : Msg n -> Model n v -> (Model n v, Cmd (Msg n))
-update msg model =
+click : Instance n e (Msg n) -> PosNode n -> PosNode n
+click { onClick } n =
+  let
+    data = n.data
+    newData = { data | data = onClick n.data.data }
+  in
+    { n | data = newData }
+
+update : Config -> Msg n -> Model n e -> (Model n e, Cmd (Msg n))
+update config msg model =
   case msg of
     Start node ->
-      ({ model | draggedNode = Just node }, Cmd.none)
-    Stop ->
       ( { model
-          | draggedNode = Nothing
-          , simulation = Force.reheat model.simulation
+          | draggedNode = Just node
+          , movedBetweenClicks = False
         }
       , Cmd.none
       )
-    Move (x, y) ->
-      case model.draggedNode of
-        Just old ->
+    Stop ->
+      ( case (model.movedBetweenClicks, model.draggedNode) of
+        (False, Just node) ->
           let
-            new = { old | x = x - 60 , y = y - 25 }
+            newNodes = upsert (click model.instance node) model.nodes 
           in
-            ({ model | nodes = upsert new model.nodes }, Cmd.none)
-        Nothing ->
-          (model, Cmd.none)
+            { model
+              | draggedNode = Nothing
+              , nodes = newNodes
+              , simulation = getInitialSimulation
+                               config
+                               model.instance
+                               newNodes
+                               model.edges
+            }
+        (True, Just node) ->
+          { model
+            | draggedNode = Nothing
+            , simulation = Force.reheat model.simulation
+          }
+        (_, Nothing) ->
+          model
+      , Cmd.none
+      )
+    Move (x, y) ->
+      ( { model
+          | nodes =
+            case model.draggedNode of
+              Just old ->
+                upsert { old | x = x - 60 , y = y - 25 } model.nodes
+              Nothing ->
+                model.nodes
+          , movedBetweenClicks = True
+        }
+      , Cmd.none
+      )
     ExportSvg ->
       (model, exportSvg ())
     Scroll deltaY ->
@@ -123,11 +154,10 @@ clamp (min, max) value =
     else
       value
 
-
-view : Config -> Model n v -> Element (Msg n)
+view : Config -> Model n e -> Element (Msg n)
 view config model =
   Element.column
-    [ ]
+    []
     [ viewOverlay model
     , Element.html <| CustomSvg.render
         { move = Move
@@ -139,14 +169,39 @@ view config model =
         }
         [ CustomSvg.group
             [ CustomSvg.group
-                (List.map (model.viewEdge model.nodes) model.edges)
+                  (viewEdges model.instance model.nodes model.edges)
             , CustomSvg.group
-                (List.map model.viewNode model.nodes)
+                  (viewNodes model.instance model.nodes)
             ]
         ]
     ]
 
-viewOverlay : Model n v -> Element (Msg n)
+viewEdges : Instance n e (Msg n) -> List (PosNode n) -> List (Graph.Edge e)
+                                 -> List (CustomSvg.Svg (Msg n))
+viewEdges { viewEdge, viewNode, getRect } nodeList edges =
+  let
+    viewEdge_ edge = 
+      case (getNode nodeList edge.from, getNode nodeList edge.to) of
+        (Just f, Just t) ->
+            Just <| viewEdge
+                        (f.data.data, getRect (G.point f.x f.y) f.data.data)
+                        (t.data.data, getRect (G.point t.x t.y) t.data.data)
+                        edge.data
+        _ ->
+            Nothing
+  in
+    List.filterMap viewEdge_ edges
+
+viewNodes : Instance n e (Msg n) -> List (PosNode n)
+                                 -> List (CustomSvg.Svg (Msg n))
+viewNodes { viewNode, getRect } nodeList =
+  List.map (\n -> viewNode
+                    (Start n)
+                    n.data.data
+                    (getRect (G.point n.x n.y) n.data.data)
+           ) nodeList
+
+viewOverlay : Model n e -> Element (Msg n)
 viewOverlay model =
   Element.row
     []
@@ -158,7 +213,7 @@ viewOverlay model =
     , Element.text (getInfo model)
     ]
 
-getInfo : Model n v -> String
+getInfo : Model n e -> String
 getInfo model =
   " " ++ String.fromInt (List.length model.nodes) ++ " nodes & " ++ 
   String.fromInt (List.length model.edges) ++ " edges (simulation" ++
@@ -166,9 +221,8 @@ getInfo model =
     then " completed)"
     else " calculating ...)"
 
-
-getNode : Graph.NodeId -> List (PosNode n) -> Maybe (PosNode n)
-getNode id nodes =
+getNode : List (PosNode n) -> Graph.NodeId -> Maybe (PosNode n)
+getNode nodes id =
   case List.filter (\n -> n.data.id == id) nodes of
     node :: _ -> Just node
     [] -> Nothing
@@ -223,7 +277,7 @@ withRandomPositions entities =
   in
     List.map3 wrap entities xs ys
 
-tick : Model n v -> Model n v
+tick : Model n e -> Model n e
 tick model =
   let
     (newState, newNodes) = Force.tick model.simulation model.nodes
@@ -233,20 +287,35 @@ tick model =
       , simulation = newState
     }
 
-arrange : Config -> List (PosNode n) -> List (Graph.Edge v) -> List (PosNode n)
-arrange config nodes extensions =
-  Force.computeSimulation (getInitialSimulation config nodes extensions) nodes
-
-getInitialSimulation : Config -> List (PosNode n) -> List (Graph.Edge v)
-                                                  -> Force.State Graph.NodeId
-getInitialSimulation config nodes extensions =
+getInitialSimulation : Config -> Instance n e (Msg n)
+                              -> List (PosNode n)
+                              -> List (Graph.Edge e)
+                              -> Force.State Graph.NodeId
+getInitialSimulation config { getRect } nodes extensions =
   let
     edges =
       extensions
       |> List.map (\{from, to} ->
                       { source = from
                       , target = to
-                      , distance = 200
+                      , distance =
+                          let fromR =
+                                  from
+                                  |> getNode nodes
+                                  |> Maybe.map (\n -> getRect
+                                                        (G.point n.x n.y)
+                                                        n.data.data)
+                                  |> Maybe.map G.radius
+                                  |> Maybe.withDefault 0
+                              toR =
+                                  to
+                                  |> getNode nodes
+                                  |> Maybe.map (\n -> getRect
+                                                        (G.point n.x n.y)
+                                                        n.data.data)
+                                  |> Maybe.map G.radius
+                                  |> Maybe.withDefault 0
+                          in fromR + 50 + toR
                       , strength = Nothing
                       }
                    )

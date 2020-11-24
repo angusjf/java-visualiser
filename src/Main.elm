@@ -9,7 +9,7 @@ import Visualiser
 import Config exposing (Config)
 import Graph exposing (Graph)
 import VsColor
-
+import Instance exposing (Instance)
 import Package.JavaToGraph
 import Package.Visualiser
 import Package.Graph
@@ -46,11 +46,19 @@ port deleteFile : (Uri -> msg) -> Sub msg
 port renameFile : ((Uri, Uri) -> msg) -> Sub msg
 port configChanged : (Config -> msg) -> Sub msg
 
-current =
-  { viewNode = Package.Visualiser.viewNode
-  , viewEdge = Package.Visualiser.viewEdge
-  , fromSources = Package.JavaToGraph.fromSources
+type alias Current n e =
+  { instance : Instance n e (Visualiser.Msg n)
+  , fromSources : List String -> Graph n e
   }
+
+init = init2
+      { instance = { viewNode = Package.Visualiser.viewNode
+                   , viewEdge = Package.Visualiser.viewEdge
+                   , onClick  = Package.Visualiser.onClick
+                   , getRect  = Package.Visualiser.getRect
+                   }
+      , fromSources = Package.JavaToGraph.fromSources
+      }
 
 toGraph : (List String -> Graph n v) -> List (File, Bool) -> Graph n v
 toGraph fromSources =
@@ -58,18 +66,15 @@ toGraph fromSources =
   >> List.map .content
   >> fromSources
 
-init : (Config, List File) -> ( Model Package.Graph.Entity Package.Graph.Link
-                              , Cmd (Msg Package.Graph.Entity)
-                              )
-init (config, files) =
+init2 : Current n v -> (Config, List File) -> (Model n v, Cmd (Msg n))
+init2 current (config, files) =
   ({ files = List.map (\f -> (f, True)) files
    , config = config
    , visualiser =
        Visualiser.init
        config
        (toGraph current.fromSources (List.map (\f -> (f, True)) files))
-       current.viewNode
-       current.viewEdge
+       current.instance
    , fromSources = current.fromSources
    , selectFilesPopup = False
    }
@@ -97,7 +102,7 @@ update msg model =
       )
     VisualiserMsg vMsg ->
       let
-        (mo, me) = Visualiser.update vMsg model.visualiser
+        (mo, me) = Visualiser.update model.config vMsg model.visualiser
       in
         ( { model | visualiser = mo }
         , Cmd.map VisualiserMsg me

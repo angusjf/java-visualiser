@@ -9,6 +9,7 @@ import Json.Decode
 import VirtualDom
 import Svg.Attributes as UntypedA
 import VsColor exposing (VsColor(..), vsColor)
+import Geometry as G exposing (Point, Rect)
 
 type alias Svg a = Svg.Svg a
 
@@ -22,8 +23,8 @@ render : { width : Float
       -> List (Svg msg) -> Svg msg
 render opts things =
   S.svg
-    [ A.width (T.px opts.width)
-    , A.height (T.px opts.height)
+    [ A.width  <| T.px <| opts.width  * (1 / opts.scale)
+    , A.height <| T.px <| opts.height * (1 / opts.scale)
     , E.on "mousemove" (moveEventDecoder opts.move)
     , E.onMouseUp opts.up
     , E.on "wheel" (wheelEventDecoder opts.scroll)
@@ -95,104 +96,95 @@ wheelEventDecoder msg =
                     ) <|
     (Json.Decode.field "deltaY" Json.Decode.float)
 
+group : List (Svg msg) -> Svg msg
 group things =
   S.g [] things
 
-text1 x y str =
+text1 : Point -> String -> Svg msg
+text1 = text_ [ UntypedA.fill (vsColor Foreground) ]
+
+text2 : Point -> String -> Svg msg
+text2 =
+  text_ [ UntypedA.fill (vsColor Foreground), A.fontWeight T.FontWeightBold ]
+
+text_ : List (Svg.Attribute msg) -> Point -> String -> Svg msg
+text_ attrs point str =
   S.text_
-    [ A.x <| T.px x
-    , A.y <| T.px y
-    , UntypedA.stroke "none" 
-    , UntypedA.fill (vsColor Foreground)
-    , A.fontFamily [ "Monaco", "Consolas", "Menlo", "Courier New", "monospace" ]
-    , A.fontSize (T.px 12)
-    ]
+    ( [ A.x <| T.px <| G.pointX point
+      , A.y <| T.px <| G.pointY point
+      , UntypedA.stroke "none" 
+      , A.fontFamily [ "Monaco", "Consolas", "Menlo", "Courier New", "monospace" ]
+      , A.fontSize (T.px 12)
+      ] ++ attrs
+    )
     [ Svg.text str
     ]
 
-text2 x y str =
-  S.text_
-    [ A.x <| T.px x
-    , A.y <| T.px y
-    , UntypedA.stroke "none" 
-    , UntypedA.fill (vsColor Foreground)
-    , A.fontWeight T.FontWeightBold
-    , A.fontFamily [ "Monaco", "Consolas", "Menlo", "Courier New", "monospace" ]
-    , A.fontSize (T.px 12)
-    ]
-    [ Svg.text str
+rect1 : Rect -> Svg msg
+rect1 =
+  rect_
+    [ UntypedA.stroke (vsColor Foreground)
+    , UntypedA.fill (vsColor Background)
     ]
 
-rect1 x y w h =
-  S.rect
-    [ A.x <| T.px x
-    , A.y <| T.px y
-    , A.width <| T.px w
-    , A.height <| T.px h
-    , A.rx <| T.px 6
-    , UntypedA.stroke (vsColor Foreground)
+rect2 : Rect -> Svg msg
+rect2 =
+  rect_
+    [ UntypedA.stroke (vsColor Red)
     , UntypedA.fill (vsColor Background)
-    , UntypedA.strokeWidth "2" 
     ]
+
+rect_ : List (Svg.Attribute msg) -> Rect -> Svg msg
+rect_ attrs rect =
+  S.rect
+    ( [ A.x      <| T.px <| G.rectX <| rect
+      , A.y      <| T.px <| G.rectY <| rect
+      , A.width  <| T.px <| G.rectW <| rect
+      , A.height <| T.px <| G.rectH <| rect
+      , A.rx     <| T.px 6
+      , UntypedA.strokeWidth "2" 
+      ] ++ attrs
+    )
     []
 
-rect2 x y w h =
-  S.rect
-    [ A.x <| T.px x
-    , A.y <| T.px y
-    , A.width <| T.px w
-    , A.height <| T.px h
-    , A.rx <| T.px 6
-    , UntypedA.stroke (vsColor Red)
-    , UntypedA.fill (vsColor Background)
-    , UntypedA.strokeWidth "2" 
-    ]
-    []
-
-rectClick1 x y w h msg =
+click msg e =
    S.g
-     [ E.onMouseDown msg
-     ]
-     [ rect1 x y w h ]
-
-rectClick2 x y w h msg =
-   S.g
-     [ E.onMouseDown msg
-     ]
-     [ rect2 x y w h ]
+     [ E.onMouseDown msg ]
+     [ e ]
 
 arrow1 =
-  arrow "url(#arrowHeadFill)" [ UntypedA.stroke (vsColor White) 
-        , UntypedA.strokeWidth "2" 
-        ]
+  arrow_ [ UntypedA.stroke (vsColor White) 
+         , UntypedA.strokeWidth "2" 
+         , UntypedA.markerEnd "url(#arrowHeadFill)"
+         ]
 
 arrow2 =
-  arrow "url(#arrowHeadLine)" [ UntypedA.strokeDasharray "5,10"
-        , UntypedA.stroke (vsColor Red)
-        , UntypedA.strokeWidth "2" 
-        ]
+  arrow_ [ UntypedA.strokeDasharray "5,10"
+         , UntypedA.stroke (vsColor Red)
+         , UntypedA.strokeWidth "2" 
+         , UntypedA.markerEnd "url(#arrowHeadLine)" 
+         ]
 
-arrow head attrs (x1, y1) (x2, y2) =
+arrow_ : List (Svg.Attribute msg) -> Point -> Point -> Svg msg
+arrow_ attrs from to =
   let
-    xm = (x1 + x2) / 2
-    ym = (y1 + y2) / 2
+    mid = G.midpoint from to
   in S.g
     []
     [ S.line
-        ( [ A.x2 <| T.px xm
-          , A.y2 <| T.px ym
-          , A.x1 <| T.px x2
-          , A.y1 <| T.px y2
+        ( [ A.x1 <| T.px <| G.pointX mid
+          , A.y1 <| T.px <| G.pointY mid
+          , A.x2 <| T.px <| G.pointX to
+          , A.y2 <| T.px <| G.pointY to
           ] ++ attrs
         )
-        [ ]
+        []
     , S.line
-        ( [ A.x1 <| T.px x1
-          , A.y1 <| T.px y1
-          , A.x2 <| T.px xm
-          , A.y2 <| T.px ym
-          , UntypedA.markerEnd head
+        ( [ A.x1 <| T.px <| G.pointX from
+          , A.y1 <| T.px <| G.pointY from
+          , A.x2 <| T.px <| G.pointX mid
+          , A.y2 <| T.px <| G.pointY mid
           ] ++ attrs
         )
-        [ ]
+        []
     ]

@@ -1,10 +1,13 @@
 module Package.JavaToGraph exposing (fromSources)
 
-import Graph exposing (NodeId, mkNodeId)
+import Graph exposing (NodeId)
 import Package.Graph exposing (..)
 import JavaParser as JP
 import Parser
 import List.Nonempty as Nonempty exposing (Nonempty(..))
+
+mkNodeId : String -> String -> NodeId
+mkNodeId pkg class = pkg ++ "." ++ class
 
 type alias Subgraph =
   { entity : Entity
@@ -23,7 +26,8 @@ fromSources srcs =
       --|> Debug.log "asts: "
       |> List.concatMap compUnitToSubgraph
   in
-    { nodes = List.map .entity subgraphs
+    { nodes =
+        List.map subgraphToNode subgraphs
     , edges = 
         (List.filterMap subgraphToExtension subgraphs) ++
         (List.concatMap subgraphToImplements subgraphs) ++
@@ -80,6 +84,7 @@ normalClassToSubgraph class pkg mod =
              , abstract = List.member JP.Abstract mod
              , publicAttributes = getPublicAttributes class.body
              , publicMethods = getPublicMethods class.body
+             , expansion = Not
              }
   , parent = Maybe.map (mkNodeId pkg) (Maybe.andThen onlyRefTypes class.extends)
   , interfaces = List.filterMap onlyRefTypes class.implements
@@ -241,3 +246,7 @@ subgraphToReferences : Subgraph -> List Edge
 subgraphToReferences { entity, references } =
   references
   |> List.map (\ref -> { from = entity.id, to = ref, data = References })
+
+subgraphToNode : Subgraph -> Node
+subgraphToNode { entity } =
+    { id = entity.id, data = entity }

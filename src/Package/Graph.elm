@@ -5,6 +5,7 @@ import Graph
 type alias PackageGraph = Graph.Graph Entity Link
 
 type alias Edge = Graph.Edge Link
+type alias Node = Graph.Node Entity
 
 type Link = Extends | Implements | References
 
@@ -18,7 +19,10 @@ type alias Entity =
   , abstract : Bool
   , final : Bool
   , static : Bool
+  , expansion : Expansion
   }
+
+type Expansion = Not | Half | Fully
 
 type Kind = Class | Interface | Enum
 
