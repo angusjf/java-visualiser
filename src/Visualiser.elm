@@ -1,6 +1,5 @@
-port module Visualiser exposing ( init, withGraph, view, update, tick
-                                , Model, Msg
-                                )
+port module Visualiser exposing
+  ( init, view, update, tick, withConfig, withGraph, Model, Msg )
 
 import Random
 import Element exposing (Element)
@@ -144,6 +143,16 @@ update config msg model =
       ( { model | scale = clamp (0.2, 5) (model.scale + (deltaY / 300)) }
       , Cmd.none
       )
+
+withConfig : Config -> Model n e -> Model n e
+withConfig config model =
+  { model
+    | simulation = getInitialSimulation
+                     config
+                     model.instance
+                     model.nodes
+                     model.edges
+  }
 
 clamp : (comparable, comparable) -> comparable -> comparable
 clamp (min, max) value =

@@ -108,7 +108,10 @@ update msg model =
         , Cmd.map VisualiserMsg me
         )
     ConfigChanged cfg ->
-      ( { model | config = cfg }
+      ( { model
+          | config = cfg
+          , visualiser = Visualiser.withConfig cfg model.visualiser
+        }
       , Cmd.none
       )
     Tick _ ->

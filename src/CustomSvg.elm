@@ -35,22 +35,22 @@ render opts things =
       [ S.marker
         [ A.id "arrowHeadFill"
         , A.viewBox 0 0 10 10
-        , A.refX "1"
-        , A.refY "5"
+        , A.refX "8"
+        , A.refY "4"
         , UntypedA.markerUnits "strokeWidth"
         , UntypedA.markerWidth "10"
         , UntypedA.markerHeight "10"
         , UntypedA.orient "auto"
         ]
         [ S.path
-          [ A.d "M 0 0 L 10 5 L 0 10"
+          [ A.d "M 0 0 L 8 4 L 0 8"
           , UntypedA.fill (vsColor White)
           ] []
         ]
       , S.marker
         [ A.id "arrowHeadLine"
         , A.viewBox 0 0 10 10
-        , A.refX "1"
+        , A.refX "8"
         , A.refY "3"
         , UntypedA.markerUnits "strokeWidth"
         , UntypedA.markerWidth "10"
@@ -155,18 +155,18 @@ click msg e =
 arrow1 =
   arrow_ [ UntypedA.stroke (vsColor White) 
          , UntypedA.strokeWidth "2" 
-         , UntypedA.markerEnd "url(#arrowHeadFill)"
          ]
+         "url(#arrowHeadFill)"
 
 arrow2 =
   arrow_ [ UntypedA.strokeDasharray "5,10"
          , UntypedA.stroke (vsColor Red)
          , UntypedA.strokeWidth "2" 
-         , UntypedA.markerEnd "url(#arrowHeadLine)" 
          ]
+         "url(#arrowHeadLine)" 
 
-arrow_ : List (Svg.Attribute msg) -> Point -> Point -> Svg msg
-arrow_ attrs from to =
+arrowOld_ : List (Svg.Attribute msg) -> String -> Point -> Point -> Svg msg
+arrowOld_ attrs marker from to =
   let
     mid = G.midpoint from to
   in S.g
@@ -184,7 +184,23 @@ arrow_ attrs from to =
           , A.y1 <| T.px <| G.pointY from
           , A.x2 <| T.px <| G.pointX mid
           , A.y2 <| T.px <| G.pointY mid
+          , UntypedA.markerEnd marker 
           ] ++ attrs
         )
         []
     ]
+
+arrow_ : List (Svg.Attribute msg) -> String -> Rect -> Rect -> Svg msg
+arrow_ attrs marker from to =
+  let
+    (start, end) = G.lineBetween from to
+  in
+    S.line
+      ( [ A.x1 <| T.px <| G.pointX start
+        , A.y1 <| T.px <| G.pointY start
+        , A.x2 <| T.px <| G.pointX end
+        , A.y2 <| T.px <| G.pointY end
+        , UntypedA.markerEnd marker 
+        ] ++ attrs
+      )
+      []

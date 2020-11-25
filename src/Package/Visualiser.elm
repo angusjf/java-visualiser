@@ -77,14 +77,10 @@ getAttrs entity =
 
 viewEdge : (Entity, Rect) -> (Entity, Rect) -> Link -> Svg x
 viewEdge (_, fromRect) (_, toRect) link =
-  let
-    from = G.middle fromRect
-    to = G.middle toRect
-  in
-    case link of 
-      Extends ->    S.arrow1 from to
-      References -> S.arrow2 from to
-      Implements -> S.arrow1 from to
+  case link of 
+    Extends ->    S.arrow1 fromRect toRect
+    References -> S.arrow2 fromRect toRect
+    Implements -> S.arrow1 fromRect toRect
 
 viewAttr : Point -> String -> Float -> Svg msg
 viewAttr point attrName offset =
