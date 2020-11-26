@@ -181,6 +181,7 @@ setFiles : List (File, Bool) -> Model n e -> Model n e
 setFiles files model =
   { model
     | files = files
+    , graphs = model.fromSources <| filesToStrings <| files
     , selectedGraphAndVisualiser =
         case model.selectedGraphAndVisualiser of
            Just (selectedGraph, vis) ->

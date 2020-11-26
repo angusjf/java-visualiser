@@ -236,6 +236,9 @@ getInfo model =
     []
     [ Element.text <| String.fromInt (List.length model.nodes) ++
              " nodes & " ++ String.fromInt (List.length model.edges) ++ " edges"
+             ++ " [" ++ String.join ", " (List.map .id model.nodes) ++ "]"
+             ++ " [" ++ String.join ", " (List.map .from model.edges) ++ "]"
+             ++ " [" ++ String.join ", " (List.map .to model.edges) ++ "]"
     , Element.text <| "(simulation" ++
                           if Force.isCompleted model.simulation
                             then " completed)"
@@ -312,10 +315,11 @@ getInitialSimulation : Config -> Instance n e (Msg n)
                               -> List (PosNode n)
                               -> List (Graph.Edge e)
                               -> Force.State Graph.NodeId
-getInitialSimulation config { getRect } nodes extensions =
+getInitialSimulation config { getRect } nodes edges =
   let
-    edges =
-      extensions
+    edgesWithoutLoops =
+      edges
+      |> List.filter (\{from, to} -> from /= to)
       |> List.map (\{from, to} ->
                       { source = from
                       , target = to
@@ -343,7 +347,7 @@ getInitialSimulation config { getRect } nodes extensions =
     nodeIds = List.map .id nodes
     forces =
       [ Force.center (config.width / 2) (config.height / 2)
-      , Force.customLinks 1 edges
+      , Force.customLinks 1 edgesWithoutLoops
       , Force.manyBodyStrength (-60) nodeIds
       ]
   in

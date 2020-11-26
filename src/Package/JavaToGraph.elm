@@ -207,7 +207,7 @@ refTypeToIdentifiers refType =
  |> Nonempty.map (\(name, typeArguments) ->
      name :: List.concatMap (unnamed >> typeToIdentifiers) typeArguments)
  |> Nonempty.toList
- |> List.concatMap identity
+ |> List.concat
 
 -- no brackets: typeToString (Array Int) = "int[]"
 typeToPrettyString : JP.Type -> String
