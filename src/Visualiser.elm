@@ -42,7 +42,7 @@ port exportSvg : () -> Cmd msg
 init : Config -> Graph n e -> Instance n e (Msg n) -> Model n e
 init config graph instance =
   { nodes = withRandomPositions graph.nodes
-  , edges = graph.edges 
+  , edges = graph.edges |> List.filter (\{from, to} -> from /= to)
   , draggedNode = Nothing
   , simulation = getInitialSimulation
                    config instance (withRandomPositions graph.nodes) graph.edges
@@ -71,7 +71,7 @@ withGraph config graph model =
   in 
     { model
       | nodes = newNodes
-      , edges = graph.edges 
+      , edges = graph.edges |> List.filter (\{from, to} -> from /= to)
       , draggedNode = Nothing
       , simulation = getInitialSimulation config model.instance
                                    (withRandomPositions graph.nodes) graph.edges
@@ -319,7 +319,6 @@ getInitialSimulation config { getRect } nodes edges =
   let
     edgesWithoutLoops =
       edges
-      |> List.filter (\{from, to} -> from /= to)
       |> List.map (\{from, to} ->
                       { source = from
                       , target = to

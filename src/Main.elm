@@ -57,6 +57,7 @@ port updateFile : (File -> msg) -> Sub msg
 port deleteFile : (Uri -> msg) -> Sub msg
 port renameFile : ((Uri, Uri) -> msg) -> Sub msg
 port configChanged : (Config -> msg) -> Sub msg
+port infoMessage : String -> Cmd msg
 
 toGraph : (List String -> List (String, Graph n e)) -> List (File, Bool)
                                           -> String -> Maybe (Graph n e)
@@ -105,21 +106,13 @@ update : Msg n e -> Model n e -> (Model n e, Cmd (Msg n e))
 update msg model =
   case msg of 
     NewFile file ->
-      ( setFiles (insert file model.files) model
-      , Cmd.none
-      )
+      setFiles (insert file model.files) model
     UpdateFile file ->
-      ( setFiles (insert file model.files) model
-      , Cmd.none
-      )
+      setFiles (insert file model.files) model
     DeleteFile uri ->
-      ( setFiles (delete uri model.files) model
-      , Cmd.none
-      )
+      setFiles (delete uri model.files) model
     RenameFile (from, to) ->
-      ( setFiles (rename from to model.files) model
-      , Cmd.none
-      )
+      setFiles (rename from to model.files) model
     VisualiserMsg vMsg ->
       case model.selectedGraphAndVisualiser of
         Just (n, old) ->
@@ -160,9 +153,7 @@ update msg model =
           |> List.map (\(f, s) -> if f.uri == file.uri
                                     then (file, selected) else (f, s))
       in
-        ( setFiles files model
-        , Cmd.none
-        )
+        setFiles files model
     GraphSelected (name, graph) ->
       ( { model
           | selectedGraphAndVisualiser =
@@ -177,24 +168,36 @@ update msg model =
       , Cmd.none
       )
 
-setFiles : List (File, Bool) -> Model n e -> Model n e
+setFiles : List (File, Bool) -> Model n e -> (Model n e, Cmd (Msg n e))
 setFiles files model =
-  { model
-    | files = files
-    , graphs = model.fromSources <| filesToStrings <| files
-    , selectedGraphAndVisualiser =
-        case model.selectedGraphAndVisualiser of
-           Just (selectedGraph, vis) ->
-             toGraph model.fromSources files selectedGraph
-             |> Maybe.map
-               (\graph -> 
-                   ( selectedGraph
-                   , Visualiser.withGraph model.config graph vis
-                   )
-               )
-           Nothing ->
-             Nothing
-  }
+  let
+    newModel = 
+      { model
+        | files = files
+        , graphs = model.fromSources <| filesToStrings <| files
+      }
+  in
+    case model.selectedGraphAndVisualiser of
+        Just (selectedGraph, vis) ->
+            case toGraph model.fromSources files selectedGraph of
+                Just graph ->
+                    ( { newModel
+                        | selectedGraphAndVisualiser =
+                            Just <|
+                                ( selectedGraph
+                                , Visualiser.withGraph model.config graph vis
+                                )
+                      }
+                    , Cmd.none
+                    )
+                Nothing ->
+                    ( newModel
+                    , let msg = "Compilation failed for package '"
+                                 ++ selectedGraph ++ "'"
+                      in infoMessage msg
+                    )
+        Nothing ->
+            (newModel, Cmd.none)
 
 insert : File -> List (File, Bool) -> List (File, Bool)
 insert file files =
