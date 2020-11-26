@@ -1,13 +1,10 @@
-module Package.JavaToGraph exposing (fromSources)
+module Package.JavaToGraph exposing (..) -- TODO (fromSources)
 
 import Graph exposing (NodeId)
 import Package.Graph exposing (..)
 import JavaParser as JP
 import Parser
 import List.Nonempty as Nonempty exposing (Nonempty(..))
-
-mkNodeId : String -> String -> NodeId
-mkNodeId pkg class = pkg ++ "." ++ class
 
 type alias Subgraph =
   { entity : Entity
@@ -16,23 +13,64 @@ type alias Subgraph =
   , references : List NodeId
   }
 
-fromSources : List String -> PackageGraph
+fromSources : List String -> List (String, PackageGraph)
 fromSources srcs =
   let
-    subgraphs : List Subgraph
-    subgraphs =
+    packageSubgraphs : List (List Subgraph)
+    packageSubgraphs =
       srcs
       |> List.filterMap toAst
       --|> Debug.log "asts: "
       |> List.concatMap compUnitToSubgraph
+      |> groupByPackage
   in
-    { nodes =
-        List.map subgraphToNode subgraphs
-    , edges = 
-        (List.filterMap subgraphToExtension subgraphs) ++
-        (List.concatMap subgraphToImplements subgraphs) ++
-        (List.concatMap subgraphToReferences subgraphs)
-    }
+    packageSubgraphs
+    |> List.filterMap (\subgraphs ->
+        let
+          nodes = List.map subgraphToNode subgraphs
+          extensions = subgraphs |> List.filterMap subgraphToExtension
+          implements = subgraphs |> List.concatMap subgraphToImplements
+          references = subgraphs |> List.concatMap subgraphToReferences
+          packageName =
+            case List.head subgraphs of
+              Just n -> Just <| getPackage n
+              Nothing -> Nothing
+        in
+          Maybe.map
+            (\name ->
+                ( name
+                , { nodes = nodes
+                  , edges = extensions ++ implements ++ references
+                  }
+                )
+            )
+            packageName
+      )
+
+groupByPackage : List Subgraph -> List (List Subgraph)
+groupByPackage =
+  groupBy (\a b -> getPackage a == getPackage b)
+
+getPackage : Subgraph -> String
+getPackage { entity } = entity.pkg
+
+groupBy : (a -> a -> Bool) -> List a -> List (List a)
+groupBy eq xs =
+  let
+    uniq : List a
+    uniq = nub eq xs
+  in
+    List.map (getSame eq xs) uniq
+
+getSame : (a -> a -> Bool) -> List a -> a -> List a
+getSame eq list item =
+    List.filter (\x -> eq x item) list
+
+nub : (a -> a -> Bool) -> List a -> List a
+nub eq list =
+  case list of
+    x::xs -> x :: nub eq (List.filter (not << eq x) xs)
+    [] -> []
 
 toAst : String -> Maybe JP.CompilationUnit
 toAst src = toMaybeLog <| JP.parse JP.compilationUnit src
@@ -71,7 +109,7 @@ typeToSubgraph pkg t =
 normalClassToSubgraph : JP.NormalClassDeclaration -> String
                             -> (List JP.Modifier) -> Subgraph
 normalClassToSubgraph class pkg mod =
-  { entity = { id = mkNodeId pkg class.identifier
+  { entity = { pkg = pkg
              , name = class.identifier
              , kind = Class 
              , access = if List.member JP.Public mod
@@ -232,21 +270,27 @@ onlyMembers dec =
     JP.CBMember { modifiers, decl } -> Just (modifiers, decl)
     JP.CBBlock { static, block } -> Nothing
 
+getNodeId : Entity -> NodeId
+getNodeId { pkg , name } = mkNodeId pkg name
+
+mkNodeId : String -> String -> String
+mkNodeId pkg name = pkg ++ "." ++ name
+
 subgraphToExtension : Subgraph -> Maybe Edge
 subgraphToExtension { entity, parent } =
   parent
-  |> Maybe.map (\p -> { from = entity.id, to = p, data = Extends })
+  |> Maybe.map (\p -> { from = getNodeId entity, to = p, data = Extends })
 
 subgraphToImplements : Subgraph -> List Edge
 subgraphToImplements { entity, interfaces } =
   interfaces
-  |> List.map (\i -> { from = entity.id, to = i, data = Implements })
+  |> List.map (\i -> { from = getNodeId entity, to = i, data = Implements })
 
 subgraphToReferences : Subgraph -> List Edge
 subgraphToReferences { entity, references } =
   references
-  |> List.map (\ref -> { from = entity.id, to = ref, data = References })
+  |> List.map (\ref -> { from = getNodeId entity, to = ref, data = References })
 
 subgraphToNode : Subgraph -> Node
 subgraphToNode { entity } =
-    { id = entity.id, data = entity }
+    { id = getNodeId entity, data = entity }

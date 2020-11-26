@@ -10,7 +10,7 @@ type alias Node = Graph.Node Entity
 type Link = Extends | Implements | References
 
 type alias Entity =
-  { id : Graph.NodeId
+  { pkg : String
   , name : String
   , publicMethods : List Method
   , publicAttributes : List Attribute

@@ -21,15 +21,21 @@ type alias File =
   , content : String
   }
 
-type alias Model n v =
+type Menu
+ = None
+ | SelectFiles
+
+type alias Model n e =
   { files : List (File, Bool)
-  , visualiser : Visualiser.Model n v
   , config : Config
-  , fromSources : List String -> Graph n v
-  , selectFilesPopup : Bool
+  , fromSources : List String -> List (String, Graph n e)
+  , instance : Instance n e (Visualiser.Msg n)
+  , menu : Menu
+  , selectedGraphAndVisualiser : Maybe (String, (Visualiser.Model n e))
+  , graphs : List (String, Graph n e)
   }
 
-type Msg n
+type Msg n e
   = NewFile File
   | UpdateFile File
   | DeleteFile Uri
@@ -39,6 +45,12 @@ type Msg n
   | Tick Float
   | ViewSelectFiles Bool
   | SetFileSelected File Bool
+  | GraphSelected (String, Graph n e)
+
+type alias Current n e =
+  { instance : Instance n e (Visualiser.Msg n)
+  , fromSources : List String -> List (String, Graph n e)
+  }
 
 port newFile : (File -> msg) -> Sub msg
 port updateFile : (File -> msg) -> Sub msg
@@ -46,42 +58,50 @@ port deleteFile : (Uri -> msg) -> Sub msg
 port renameFile : ((Uri, Uri) -> msg) -> Sub msg
 port configChanged : (Config -> msg) -> Sub msg
 
-type alias Current n e =
-  { instance : Instance n e (Visualiser.Msg n)
-  , fromSources : List String -> Graph n e
-  }
+toGraph : (List String -> List (String, Graph n e)) -> List (File, Bool)
+                                          -> String -> Maybe (Graph n e)
+toGraph fromSources files name =
+  files
+  |> filesToStrings
+  |> fromSources
+  |> List.filter (\(n, _) -> n == name)
+  |> List.head
+  |> Maybe.map Tuple.second
+
+filesToStrings : List (File, Bool) -> List String
+filesToStrings files =
+  files
+  |> List.filterMap (\(f, b) -> if b then Just f else Nothing)
+  |> List.map .content
 
 init = init2
-      { instance = { viewNode = Package.Visualiser.viewNode
-                   , viewEdge = Package.Visualiser.viewEdge
-                   , onClick  = Package.Visualiser.onClick
-                   , getRect  = Package.Visualiser.getRect
-                   }
-      , fromSources = Package.JavaToGraph.fromSources
-      }
+         Package.JavaToGraph.fromSources
+         { viewNode = Package.Visualiser.viewNode
+         , viewEdge = Package.Visualiser.viewEdge
+         , onClick  = Package.Visualiser.onClick
+         , getRect  = Package.Visualiser.getRect
+         }
 
-toGraph : (List String -> Graph n v) -> List (File, Bool) -> Graph n v
-toGraph fromSources =
-  List.filterMap (\(f, b) -> if b then Just f else Nothing)
-  >> List.map .content
-  >> fromSources
-
-init2 : Current n v -> (Config, List File) -> (Model n v, Cmd (Msg n))
-init2 current (config, files) =
+init2 : (List String -> List (String, Graph n e))
+     -> Instance n e (Visualiser.Msg n)
+     -> (Config, List File)
+     -> (Model n e, Cmd (Msg n e))
+init2 fromSources instance (config, files) =
   ({ files = List.map (\f -> (f, True)) files
    , config = config
-   , visualiser =
-       Visualiser.init
-       config
-       (toGraph current.fromSources (List.map (\f -> (f, True)) files))
-       current.instance
-   , fromSources = current.fromSources
-   , selectFilesPopup = False
+   , fromSources = fromSources
+   , menu = None
+   , graphs = fromSources <| filesToStrings <| allTrue files
+   , selectedGraphAndVisualiser = Nothing
+   , instance = instance
    }
   , Cmd.none
   )
 
-update : Msg n -> Model n v -> (Model n v, Cmd (Msg n))
+allTrue : List a -> List (a, Bool)
+allTrue xs = List.map (\f -> (f, True)) xs
+
+update : Msg n e -> Model n e -> (Model n e, Cmd (Msg n e))
 update msg model =
   case msg of 
     NewFile file ->
@@ -101,25 +121,36 @@ update msg model =
       , Cmd.none
       )
     VisualiserMsg vMsg ->
-      let
-        (mo, me) = Visualiser.update model.config vMsg model.visualiser
-      in
-        ( { model | visualiser = mo }
-        , Cmd.map VisualiserMsg me
-        )
+      case model.selectedGraphAndVisualiser of
+        Just (n, old) ->
+          let
+            (new, msg_) = Visualiser.update model.config vMsg old
+          in
+            ( { model
+                | selectedGraphAndVisualiser = Just (n, new)
+              }
+            , Cmd.map VisualiserMsg msg_
+            )
+        Nothing ->
+            ( model
+            , Cmd.none
+            )
     ConfigChanged cfg ->
       ( { model
           | config = cfg
-          , visualiser = Visualiser.withConfig cfg model.visualiser
+          , selectedGraphAndVisualiser = 
+              Maybe.map
+                (\(s, v) -> (s, Visualiser.withConfig cfg v))
+                model.selectedGraphAndVisualiser
         }
       , Cmd.none
       )
     Tick _ ->
-      ( { model | visualiser = Visualiser.tick model.visualiser }
+      ( applyToVis Visualiser.tick model
       , Cmd.none
       )
     ViewSelectFiles bool ->
-      ( { model | selectFilesPopup = bool }
+      ( { model | menu = if bool then SelectFiles else None }
       , Cmd.none
       )
     SetFileSelected file selected ->
@@ -132,15 +163,36 @@ update msg model =
         ( setFiles files model
         , Cmd.none
         )
+    GraphSelected (name, graph) ->
+      ( { model
+          | selectedGraphAndVisualiser =
+             Just
+               ( name
+               , Visualiser.init
+                   model.config
+                   graph
+                   model.instance
+               )
+        }
+      , Cmd.none
+      )
 
-setFiles : List (File, Bool) -> Model n v -> Model n v
+setFiles : List (File, Bool) -> Model n e -> Model n e
 setFiles files model =
   { model
     | files = files
-    , visualiser = Visualiser.withGraph
-                     model.config
-                     (toGraph model.fromSources files)
-                     model.visualiser
+    , selectedGraphAndVisualiser =
+        case model.selectedGraphAndVisualiser of
+           Just (selectedGraph, vis) ->
+             toGraph model.fromSources files selectedGraph
+             |> Maybe.map
+               (\graph -> 
+                   ( selectedGraph
+                   , Visualiser.withGraph model.config graph vis
+                   )
+               )
+           Nothing ->
+             Nothing
   }
 
 insert : File -> List (File, Bool) -> List (File, Bool)
@@ -170,39 +222,75 @@ rename from to files =
         else (x, b) :: rename from to xs
     [] -> []
 
-view : Model n v -> Browser.Document (Msg n)
+applyToVis : (Visualiser.Model n e -> Visualiser.Model n e) -> Model n e
+                                                            -> Model n e
+applyToVis f model =
+  case model.selectedGraphAndVisualiser of
+    Just (selectedGraph, visualiser) ->
+        { model
+          | selectedGraphAndVisualiser = Just (selectedGraph, f visualiser)
+        }
+    Nothing -> model
+
+view : Model n e -> Browser.Document (Msg n e)
 view model =
   { title = "Visualiser"
   , body = [ Element.layout
              [ VsColor.fontColor VsColor.Foreground
              , Element.Font.size 13
              ] <|
-               Element.column []
-                 [ Visualiser.view model.config model.visualiser
-                   |> Element.html
-                   |> Element.map VisualiserMsg
-                 , viewOverlay model
-                 ]
+             Element.column [] <|
+               case model.selectedGraphAndVisualiser of
+                 Just (_, vis) -> 
+                   [ Visualiser.view model.config vis
+                     |> Element.html
+                     |> Element.map VisualiserMsg
+                   , viewOverlay model
+                   ]
+                 Nothing ->
+                   [ viewSelectGraph model.graphs
+                   ]
            ]
   }
 
-viewOverlay : Model n v -> Element (Msg n)
-viewOverlay model =
- if model.selectFilesPopup then
-   viewSelectFilesPopup model.files
- else
-   Element.column
-     []
-     [ Element.Input.button 
-       []
-       { onPress = Just (ViewSelectFiles True)
-       , label = Element.text "Select Files..."
-       }
-     , Visualiser.viewOverlay model.visualiser
-           |> Element.map VisualiserMsg
-     ]
+viewSelectGraph : List (String, Graph n e) -> Element (Msg n e)
+viewSelectGraph options =
+  Element.column
+    [] <|
+    List.map
+      (\(name, graph) ->
+           Element.Input.button []
+             { onPress = Just <| GraphSelected (name, graph)
+             , label = Element.text name
+             }
+      )
+      options
 
-viewSelectFilesPopup : List (File, Bool) -> Element (Msg n)
+viewOverlay : Model n e -> Element (Msg n e)
+viewOverlay model =
+ case model.menu of
+   SelectFiles ->
+       viewSelectFilesPopup model.files
+   None ->
+       Element.column
+         []
+         [ Element.Input.button 
+           []
+           { onPress = Just (ViewSelectFiles True)
+           , label = Element.text "Select Files..."
+           }
+         , case model.selectedGraphAndVisualiser of
+             Just (selectedGraph, vis) ->
+               Element.column []
+                 [ Element.text selectedGraph
+                 , Visualiser.viewOverlay vis
+                       |> Element.map VisualiserMsg
+                 ]
+             Nothing ->
+               Element.column [] []
+         ]
+
+viewSelectFilesPopup : List (File, Bool) -> Element (Msg n e)
 viewSelectFilesPopup files =
   Element.column
     [] <|
@@ -214,7 +302,7 @@ viewSelectFilesPopup files =
       }
     ]
 
-viewFileSelect : (File, Bool) -> Element (Msg n)
+viewFileSelect : (File, Bool) -> Element (Msg n e)
 viewFileSelect (file, sel) =
   Element.row
     []
@@ -241,7 +329,7 @@ trimUntil f str =
     |> helper
     |> String.fromList
 
-toggleFileButton : (File, Bool) -> Element (Msg n)
+toggleFileButton : (File, Bool) -> Element (Msg n e)
 toggleFileButton (file, sel) =
   Element.Input.button
     []
@@ -249,7 +337,7 @@ toggleFileButton (file, sel) =
     , label = Element.text <| if sel then " [exclude]" else " [include]"
     }
 
-subscriptions : Model n v -> Sub (Msg n)
+subscriptions : Model n e -> Sub (Msg n e)
 subscriptions model =
   Sub.batch
     [ newFile NewFile
