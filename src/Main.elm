@@ -173,24 +173,34 @@ rename from to files =
 view : Model n v -> Browser.Document (Msg n)
 view model =
   { title = "Visualiser"
-  , body = [ Element.layoutWith { options = [{-Element.noStaticStyleSheet-}] }
+  , body = [ Element.layout
              [ VsColor.fontColor VsColor.Foreground
              , Element.Font.size 13
              ] <|
-             if model.selectFilesPopup then
-               viewSelectFilesPopup model.files
-             else
                Element.column []
-                 [ Element.Input.button 
-                   []
-                   { onPress = Just (ViewSelectFiles True)
-                   , label = Element.text "Select Files..."
-                   }
-                 , Visualiser.view model.config model.visualiser
+                 [ Visualiser.view model.config model.visualiser
+                   |> Element.html
                    |> Element.map VisualiserMsg
+                 , viewOverlay model
                  ]
            ]
   }
+
+viewOverlay : Model n v -> Element (Msg n)
+viewOverlay model =
+ if model.selectFilesPopup then
+   viewSelectFilesPopup model.files
+ else
+   Element.column
+     []
+     [ Element.Input.button 
+       []
+       { onPress = Just (ViewSelectFiles True)
+       , label = Element.text "Select Files..."
+       }
+     , Visualiser.viewOverlay model.visualiser
+           |> Element.map VisualiserMsg
+     ]
 
 viewSelectFilesPopup : List (File, Bool) -> Element (Msg n)
 viewSelectFilesPopup files =

@@ -1,5 +1,5 @@
 port module Visualiser exposing
-  ( init, view, update, tick, withConfig, withGraph, Model, Msg )
+  ( init, view, viewOverlay, update, tick, withConfig, withGraph, Model, Msg )
 
 import Random
 import Element exposing (Element)
@@ -130,7 +130,14 @@ update config msg model =
           | nodes =
             case model.draggedNode of
               Just old ->
-                upsert { old | x = x - 60 , y = y - 25 } model.nodes
+                let
+                  dx = (1 - model.scale) * config.width  * 0.5 / model.scale
+                  dy = (1 - model.scale) * config.height * 0.5 / model.scale
+                  mouse_x = x / model.scale - dx
+                  mouse_y = y / model.scale - dy
+                  new = { old | x = mouse_x, y = mouse_y }
+                in
+                  upsert new model.nodes
               Nothing ->
                 model.nodes
           , movedBetweenClicks = True
@@ -140,7 +147,12 @@ update config msg model =
     ExportSvg ->
       (model, exportSvg ())
     Scroll deltaY ->
-      ( { model | scale = clamp (0.2, 5) (model.scale + (deltaY / 300)) }
+      ( let
+          scale = clamp (0.2, 5) (model.scale + (deltaY / 500))
+        in
+          { model
+            | scale = scale
+          }  
       , Cmd.none
       )
 
@@ -163,25 +175,21 @@ clamp (min, max) value =
     else
       value
 
-view : Config -> Model n e -> Element (Msg n)
+view : Config -> Model n e -> CustomSvg.Svg (Msg n)
 view config model =
-  Element.column
-    []
-    [ viewOverlay model
-    , Element.html <| CustomSvg.render
-        { move = Move
-        , up = Stop
-        , scroll = Scroll
-        , width = config.width
-        , height = config.height
-        , scale = model.scale
-        }
+  CustomSvg.render
+    { move = Move
+    , up = Stop
+    , scroll = Scroll
+    , width = config.width
+    , height = config.height
+    , scale = model.scale
+    }
+    [ CustomSvg.group
         [ CustomSvg.group
-            [ CustomSvg.group
-                  (viewEdges model.instance model.nodes model.edges)
-            , CustomSvg.group
-                  (viewNodes model.instance model.nodes)
-            ]
+              (viewEdges model.instance model.nodes model.edges)
+        , CustomSvg.group
+              (viewNodes model.instance model.nodes)
         ]
     ]
 
@@ -212,23 +220,27 @@ viewNodes { viewNode, getRect } nodeList =
 
 viewOverlay : Model n e -> Element (Msg n)
 viewOverlay model =
-  Element.row
+  Element.column
     []
     [ Element.Input.button
         []
         { onPress = Just ExportSvg
         , label = Element.text "Save SVG"
         }
-    , Element.text (getInfo model)
+    , getInfo model
     ]
 
-getInfo : Model n e -> String
+getInfo : Model n e -> Element (Msg n)
 getInfo model =
-  " " ++ String.fromInt (List.length model.nodes) ++ " nodes & " ++ 
-  String.fromInt (List.length model.edges) ++ " edges (simulation" ++
-  if Force.isCompleted model.simulation
-    then " completed)"
-    else " calculating ...)"
+  Element.column
+    []
+    [ Element.text <| String.fromInt (List.length model.nodes) ++
+             " nodes & " ++ String.fromInt (List.length model.edges) ++ " edges"
+    , Element.text <| "(simulation" ++
+                          if Force.isCompleted model.simulation
+                            then " completed)"
+                            else " calculating ...)"
+    ]
 
 getNode : List (PosNode n) -> Graph.NodeId -> Maybe (PosNode n)
 getNode nodes id =

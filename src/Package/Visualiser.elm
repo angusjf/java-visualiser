@@ -15,18 +15,25 @@ cycle e =
     Fully -> Not
     Half -> Fully
 
-pad = 8
+pad : Float
+pad = 11
+
+charh : Float
 charh = 12
+
+charw : Float
+charw = 7.2
+
+lineh : Float
+lineh = 10
 
 textWidth : String -> Float
 textWidth str =
-  let charw = 7
-  in toFloat <| pad * 2 + charw * String.length str
+  pad * 2 + charw * (toFloat (String.length str))
 
 linesHeight : Int -> Float
 linesHeight n =
-  let line = 8
-  in toFloat <| pad * 2 + n * charh + (n - 1) * line
+  pad * 2 + (toFloat n) * charh + (toFloat n - 1) * lineh
 
 getRect : Point -> Entity -> Rect
 getRect corner entity =
@@ -58,7 +65,7 @@ viewAttrs : Point -> Entity -> List (Svg msg)
 viewAttrs point entity =
   let
     attrs = getAttrs entity
-    offsets = List.map (\a -> toFloat (a + 1) * 20) <|
+    offsets = List.map (\a -> toFloat (a + 1) * (charh + lineh)) <|
                 List.range 0 (List.length attrs)
     allAttrs = List.map2 (viewAttr point) attrs offsets
   in case entity.expansion of
@@ -75,16 +82,16 @@ getAttrs entity =
     Half -> List.take 3 <| allAttrs
     Fully -> allAttrs
 
+viewAttr : Point -> String -> Float -> Svg msg
+viewAttr point attrName offset =
+    S.text1 (G.move point pad (pad + charh + offset)) attrName
+
+attrToString : Attribute -> String
+attrToString attr = attr.prettyTypeName ++ " " ++ attr.identifier
+
 viewEdge : (Entity, Rect) -> (Entity, Rect) -> Link -> Svg x
 viewEdge (_, fromRect) (_, toRect) link =
   case link of 
     Extends ->    S.arrow1 fromRect toRect
     References -> S.arrow2 fromRect toRect
     Implements -> S.arrow1 fromRect toRect
-
-viewAttr : Point -> String -> Float -> Svg msg
-viewAttr point attrName offset =
-    S.text1 (G.move point 8 (14 + offset)) attrName
-
-attrToString : Attribute -> String
-attrToString attr = attr.prettyTypeName ++ " " ++ attr.identifier
