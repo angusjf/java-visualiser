@@ -1,4 +1,4 @@
-module JavaAstHelpers exposing (getRefsInClassBody)
+module JavaAstHelpers exposing (getRefsInClassBody, getRefsInReferenceType)
 
 import JavaParser exposing (..)
 import List.Nonempty
@@ -44,10 +44,12 @@ getRefsInType t =
 getRefsInReferenceType : ReferenceType -> List String
 getRefsInReferenceType r =
     let
-        getRefs : (String, List TypeArgument) -> List String
-        getRefs (x, args) = x :: List.concatMap getRefsInTypeArgument args
+        list = List.Nonempty.toList r
+        getTypeArgs : (String, List TypeArgument) -> List String
+        getTypeArgs (_, args) = List.concatMap getRefsInTypeArgument args
+        mainType = String.join "." <| List.map Tuple.first list
     in
-        List.concatMap getRefs (List.Nonempty.toList r)
+        mainType :: List.concatMap getTypeArgs list
 
 getRefsInTypeArgument : TypeArgument -> List String
 getRefsInTypeArgument t =
