@@ -39,13 +39,19 @@ type Msg n
 
 port exportSvg : () -> Cmd msg
 
+withoutSelfLoops : List (Graph.Edge e) -> List (Graph.Edge e)
+withoutSelfLoops = List.filter (\{to, from} -> to /= from)
+
 init : Config -> Graph n e -> Instance n e (Msg n) -> Model n e
 init config graph instance =
   { nodes = withRandomPositions graph.nodes
-  , edges = graph.edges |> List.filter (\{from, to} -> from /= to)
+  , edges = withoutSelfLoops graph.edges
   , draggedNode = Nothing
   , simulation = getInitialSimulation
-                   config instance (withRandomPositions graph.nodes) graph.edges
+                   config
+                   instance
+                   (withRandomPositions graph.nodes)
+                   (withoutSelfLoops graph.edges)
   , scale = 1
   , movedBetweenClicks = False
   , instance = instance
@@ -71,10 +77,13 @@ withGraph config graph model =
   in 
     { model
       | nodes = newNodes
-      , edges = graph.edges |> List.filter (\{from, to} -> from /= to)
+      , edges = withoutSelfLoops graph.edges
       , draggedNode = Nothing
-      , simulation = getInitialSimulation config model.instance
-                                   (withRandomPositions graph.nodes) graph.edges
+      , simulation = getInitialSimulation
+                       config
+                       model.instance
+                       (withRandomPositions graph.nodes)
+                       (withoutSelfLoops graph.edges)
     }
 
 updateNode : List (Graph.Node n) -> PosNode n -> PosNode n
@@ -236,9 +245,9 @@ getInfo model =
     []
     [ Element.text <| String.fromInt (List.length model.nodes) ++
              " nodes & " ++ String.fromInt (List.length model.edges) ++ " edges"
-             ++ " [" ++ String.join ", " (List.map .id model.nodes) ++ "]"
-             ++ " [" ++ String.join ", " (List.map .from model.edges) ++ "]"
-             ++ " [" ++ String.join ", " (List.map .to model.edges) ++ "]"
+             --++ " [" ++ String.join ", " (List.map .id model.nodes) ++ "]"
+             --++ " [" ++ String.join ", " (List.map .from model.edges) ++ "]"
+             --++ " [" ++ String.join ", " (List.map .to model.edges) ++ "]"
     , Element.text <| "(simulation" ++
                           if Force.isCompleted model.simulation
                             then " completed)"

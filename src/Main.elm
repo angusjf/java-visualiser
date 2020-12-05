@@ -43,7 +43,7 @@ type Msg n e
   | ConfigChanged Config
   | VisualiserMsg (Visualiser.Msg n)
   | Tick Float
-  | ViewSelectFiles Bool
+  | ViewMenu Menu
   | SetFileSelected File Bool
   | GraphSelected (String, Graph n e)
 
@@ -75,32 +75,39 @@ filesToStrings files =
   |> List.filterMap (\(f, b) -> if b then Just f else Nothing)
   |> List.map .content
 
-init = init2
-         Package.JavaToGraph.fromSources
-         { viewNode = Package.Visualiser.viewNode
-         , viewEdge = Package.Visualiser.viewEdge
-         , onClick  = Package.Visualiser.onClick
-         , getRect  = Package.Visualiser.getRect
-         }
-
+init =
+  init2
+    Package.JavaToGraph.fromSources
+      { viewNode = Package.Visualiser.viewNode
+      , viewEdge = Package.Visualiser.viewEdge
+      , onClick  = Package.Visualiser.onClick
+      , getRect  = Package.Visualiser.getRect
+      }
+          
 init2 : (List String -> List (String, Graph n e))
      -> Instance n e (Visualiser.Msg n)
      -> (Config, List File)
      -> (Model n e, Cmd (Msg n e))
-init2 fromSources instance (config, files) =
-  ({ files = List.map (\f -> (f, True)) files
-   , config = config
-   , fromSources = fromSources
-   , menu = None
-   , graphs = fromSources <| filesToStrings <| allTrue files
-   , selectedGraphAndVisualiser = Nothing
-   , instance = instance
-   }
-  , Cmd.none
-  )
-
-allTrue : List a -> List (a, Bool)
-allTrue xs = List.map (\f -> (f, True)) xs
+init2 fromSources instance (config, inFiles) =
+  let
+    files = List.map (\f -> (f, True)) inFiles
+    graphs = fromSources <| filesToStrings files
+  in
+    ({ files = files
+     , config = config
+     , fromSources = fromSources
+     , menu = None
+     , graphs = graphs
+     , selectedGraphAndVisualiser =
+         if List.length graphs == 1 then
+            Maybe.map
+              (\(n, graph) -> (n, Visualiser.init config graph instance))
+              (List.head graphs)
+         else Nothing
+     , instance = instance
+     }
+    , Cmd.none
+    )
 
 update : Msg n e -> Model n e -> (Model n e, Cmd (Msg n e))
 update msg model =
@@ -142,8 +149,8 @@ update msg model =
       ( applyToVis Visualiser.tick model
       , Cmd.none
       )
-    ViewSelectFiles bool ->
-      ( { model | menu = if bool then SelectFiles else None }
+    ViewMenu menu ->
+      ( { model | menu = menu }
       , Cmd.none
       )
     SetFileSelected file selected ->
@@ -261,14 +268,19 @@ viewSelectGraph : List (String, Graph n e) -> Element (Msg n e)
 viewSelectGraph options =
   Element.column
     [] <|
-    List.map
-      (\(name, graph) ->
-           Element.Input.button []
-             { onPress = Just <| GraphSelected (name, graph)
-             , label = Element.text name
-             }
-      )
-      options
+    [ Element.text "Multiple packages in workspace!"
+    , Element.text "Please select one to continue:"
+    , Element.column
+        [] <|
+        List.map
+          (\(name, graph) ->
+               Element.Input.button []
+                 { onPress = Just <| GraphSelected (name, graph)
+                 , label = Element.text name
+                 }
+          )
+          options
+    ]
 
 viewOverlay : Model n e -> Element (Msg n e)
 viewOverlay model =
@@ -280,13 +292,13 @@ viewOverlay model =
          []
          [ Element.Input.button 
            []
-           { onPress = Just (ViewSelectFiles True)
+           { onPress = Just (ViewMenu SelectFiles)
            , label = Element.text "Select Files..."
            }
          , case model.selectedGraphAndVisualiser of
              Just (selectedGraph, vis) ->
                Element.column []
-                 [ Element.text selectedGraph
+                 [ Element.text <| "viewing graph for '" ++ selectedGraph ++ "'"
                  , Visualiser.viewOverlay vis
                        |> Element.map VisualiserMsg
                  ]
@@ -301,7 +313,7 @@ viewSelectFilesPopup files =
     (List.map viewFileSelect files) ++ 
     [ Element.Input.button
       []
-      { onPress = Just (ViewSelectFiles False)
+      { onPress = Just (ViewMenu SelectFiles)
       , label = Element.text "back"
       }
     ]

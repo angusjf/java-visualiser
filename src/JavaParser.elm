@@ -92,12 +92,7 @@ type TypeArgument
 
 type alias TypeParameter =
   { identifier : String
-  , extends : Maybe Bound
-  }
-
-type alias Bound =
-  { type_ : ReferenceType
-  , and : ReferenceType
+  , extends : List ReferenceType
   }
 
 -- }}}
@@ -205,12 +200,24 @@ type alias ConstructorDeclaratorRest =
   }
 
 type alias GenericMethodOrConstructorDecl =
-  {
+  { typeParams : List TypeParameter
+  , rest : GenericMethodOrConstructorRest
   }
 
-type alias GenericMethodOrConstructorRest =
-  {
-  }
+type GenericMethodOrConstructorRest
+  = GenericMethodRestWithType
+    { type_ : Type
+    , identifier : String
+    , rest : MethodDeclaratorRest
+    }
+  | GenericMethodRestWithVoid
+    { identifier : String
+    , rest : MethodDeclaratorRest
+    }
+  | GenericConstructor
+    { identifier : String
+    , rest : ConstructorDeclaratorRest
+    }
 
 -- }}}
 
@@ -614,10 +621,15 @@ type alias ClassCreatorRest =
   , body : Maybe ClassBody
   }
 
-type alias ArrayCreatorRest = ()
-{- TODO
-    [ (] {[]} ArrayInitializer  |  Expression ] {[ Expression ]} {[]})
--}
+type ArrayCreatorRest
+  = ArrayCreatorRestInit
+    { arrays : Int
+    , init : ArrayInitializer
+    }
+  | ArrayCreatorRestExpressions
+    { expressions : List Expression
+    , arrays : Int
+    }
 
 type IdentifierSuffix
   = NoSuffix
@@ -1645,11 +1657,47 @@ primary =
 creator : Parser Creator
 creator =
   P.oneOf
-    [ P.succeed (\name rest -> CreatorNormalClass { name = name, rest = rest })
+    [ P.backtrackable <|
+      P.succeed (\name rest -> CreatorNormalClass { name = name, rest = rest })
       |= referenceType
       |. P.spaces
       |= classCreatorRest
+    , P.succeed (\name rest -> CreatorNormalArray { name = name, rest = rest })
+      |= referenceType
+      |. P.spaces
+      |= P.lazy (\_ -> arrayCreatorRest)
+    --, P.succeed (\typeArgs name rest -> CreatorTypeArgs TODO
+    --               { typeArgs = typeArgs, name = name, rest = rest })
     ]
+
+arrayCreatorRest : Parser ArrayCreatorRest
+arrayCreatorRest =
+   P.succeed identity
+   |. P.symbol "["
+   |= P.oneOf
+      [ P.succeed (\arrays init -> ArrayCreatorRestInit
+                                      { arrays = arrays, init = init })
+        |. P.symbol "]"
+        |. P.spaces
+        |= brackets
+        |. P.spaces
+        |= arrayInitializer
+      , P.succeed (\expr exprs arrays -> ArrayCreatorRestExpressions
+                             { expressions = expr :: exprs, arrays = arrays })
+        |= expression
+        |. P.spaces
+        |. P.symbol "]"
+        |= list
+           ( P.succeed identity
+             |. P.symbol "["
+             |. P.spaces
+             |= expression
+             |. P.spaces
+             |. P.symbol "]"
+           ) 
+        |. P.spaces
+        |= brackets
+      ]
 
 classCreatorRest : Parser ClassCreatorRest
 classCreatorRest =
