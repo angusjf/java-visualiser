@@ -5,6 +5,8 @@ import Package.Graph exposing (..)
 import JavaParser as JP
 import Parser
 import List.Nonempty as Nonempty exposing (Nonempty(..))
+import JavaAstHelpers
+import Set
 
 type alias Subgraph =
   { entity : Entity
@@ -20,7 +22,6 @@ fromSources srcs =
     packageSubgraphs =
       srcs
       |> List.filterMap toAst
-      --|> Debug.log "asts: "
       |> List.concatMap compUnitToSubgraph
       |> groupByPackage
   in
@@ -138,11 +139,28 @@ interfaceToSubgraph enum pkg mod = Debug.todo "interfaceToSubgraph"
 -- TODO could be a reference anywhere in here...
 getReferences : String -> JP.ClassBody -> List NodeId
 getReferences pkg body =
-  body.declarations
-  |> List.filterMap onlyMembers
-  |> List.map Tuple.second
-  |> List.filterMap memberToAttribute
-  |> List.concatMap (attributeToNodeIds pkg)
+  let
+    inMembers =
+      body.declarations
+      |> List.filterMap onlyMembers
+      |> List.map Tuple.second
+      |> List.filterMap memberToAttribute
+      |> List.concatMap (attributeToNodeIds pkg)
+    allReferences =
+        JavaAstHelpers.getRefsInClassBody body
+        |> removeDuplicates
+        |> List.map (prefixIfNotAlready pkg)
+  in
+    Debug.log "refs:" allReferences
+
+prefixIfNotAlready : String -> String -> String
+prefixIfNotAlready pkg name =
+    if String.contains "." name
+        then name
+        else pkg ++ "." ++ name
+
+removeDuplicates : List comparable -> List comparable
+removeDuplicates = Set.toList << Set.fromList
 
 -- TODO: I should check imports... package might be different
 attributeToNodeIds : String -> Attribute -> List NodeId
