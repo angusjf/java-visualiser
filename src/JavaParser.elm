@@ -563,12 +563,14 @@ type Primary
   | PrimaryThis (List Expression)
   | PrimarySuper SuperSuffix
   | PrimaryNew Creator
-  {-
-  | PrimaryTODOWHAT
-    { NonWildcardTypeArguments
-    , (ExplicitGenericInvocationSuffix | this (List Expression))
+  | PrimaryTypeArgsAndEGIS
+    { typeArgs : List TypeArgument
+    , suffix : ExplicitGenericInvocationSuffix
     }
-  -}
+  | PrimaryTypeArgsAndGeneric
+    { typeArgs : List TypeArgument
+    , thisArgs : List Expression
+    }
   | PrimaryIdentifier
     { identifier : String
     , suffix : Maybe IdentifierSuffix
@@ -595,7 +597,10 @@ type SuperSuffix
 
 type ExplicitGenericInvocationSuffix
   = EGISSuper SuperSuffix
-  | EGISIdentifier -- String (List Expression) TODO
+  | EGISIdentifier
+    { identifier : String
+    , args : (List Expression)
+    }
 
 -- }}}
 
