@@ -3,6 +3,7 @@ port module Visualiser exposing
 
 import Element exposing (Element)
 import Element.Input
+import CustomElement as CElement
 import Force
 import CustomSvg
 import Graph exposing (Graph)
@@ -258,27 +259,23 @@ viewNodes { viewNode, getRect } nodeList =
 
 viewOverlay : Model n e -> Element (Msg n)
 viewOverlay model =
-  Element.column
-    []
-    [ Element.Input.button
-        [] <|
+  CElement.column
+    [ CElement.button <|
         if model.static then
             { onPress = Just (SetStatic False)
-            , label = Element.text "Enable Forces"
+            , label = "Enable Forces"
             }
         else
             { onPress = Just (SetStatic True)
-            , label = Element.text "Disable Forces"
+            , label = "Disable Forces"
             }
-    , Element.Input.button
-        []
+    , CElement.button
         { onPress = Just SnapToCircle
-        , label = Element.text "Reset Positions"
+        , label = "Reset Positions"
         }
-    , Element.Input.button
-        []
+    , CElement.button
         { onPress = Just ExportSvg
-        , label = Element.text "Save as SVG"
+        , label = "Save as SVG"
         }
     ]
 

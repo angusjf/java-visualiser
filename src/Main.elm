@@ -5,6 +5,7 @@ import Browser.Events
 import Element exposing (Element)
 import Element.Input
 import Element.Font
+import CustomElement as CElement
 import Visualiser
 import Config exposing (Config)
 import Graph exposing (Graph)
@@ -24,6 +25,7 @@ type alias File =
 type Menu
  = Main
  | SelectFiles
+ | SelectGraph
 
 type alias Model n e =
   { files : List (File, Bool)
@@ -92,22 +94,24 @@ init2 fromSources instance (config, inFiles) =
   let
     files = List.map (\f -> (f, True)) inFiles
     graphs = fromSources <| filesToStrings files
+    sgav = 
+         Maybe.map
+           (\(n, graph) -> (n, Visualiser.init config graph instance))
+           (List.head graphs)
   in
     ({ files = files
      , config = config
      , fromSources = fromSources
      , menu = Main
      , graphs = graphs
-     , selectedGraphAndVisualiser =
-         if List.length graphs == 1 then
-            Maybe.map
-              (\(n, graph) -> (n, Visualiser.init config graph instance))
-              (List.head graphs)
-         else Nothing
+     , selectedGraphAndVisualiser = sgav
      , instance = instance
      }
     , Cmd.none
     )
+
+isJust : Maybe a -> Bool
+isJust = Maybe.withDefault False << Maybe.map (always True)
 
 update : Msg n e -> Model n e -> (Model n e, Cmd (Msg n e))
 update msg model =
@@ -163,7 +167,8 @@ update msg model =
         setFiles files model
     GraphSelected (name, graph) ->
       ( { model
-          | selectedGraphAndVisualiser =
+          | menu = Main
+          , selectedGraphAndVisualiser =
              Just
                ( name
                , Visualiser.init
@@ -199,8 +204,10 @@ setFiles files model =
                     )
                 Nothing ->
                     ( newModel
-                    , let msg = "Compilation failed for package '"
-                                 ++ selectedGraph ++ "'"
+                    , let msg =
+                        case selectedGraph of
+                            "" -> "Compilation failed for unnamed package"
+                            g  -> "Compilation failed for package '" ++ g ++ "'"
                       in infoMessage msg
                     )
         Nothing ->
@@ -249,8 +256,9 @@ view model =
   , body = [ Element.layout
              [ VsColor.fontColor VsColor.Foreground
              , Element.Font.size 13
+             , Element.padding 4
              ] <|
-             Element.column [] <|
+             CElement.column <|
                case model.selectedGraphAndVisualiser of
                  Just (_, vis) -> 
                    [ Visualiser.view model.config vis
@@ -259,24 +267,25 @@ view model =
                    , viewOverlay model
                    ]
                  Nothing ->
-                   [ viewSelectGraph model.graphs
+                   [ viewNoGraphError
                    ]
            ]
   }
 
+viewNoGraphError : Element (Msg n e)
+viewNoGraphError =
+  CElement.text "Sorry! I couldn't find any Java classes in your open workspaces"
+
 viewSelectGraph : List (String, Graph n e) -> Element (Msg n e)
 viewSelectGraph options =
-  Element.column
-    [] <|
-    [ Element.text "Multiple packages in workspace!"
-    , Element.text "Please select one to continue:"
-    , Element.column
-        [] <|
+  CElement.column <|
+    [ CElement.text "Please select a package to continue:"
+    , CElement.column <|
         List.map
           (\(name, graph) ->
-               Element.Input.button []
+               CElement.button
                  { onPress = Just <| GraphSelected (name, graph)
-                 , label = Element.text name
+                 , label = name
                  }
           )
           options
@@ -287,18 +296,23 @@ viewOverlay model =
  case model.menu of
    SelectFiles ->
        viewSelectFilesPopup model.files
+   SelectGraph ->
+       viewSelectGraph model.graphs
    Main ->
-       Element.column
-         []
-         [ Element.Input.button 
-           []
+       CElement.column
+         [ CElement.button 
            { onPress = Just (ViewMenu SelectFiles)
-           , label = Element.text "Select Files..."
+           , label = "Select Files..."
            }
          , case model.selectedGraphAndVisualiser of
              Just (selectedGraph, vis) ->
-               Element.column []
-                 [ Element.text <| "Current Graph: '" ++ selectedGraph ++ "'"
+               CElement.column
+                 [ CElement.button 
+                   { onPress = Just (ViewMenu SelectGraph)
+                   , label = case selectedGraph of
+                               "" -> "Unnamed Package"
+                               g  -> "Package: '" ++ selectedGraph ++ "'"
+                   }
                  , Visualiser.viewOverlay vis
                        |> Element.map VisualiserMsg
                  ]
@@ -308,21 +322,19 @@ viewOverlay model =
 
 viewSelectFilesPopup : List (File, Bool) -> Element (Msg n e)
 viewSelectFilesPopup files =
-  Element.column
-    [] <|
+  CElement.column <|
     (List.map viewFileSelect files) ++ 
-    [ Element.Input.button
-      []
+    [ CElement.button
       { onPress = Just (ViewMenu Main)
-      , label = Element.text "back"
+      , label = "back"
       }
     ]
 
 viewFileSelect : (File, Bool) -> Element (Msg n e)
 viewFileSelect (file, sel) =
   Element.row
-    []
-    [ Element.text <| trimUntilRev (\c -> c == '/') file.uri
+    [ Element.spacing 8 ]
+    [ CElement.text <| trimUntilRev (\c -> c == '/') file.uri
     , toggleFileButton (file, sel)
     ]
 
@@ -347,10 +359,9 @@ trimUntil f str =
 
 toggleFileButton : (File, Bool) -> Element (Msg n e)
 toggleFileButton (file, sel) =
-  Element.Input.button
-    []
+  CElement.button
     { onPress = Just <| SetFileSelected file (not sel)
-    , label = Element.text <| if sel then " [exclude]" else " [include]"
+    , label = if sel then "✓" else "✕"
     }
 
 subscriptions : Model n e -> Sub (Msg n e)

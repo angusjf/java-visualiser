@@ -51,3 +51,8 @@ fontColor : VsColor -> Element.Attribute msg
 fontColor color =
   Element.htmlAttribute <|
     Html.Attributes.style "color" (vsColor color)
+
+backgroundColor : VsColor -> Element.Attribute msg
+backgroundColor color =
+  Element.htmlAttribute <|
+    Html.Attributes.style "background-color" (vsColor color)
