@@ -1,7 +1,6 @@
 port module Visualiser exposing
   ( init, view, viewOverlay, update, tick, withConfig, withGraph, Model, Msg )
 
-import Random
 import Element exposing (Element)
 import Element.Input
 import Force
@@ -28,6 +27,7 @@ type alias Model n e =
   , scale : Float
   , movedBetweenClicks : Bool
   , instance : Instance n e (Msg n)
+  , static : Bool
   }
 
 type Msg n
@@ -36,6 +36,8 @@ type Msg n
   | Move (Float, Float)
   | ExportSvg
   | Scroll Float
+  | SetStatic Bool
+  | SnapToCircle
 
 port exportSvg : () -> Cmd msg
 
@@ -44,18 +46,20 @@ withoutSelfLoops = List.filter (\{to, from} -> to /= from)
 
 init : Config -> Graph n e -> Instance n e (Msg n) -> Model n e
 init config graph instance =
-  { nodes = withRandomPositions graph.nodes
-  , edges = withoutSelfLoops graph.edges
-  , draggedNode = Nothing
-  , simulation = getInitialSimulation
-                   config
-                   instance
-                   (withRandomPositions graph.nodes)
-                   (withoutSelfLoops graph.edges)
-  , scale = 1
-  , movedBetweenClicks = False
-  , instance = instance
-  }
+  let
+    posNodes = withPositions config.width config.height graph.nodes
+    noLoops = withoutSelfLoops graph.edges
+    static = False
+  in
+    { nodes = posNodes
+    , edges = noLoops
+    , draggedNode = Nothing
+    , simulation = getInitialSimulation config static instance posNodes noLoops
+    , scale = 1
+    , movedBetweenClicks = False
+    , instance = instance
+    , static = static
+    }
 
 diff : List (PosNode n) -> List (Graph.Node n)
                         -> (List (PosNode n), List (Graph.Node n))
@@ -73,17 +77,15 @@ withGraph config graph model =
   let
     updatedNodes = List.map (updateNode graph.nodes) model.nodes
     (keep, new) = diff updatedNodes graph.nodes
-    newNodes = keep ++ withRandomPositions new
+    newNodes = keep ++ withPositions config.width config.height new
+    noLoops = withoutSelfLoops graph.edges
   in 
     { model
       | nodes = newNodes
-      , edges = withoutSelfLoops graph.edges
+      , edges = noLoops
       , draggedNode = Nothing
-      , simulation = getInitialSimulation
-                       config
-                       model.instance
-                       (withRandomPositions graph.nodes)
-                       (withoutSelfLoops graph.edges)
+      , simulation = getInitialSimulation config model.static
+                                              model.instance newNodes noLoops
     }
 
 updateNode : List (Graph.Node n) -> PosNode n -> PosNode n
@@ -115,15 +117,13 @@ update config msg model =
         (False, Just node) ->
           let
             newNodes = upsert (click model.instance node) model.nodes 
+            s = getInitialSimulation config model.static
+                                           model.instance newNodes model.edges
           in
             { model
               | draggedNode = Nothing
               , nodes = newNodes
-              , simulation = getInitialSimulation
-                               config
-                               model.instance
-                               newNodes
-                               model.edges
+              , simulation = s
             }
         (True, Just node) ->
           { model
@@ -164,12 +164,41 @@ update config msg model =
           }  
       , Cmd.none
       )
+    SetStatic bool ->
+      ( { model
+          | static = bool
+          , simulation = getInitialSimulation
+                            config
+                            bool
+                            model.instance
+                            model.nodes
+                            model.edges
+        }
+      , Cmd.none
+      )
+    SnapToCircle ->
+      let
+        oldNodes = List.map .data model.nodes
+        newNodes = withPositions config.width config.height oldNodes
+      in
+        ( { model
+            | nodes = newNodes
+            , simulation = getInitialSimulation
+                              config
+                              model.static
+                              model.instance
+                              newNodes
+                              model.edges
+          }
+        , Cmd.none
+        )
 
 withConfig : Config -> Model n e -> Model n e
 withConfig config model =
   { model
     | simulation = getInitialSimulation
                      config
+                     model.static
                      model.instance
                      model.nodes
                      model.edges
@@ -232,11 +261,25 @@ viewOverlay model =
   Element.column
     []
     [ Element.Input.button
+        [] <|
+        if model.static then
+            { onPress = Just (SetStatic False)
+            , label = Element.text "Enable Forces"
+            }
+        else
+            { onPress = Just (SetStatic True)
+            , label = Element.text "Disable Forces"
+            }
+    , Element.Input.button
+        []
+        { onPress = Just SnapToCircle
+        , label = Element.text "Reset Positions"
+        }
+    , Element.Input.button
         []
         { onPress = Just ExportSvg
-        , label = Element.text "Save SVG"
+        , label = Element.text "Save as SVG"
         }
-    , getInfo model
     ]
 
 getInfo : Model n e -> Element (Msg n)
@@ -286,27 +329,15 @@ unique l =
     x::xs -> not (List.member x xs) && unique xs
     [] -> True
 
-getRandomPositions : Int -> (List Float, List Float)
-getRandomPositions num_ =
+withPositions : Float -> Float -> List (Graph.Node n) -> List (PosNode n)
+withPositions width height entities =
   let
-    helper : Random.Seed -> Int -> (List Float, List Float)
-    helper seed n =
-      let
-        ns = List.map toFloat (List.range 0 n)
-        gen = Random.list n (Random.uniform 0 ns)
-        (xs, seed2) = Random.step gen seed
-        (ys, seed3) = Random.step gen seed2
-      in
-       if unique (List.map2 Tuple.pair xs ys)
-         then (xs, ys)
-         else helper seed3 n
-   in
-     helper (Random.initialSeed 1975) num_
-
-withRandomPositions : List (Graph.Node n) -> List (PosNode n)
-withRandomPositions entities =
-  let
-    (xs, ys) = getRandomPositions (List.length entities)
+    num = List.length entities
+    xs = List.map (\t -> a * width * sin t + width / 2) ts
+    ys = List.map (\t -> a * height * cos t + height / 2) ts
+    angle = (2 * pi) / toFloat num
+    ts = List.map (\t -> angle * toFloat t) <| List.range 0 (num - 1)
+    a = 0.3
   in
     List.map3 wrap entities xs ys
 
@@ -320,11 +351,12 @@ tick model =
       , simulation = newState
     }
 
-getInitialSimulation : Config -> Instance n e (Msg n)
+getInitialSimulation : Config -> Bool
+                              -> Instance n e (Msg n)
                               -> List (PosNode n)
                               -> List (Graph.Edge e)
                               -> Force.State Graph.NodeId
-getInitialSimulation config { getRect } nodes edges =
+getInitialSimulation config static { getRect } nodes edges =
   let
     edgesWithoutLoops =
       edges
@@ -354,9 +386,13 @@ getInitialSimulation config { getRect } nodes edges =
                    )
     nodeIds = List.map .id nodes
     forces =
-      [ Force.center (config.width / 2) (config.height / 2)
-      , Force.customLinks 1 edgesWithoutLoops
-      , Force.manyBodyStrength (-60) nodeIds
-      ]
+      if static then
+        [
+        ]
+      else
+        [ Force.center (config.width / 2) (config.height / 2)
+        , Force.customLinks 1 edgesWithoutLoops
+        , Force.manyBodyStrength (-60) nodeIds
+        ]
   in
     Force.simulation forces

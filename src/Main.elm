@@ -22,7 +22,7 @@ type alias File =
   }
 
 type Menu
- = None
+ = Main
  | SelectFiles
 
 type alias Model n e =
@@ -96,7 +96,7 @@ init2 fromSources instance (config, inFiles) =
     ({ files = files
      , config = config
      , fromSources = fromSources
-     , menu = None
+     , menu = Main
      , graphs = graphs
      , selectedGraphAndVisualiser =
          if List.length graphs == 1 then
@@ -287,7 +287,7 @@ viewOverlay model =
  case model.menu of
    SelectFiles ->
        viewSelectFilesPopup model.files
-   None ->
+   Main ->
        Element.column
          []
          [ Element.Input.button 
@@ -298,7 +298,7 @@ viewOverlay model =
          , case model.selectedGraphAndVisualiser of
              Just (selectedGraph, vis) ->
                Element.column []
-                 [ Element.text <| "viewing graph for '" ++ selectedGraph ++ "'"
+                 [ Element.text <| "Current Graph: '" ++ selectedGraph ++ "'"
                  , Visualiser.viewOverlay vis
                        |> Element.map VisualiserMsg
                  ]
@@ -313,7 +313,7 @@ viewSelectFilesPopup files =
     (List.map viewFileSelect files) ++ 
     [ Element.Input.button
       []
-      { onPress = Just (ViewMenu SelectFiles)
+      { onPress = Just (ViewMenu Main)
       , label = Element.text "back"
       }
     ]

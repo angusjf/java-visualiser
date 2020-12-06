@@ -1,4 +1,4 @@
-module Geometry exposing
+module Geometry exposing (..) {-
   ( Point , point , pointX , pointY
   , move
   , midpoint
@@ -9,6 +9,7 @@ module Geometry exposing
   , radius
   , lineBetween
   )
+-}
 
 type Point = Point { x : Float, y : Float }
 
@@ -88,7 +89,8 @@ between x alpha beta = x >= alpha && x <= beta
 lineBetween : Rect -> Rect -> (Point, Point)
 lineBetween from to =
   let
-    m = (centerY to - centerY from) / (centerX to - centerX from)
+    unsafeM = (centerY to - centerY from) / (centerX to - centerX from)
+    m = if isNaN unsafeM || isInfinite unsafeM then 99999999 else unsafeM
     c = (centerY from) - m * (centerX from)
     op = 
         if centerX from < centerX to && centerY from < centerY to then
