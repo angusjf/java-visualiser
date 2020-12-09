@@ -204,8 +204,9 @@ setFiles files model =
                     )
                 Nothing ->
                     ( newModel
-                    , let msg =
-                        case selectedGraph of
+                    , let
+                        msg =
+                          case selectedGraph of
                             "" -> "Compilation failed for unnamed package"
                             g  -> "Compilation failed for package '" ++ g ++ "'"
                       in infoMessage msg

@@ -610,7 +610,7 @@ type ExplicitGenericInvocationSuffix
 
 type Creator
   = CreatorTypeArgs
-    { typeArgs : Nonempty TypeArgument
+    { typeArgs : List TypeArgument
     , name : ReferenceType
     , rest : ClassCreatorRest
     }
@@ -1640,15 +1640,26 @@ primary =
       |. P.keyword "this"
       |. P.spaces
       |= optionalList (P.lazy (\_ -> arguments))
-    , P.succeed PrimaryNew
-      |. P.keyword "new"
-      |. P.spaces
-      |= creator
-    -- TODO INCOMPLETE
     , P.succeed PrimarySuper
       |. P.keyword "super"
       |. P.spaces
       |= superSuffix
+    , P.succeed PrimaryNew
+      |. P.keyword "new"
+      |. P.spaces
+      |= creator
+    , P.backtrackable <| P.succeed (\typeArgs suffix -> PrimaryTypeArgsAndEGIS
+                                       { typeArgs = typeArgs, suffix = suffix })
+      |= typeArguments
+      |. P.spaces
+      |= explicitGenericInvocationSuffix
+    , P.succeed (\typeArgs this -> PrimaryTypeArgsAndGeneric
+                                       { typeArgs = typeArgs, thisArgs = this })
+      |= typeArguments
+      |. P.spaces
+      |. P.keyword "this"
+      |. P.spaces
+      |= arguments
     , P.succeed VoidDotClass
       |. P.keyword "void"
       |. P.spaces
@@ -1674,8 +1685,13 @@ creator =
       |= referenceType
       |. P.spaces
       |= P.lazy (\_ -> arrayCreatorRest)
-    --, P.succeed (\typeArgs name rest -> CreatorTypeArgs TODO
-    --               { typeArgs = typeArgs, name = name, rest = rest })
+    , P.succeed (\typeArgs name rest -> CreatorTypeArgs
+                   { typeArgs = typeArgs, name = name, rest = rest })
+      |= typeArguments
+      |. P.spaces
+      |= referenceType
+      |. P.spaces
+      |= classCreatorRest
     ]
 
 arrayCreatorRest : Parser ArrayCreatorRest
@@ -1726,11 +1742,25 @@ superSuffix =
       |= optionalList arguments
     ]
 
-explicitGenericInvocationSuffix : Parser ExplicitGenericInvocationSuffix
-explicitGenericInvocationSuffix = P.oneOf [] -- TODO use `arguments`
-
 explicitGenericInvocation : Parser ExplicitGenericInvocation
-explicitGenericInvocation = P.oneOf [] -- TODO
+explicitGenericInvocation =
+  P.succeed ExplicitGenericInvocation
+    |= typeArguments
+    |. P.spaces
+    |= explicitGenericInvocationSuffix
+
+explicitGenericInvocationSuffix : Parser ExplicitGenericInvocationSuffix
+explicitGenericInvocationSuffix =
+    P.oneOf
+      [ P.succeed EGISSuper
+        |. P.keyword "super"
+        |. P.spaces
+        |= superSuffix
+      , P.succeed (\id args -> EGISIdentifier { identifier = id, args = args } )
+        |= identifier
+        |. P.spaces
+        |= arguments
+      ]
 
 arguments : Parser (List Expression)
 arguments = bracketed (commas (P.lazy (\_ -> expression)))
