@@ -5,7 +5,7 @@ import Parser as P exposing (Parser, (|=), (|.), Step)
 import List.Nonempty as Nonempty exposing (Nonempty(..))
 import Regex
 
--- TODO: Lambda expresions, anything else new in Java 8 grammar
+-- TODO: Lambda expresions, :: scoper, anything else new in Java 8 grammar
 
 -- types i {{{
 
@@ -777,7 +777,12 @@ package =
     |. P.spaces
     |= qualifiedIdentifier
     |. P.spaces
+    |. optional dotStar -- TODO
+    |. P.spaces
     |. P.symbol ";"
+
+dotStar : Parser ()
+dotStar = P.symbol "." |. P.spaces |. P.symbol ";"
 
 qualifiedIdentifier : Parser String
 qualifiedIdentifier =

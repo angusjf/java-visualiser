@@ -74,15 +74,15 @@ nub eq list =
     [] -> []
 
 toAst : String -> Maybe JP.CompilationUnit
-toAst src = toMaybeLog <| JP.parse JP.compilationUnit src
+toAst src = toMaybeLog (JP.parse JP.compilationUnit src) src
 
-toMaybeLog : Result a b -> Maybe b
-toMaybeLog res =
+toMaybeLog : Result a b -> String -> Maybe b
+toMaybeLog res src =
   case res of
     Ok x ->
-      Just x
+      always (Just x) (Debug.log "toMaybeLog:" (String.left 100 src))
     Err e ->
-      always Nothing (Debug.log "toMaybeLog: " e)
+      always Nothing (Debug.log "toMaybeLog: " (e, String.left 100 src))
 
 compUnitToSubgraph : JP.CompilationUnit -> List Subgraph
 compUnitToSubgraph unit =
@@ -131,10 +131,48 @@ normalClassToSubgraph class pkg mod =
   }
 
 enumToSubgraph : JP.EnumDeclaration -> String -> (List JP.Modifier) -> Subgraph
-enumToSubgraph enum pkg mod = Debug.todo "enumToSubgraph"
+enumToSubgraph enum pkg mod =
+  { entity = { pkg = pkg
+             , name = enum.identifier
+             , kind = Enum 
+             , access = if List.member JP.Public mod
+                          then Public
+                          else if List.member JP.Private mod
+                            then Private
+                            else Protected
+             , static = List.member JP.Static mod
+             , final = List.member JP.Final mod
+             , abstract = List.member JP.Abstract mod
+             , publicAttributes = [] -- TODO
+             , publicMethods = []
+             , expansion = Not
+             }
+  , parent = Nothing
+  , interfaces = []
+  , references = []
+  }
 
 interfaceToSubgraph : JP.InterfaceDeclaration -> String -> (List JP.Modifier) -> Subgraph
-interfaceToSubgraph enum pkg mod = Debug.todo "interfaceToSubgraph"
+interfaceToSubgraph enum pkg mod =
+  { entity = { pkg = pkg
+             , name = "TODO"
+             , kind = Interface
+             , access = if List.member JP.Public mod
+                          then Public
+                          else if List.member JP.Private mod
+                            then Private
+                            else Protected
+             , static = List.member JP.Static mod
+             , final = List.member JP.Final mod
+             , abstract = List.member JP.Abstract mod
+             , publicAttributes = [] -- TODO
+             , publicMethods = [] -- TODO
+             , expansion = Not
+             }
+  , parent = Nothing
+  , interfaces = [] -- TODO
+  , references = [] -- TODO
+  }
 
 -- TODO could be a reference anywhere in here...
 getReferences : String -> JP.ClassBody -> List NodeId

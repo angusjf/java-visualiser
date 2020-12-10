@@ -61,6 +61,13 @@ port renameFile : ((Uri, Uri) -> msg) -> Sub msg
 port configChanged : (Config -> msg) -> Sub msg
 port infoMessage : String -> Cmd msg
 
+temp_log : List (File, Bool) -> List (File, Bool)
+temp_log fs =
+  let
+    _ = List.map (\({uri}, _) -> Debug.log "-> " uri) fs
+  in
+    fs
+
 toGraph : (List String -> List (String, Graph n e)) -> List (File, Bool)
                                           -> String -> Maybe (Graph n e)
 toGraph fromSources files name =
@@ -93,7 +100,7 @@ init2 : (List String -> List (String, Graph n e))
 init2 fromSources instance (config, inFiles) =
   let
     files = List.map (\f -> (f, True)) inFiles
-    graphs = fromSources <| filesToStrings files
+    graphs = fromSources <| filesToStrings <| temp_log <| files
     sgav = 
          Maybe.map
            (\(n, graph) -> (n, Visualiser.init config graph instance))
