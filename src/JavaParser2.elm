@@ -3,36 +3,50 @@ module JavaParser2 exposing (CompilationUnit, compilationUnit)
 import Parser as P exposing (Parser, (|.), (|=))
 import Set exposing (Set)
 import Char exposing (Char)
+import Regex
 
+-- {{{ MOCK TYPES
 
---- {{{
-
--- MOCK TYPES
 todo = Debug.todo "mock parser"
 type InterfaceDeclaration = TODO
 interfaceDeclaration = todo
 type Annotation = TODO0
 annotation = todo
-type VariableInitializer = TODO1
-variableInitializer = todo
-type UnannType = TODO2
-unannType = todo
-type MethodDeclaration = TODO3
-methodDeclaration = todo
 type InstanceInitializer = TODO4
 instanceInitializer = todo
 type StaticInitializer = TODO5
 staticInitializer = todo
 type ConstructorDeclaration = TODO6
 constructorDeclaration = todo
-type EnumDeclaration = EnumDeclaration
+type EnumDeclaration = TODO7
 enumDeclaration = todo
+type ArrayInitializer = TODO8
+arrayInitializer = todo
+type Expression = TODO9
+expression = todo
+type MethodBody = TODO10
+methodBody = todo
+boolean = todo
 
 ---}}}
 
 type Either a b = Left a | Right b
 
--- helpers
+-- {{{ helpers
+
+--parse : Parser a -> String -> Result (List P.DeadEnd) a
+parse parser = P.run parser << removeCommentsAndTabs
+
+removeCommentsAndTabs : String -> String
+removeCommentsAndTabs src =
+  let
+    re =
+      "(\\/\\*(.|\\n)*?\\*\\/|\\/\\/.*$|\\t)"
+      |> Regex.fromStringWith
+         { caseInsensitive = False, multiline = True }
+      |> Maybe.withDefault Regex.never
+  in
+    Regex.replace re (always "") src
 
 or : (a -> x) -> (b -> x) -> Either a b -> x
 or f g e =
@@ -79,7 +93,9 @@ list p =
 dotted : Parser a -> Parser (List a)
 dotted = sepBy "."
 
--- Productions from §3 (Lexical Structure)
+--}}}
+
+-- {{{ Productions from §3 (Lexical Structure)
 
 keywords : Set String
 keywords =
@@ -158,8 +174,9 @@ literal =
     --, P.succeed Literal_NullLiteral nullLiteral
     ]
 
+-- }}}
 
--- Productions from §4 (Types, Values, and Variables)
+-- {{{ Productions from §4 (Types, Values, and Variables)
 
 type Type
   = Type_PrimitiveType PrimitiveType
@@ -477,8 +494,9 @@ wildcardBounds =
       |= referenceType
     ]
 
+-- }}}
 
--- Productions from §6 (Names)
+-- {{{ Productions from §6 (Names)
 
 type ModuleName = ModuleName (List Identifier)
 
@@ -508,8 +526,8 @@ type ExpressionName
   = ExpressionName_Identifier Identifier
   | ExpressionName_AmbiguousDotIdentifier AmbiguousName Identifier
 
-expresionName : Parser ExpressionName
-expresionName =
+expressionName : Parser ExpressionName
+expressionName =
   P.oneOf
     [ P.succeed ExpressionName_Identifier
       |= identifier
@@ -545,8 +563,9 @@ ambiguousName =
   P.succeed AmbiguousName
   |= dotted identifier
 
+-- }}}
 
--- Productions from §7 (Packages and Modules)
+-- {{{ Productions from §7 (Packages and Modules)
 
 type CompilationUnit
   = CompilationUnit_Ordinary OrdinaryCompilationUnit
@@ -599,7 +618,7 @@ packageDeclaration =
     |. P.spaces
     |= nonEmptySep "." identifier
     |. P.spaces
-    |. P.keyword ";"
+    |. P.symbol ";"
 
 
 type PackageModifier = PackageModifier Annotation
@@ -805,7 +824,9 @@ requiresModifier =
     , P.succeed RequiresModifier_Static     |. P.keyword "static"
     ]
 
--- Productions from §8 (Classes)
+--- }}}
+
+-- {{{ Productions from §8 (Classes)
 
 type ClassDeclaration
   = ClassDeclaration_Normal NormalClassDeclaration
@@ -978,7 +999,7 @@ fieldDeclaration =
     |. P.spaces
     |= variableDeclaratorList
     |. P.spaces
-    |. P.keyword ";"
+    |. P.symbol ";"
 
 
 type FieldModifier
@@ -1046,7 +1067,7 @@ variableInitializer : Parser VariableInitializer
 variableInitializer =
   P.oneOf
     [ P.succeed VariableInitializer_Expression
-      |= expresion
+      |= expression
     , P.succeed VariableInitializer_ArrayInitializer
       |= arrayInitializer
     ]
@@ -1079,93 +1100,320 @@ unannPrimitiveType =
     ]
 
 type UnannReferenceType
-  = UnannClassOrInterfaceType
-  | UnannTypeVariable
-  | UnannArrayType
+  = UnannReferenceType_Class UnannClassOrInterfaceType
+  | UnannReferenceType_TypeVariable UnannTypeVariable
+  | UnannReferenceType_Array UnannArrayType
+
 
 unannReferenceType : Parser UnannReferenceType
 unannReferenceType =
   P.oneOf
-    [ P.succeed UnannClassOrInterfaceType
+    [ P.succeed UnannReferenceType_Class
       |= unannClassOrInterfaceType
-    , P.succeed UnannTypeVariable
+    , P.succeed UnannReferenceType_TypeVariable
       |= unannTypeVariable
-    , P.succeed UnannArrayType
+    , P.succeed UnannReferenceType_Array
       |= unannArrayType
     ]
 
+type UnannClassOrInterfaceType
+  = UnannClassOrInterfaceType_Class UnannClassType
+  | UnannClassOrInterfaceType_Interface UnannInterfaceType
+
+unannClassOrInterfaceType : Parser UnannClassOrInterfaceType
+unannClassOrInterfaceType =
+  P.oneOf
+    [ P.succeed UnannClassOrInterfaceType_Class
+      |= unannClassType
+    , P.succeed UnannClassOrInterfaceType_Interface
+      |= unannInterfaceType
+    ]
+
+
+type UnannClassType
+  = UnannClassType_TypeIdentifer TypeIdentifier (Maybe TypeArguments)
+  | UnannClassType_Package PackageName (List Annotation) TypeIdentifier
+                           (Maybe TypeArguments)
+  | UnannClassType_Class UnannClassOrInterfaceType (List Annotation)
+                         TypeIdentifier (Maybe TypeArguments)
+
+unannClassType : Parser UnannClassType
+unannClassType =
+  P.oneOf
+    [ P.succeed UnannClassType_TypeIdentifer
+      |= typeIdentifier
+      |. P.spaces
+      |= optional typeArguments
+    , P.succeed UnannClassType_Package
+      |= packageName
+      |. P.spaces
+      |. P.symbol "."
+      |. P.spaces
+      |= list annotation
+      |. P.spaces
+      |= typeIdentifier
+      |. P.spaces
+      |= optional typeArguments
+    , P.succeed UnannClassType_Class
+      |= P.lazy (\_ -> unannClassOrInterfaceType)
+      |. P.spaces
+      |. P.symbol "."
+      |. P.spaces
+      |= list annotation
+      |. P.spaces
+      |= typeIdentifier
+      |. P.spaces
+      |= optional typeArguments
+    ]
+
+
+type UnannInterfaceType = UnannInterfaceType UnannClassType
+
+unannInterfaceType : Parser UnannInterfaceType
+unannInterfaceType =
+    P.succeed UnannInterfaceType
+    |= unannClassType
+
+
+type UnannTypeVariable = UnannTypeVariable TypeIdentifier
+
+unannTypeVariable : Parser UnannTypeVariable
+unannTypeVariable =
+    P.succeed UnannTypeVariable
+    |= typeIdentifier
+
+
+type UnannArrayType
+  = UnannArrayType_Primitive UnannPrimitiveType Dims
+  | UnannArrayType_Class UnannClassOrInterfaceType Dims
+  | UnannArrayType_TypeVariable UnannTypeVariable Dims
+
+unannArrayType : Parser UnannArrayType
+unannArrayType =
+  P.oneOf
+    [ P.succeed UnannArrayType_Primitive
+      |= unannPrimitiveType
+      |. P.spaces
+      |= dims
+    , P.succeed UnannArrayType_Class
+      |= unannClassOrInterfaceType
+      |. P.spaces
+      |= dims
+    , P.succeed UnannArrayType_TypeVariable
+      |= unannTypeVariable
+      |. P.spaces
+      |= dims
+    ]
+
+
+type MethodDeclaration =
+    MethodDeclaration (List MethodModifier) MethodHeader MethodBody
+
+methodDeclaration : Parser MethodDeclaration
+methodDeclaration =
+    P.succeed MethodDeclaration
+    |= list methodModifier
+    |. P.spaces
+    |= methodHeader
+    |. P.spaces
+    |= methodBody
+
+
+type MethodModifier
+  = MethodModifier_Annotation Annotation
+  | MethodModifier_Public
+  | MethodModifier_Protected
+  | MethodModifier_Private
+  | MethodModifier_Abstract
+  | MethodModifier_Static
+  | MethodModifier_Final
+  | MethodModifier_Synchronized
+  | MethodModifier_Native
+  | MethodModifier_Strictfp
+
+methodModifier : Parser MethodModifier
+methodModifier =
+  P.oneOf
+    [ P.succeed MethodModifier_Annotation |= annotation
+    , P.succeed MethodModifier_Public |. P.keyword "public"
+    , P.succeed MethodModifier_Protected |. P.keyword "protected"
+    , P.succeed MethodModifier_Private |. P.keyword "private"
+    , P.succeed MethodModifier_Abstract |. P.keyword "abstract"
+    , P.succeed MethodModifier_Static |. P.keyword "static"
+    , P.succeed MethodModifier_Final |. P.keyword "final"
+    , P.succeed MethodModifier_Synchronized |. P.keyword "synchronized"
+    , P.succeed MethodModifier_Native |. P.keyword "native"
+    , P.succeed MethodModifier_Static |. P.keyword "strictfp"
+    ]
+
+
+type MethodHeader
+  = MethodHeader_Result Result MethodDeclarator (Maybe Throws)
+  | MethodHeader_TypeParameters TypeParameters (List Annotation) Result
+                                           MethodDeclarator (Maybe Throws)
+
+methodHeader : Parser MethodHeader
+methodHeader =
+  P.oneOf
+    [ P.succeed MethodHeader_Result
+      |= result
+      |. P.spaces
+      |= methodDeclarator
+      |. P.spaces
+      |= optional throws
+    , P.succeed MethodHeader_TypeParameters
+      |= typeParameters
+      |. P.spaces
+      |= list annotation
+      |. P.spaces
+      |= result
+      |. P.spaces
+      |= methodDeclarator
+      |. P.spaces
+      |= optional throws
+    ]
+
+
+type Result = Result_UnannType UnannType | Result_Void
+
+result : Parser Result
+result =
+  P.oneOf
+    [ P.succeed Result_UnannType
+      |= unannType
+    , P.succeed Result_Void
+      |. P.keyword "void"
+    ]
+
+type MethodDeclarator =
+    MethodDeclarator Identifier (Maybe ReceiverParameter)
+                     (Maybe FormalParameterList) (Maybe Dims)
+
+methodDeclarator : Parser MethodDeclarator
+methodDeclarator =
+    P.succeed MethodDeclarator
+    |= identifier
+    |. P.spaces
+    |. P.symbol "("
+    |= optional
+       ( P.succeed identity
+         |= receiverParameter
+         |. P.symbol ","
+       )
+    |= optional formalParameterList
+    |. P.symbol ")"
+    |. P.spaces
+    |= optional dims
+
+
+type ReceiverParameter =
+    ReceiverParameter (List Annotation) UnannType (Maybe Identifier)
+
+receiverParameter : Parser ReceiverParameter
+receiverParameter =
+    P.succeed ReceiverParameter
+    |= list annotation
+    |. P.spaces
+    |= unannType
+    |. P.spaces
+    |= optional
+       ( P.succeed identity
+         |= identifier
+         |. P.symbol "."
+       )
+    |. P.spaces
+    |. P.keyword "this"
+
+
+type FormalParameterList = FormalParameterList (List FormalParameter)
+
+formalParameterList : Parser FormalParameterList
+formalParameterList =
+    P.succeed FormalParameterList
+    |= nonEmptySep "," formalParameter
+
+
+type FormalParameter
+  = FormalParameter_Normal (List VariableModifier) UnannType VariableDeclaratorId
+  | FormalParameter_Arity VariableArityParameter
+
+formalParameter : Parser FormalParameter
+formalParameter =
+  P.oneOf
+    [ P.succeed FormalParameter_Normal
+      |= list variableModifier
+      |. P.spaces
+      |= unannType
+      |. P.spaces
+      |= variableDeclaratorId
+    , P.succeed FormalParameter_Arity
+      |= variableArityParameter
+    ]
+
+
+type VariableArityParameter =
+    VariableArityParameter (List VariableModifier) UnannType (List Annotation)
+                                                   Identifier
+
+variableArityParameter : Parser VariableArityParameter
+variableArityParameter =
+    P.succeed VariableArityParameter
+    |= list variableModifier
+    |. P.spaces
+    |= unannType
+    |. P.spaces
+    |= list annotation
+    |. P.spaces
+    |. P.keyword "..."
+    |. P.spaces
+    |= identifier
+
+
+type VariableModifier
+  = VariableModifier_Annotation Annotation
+  | VariableModifier_Final
+
+variableModifier : Parser VariableModifier
+variableModifier =
+  P.oneOf
+    [ P.succeed VariableModifier_Annotation |= annotation
+    , P.succeed VariableModifier_Final |. P.keyword "final"
+    ]
+
+
+type Throws = Throws ExceptionTypeList
+
+throws : Parser Throws
+throws =
+  P.succeed Throws
+  |. P.keyword "throws"
+  |. P.spaces
+  |= exceptionTypeList
+
+
+type ExceptionTypeList = ExceptionTypeList (List ExceptionType)
+
+exceptionTypeList : Parser ExceptionTypeList
+exceptionTypeList =
+    P.succeed ExceptionTypeList
+    |= nonEmptySep "," exceptionType
+
+
+type ExceptionType
+  = ExceptionType_Class ClassType
+  | ExceptionType_TypeVariable TypeVariable
+
+exceptionType : Parser ExceptionType
+exceptionType =
+  P.oneOf
+    [ P.succeed ExceptionType_Class
+      |= classType
+    , P.succeed ExceptionType_TypeVariable
+      |= typeVariable
+   ]
+
 {-
-UnannClassOrInterfaceType:
-    UnannClassType
-    UnannInterfaceType
-
-
-UnannClassType:
-    TypeIdentifier (Maybe TypeArguments)
-    PackageName . (List Annotation) TypeIdentifier (Maybe TypeArguments)
-    UnannClassOrInterfaceType . (List Annotation) TypeIdentifier (Maybe TypeArguments)
-
-
-UnannInterfaceType:
-    UnannClassType
-
-
-UnannTypeVariable:
-    TypeIdentifier
-
-
-UnannArrayType:
-    UnannPrimitiveType Dims
-    UnannClassOrInterfaceType Dims
-    UnannTypeVariable Dims
-
-
-MethodDeclaration:
-    (List MethodModifier) MethodHeader MethodBody
-
-MethodModifier:
-    (one of)
-    Annotation public protected private
-    abstract static final synchronized native strictfp
-
-MethodHeader:
-    Result MethodDeclarator (Maybe Throws)
-    TypeParameters (List Annotation) Result MethodDeclarator (Maybe Throws)
-
-Result:
-    UnannType
-    void
-
-MethodDeclarator:
-    Identifier ( [ReceiverParameter ,] (Maybe FormalParameterList) ) (Maybe Dims)
-
-ReceiverParameter:
-    (List Annotation) UnannType [Identifier .] this
-
-FormalParameterList:
-    FormalParameter {, FormalParameter}
-
-FormalParameter:
-    (List VariableModifier) UnannType VariableDeclaratorId
-    VariableArityParameter
-
-VariableArityParameter:
-    (List VariableModifier) UnannType (List Annotation) ... Identifier
-
-VariableModifier:
-    Annotation
-    final
-
-Throws:
-    throws ExceptionTypeList
-
-ExceptionTypeList:
-    ExceptionType {, ExceptionType}
-
 !!
-ExceptionType:
-    ClassType
-    TypeVariable
 
 !!
 MethodBody:
@@ -1220,9 +1468,11 @@ EnumConstantModifier:
 
 EnumBodyDeclarations:
     ; (List ClassBodyDeclaration)
+-}
+-- }}}
 
--- Productions from §9 (Interfaces)
-
+-- {{{ Productions from §9 (Interfaces)
+{-
 InterfaceDeclaration:
     NormalInterfaceDeclaration
     AnnotationTypeDeclaration
@@ -1323,7 +1573,9 @@ MarkerAnnotation:
 SingleElementAnnotation:
     @ TypeName ( ElementValue )
 
--- Productions from §10 (Arrays)
+-- }}}
+
+-- {{{ Productions from §10 (Arrays)
 
 ArrayInitializer:
     { (Maybe VariableInitializerList) [,] }
@@ -1331,7 +1583,9 @@ ArrayInitializer:
 VariableInitializerList:
     VariableInitializer {, VariableInitializer}
 
--- Productions from §14 (Blocks and Statements)
+-- }}}
+
+-- {{{ Productions from §14 (Blocks and Statements)
 
 Block:
     { (Maybe BlockStatements) }
@@ -1538,7 +1792,9 @@ Resource:
     (List VariableModifier) LocalVariableType Identifier = Expression
     VariableAccess
 
--- Productions from §15 (Expressions)
+-- }}}
+
+-- {{{ Productions from §15 (Expressions)
 
 !!
 Primary:
@@ -1762,4 +2018,6 @@ SwitchExpression:
 !!
 ConstantExpression:
     Expression
+
+-- }}}
 -}
