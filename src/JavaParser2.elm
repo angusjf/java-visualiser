@@ -12,21 +12,15 @@ type InterfaceDeclaration = TODO
 interfaceDeclaration = todo
 type Annotation = TODO0
 annotation = todo
-type InstanceInitializer = TODO4
-instanceInitializer = todo
-type StaticInitializer = TODO5
-staticInitializer = todo
-type ConstructorDeclaration = TODO6
-constructorDeclaration = todo
 type EnumDeclaration = TODO7
 enumDeclaration = todo
-type ArrayInitializer = TODO8
-arrayInitializer = todo
 type Expression = TODO9
 expression = todo
-type MethodBody = TODO10
-methodBody = todo
 boolean = todo
+type ArgumentList = TODO1
+argumentList = todo
+type Primary = TODO2
+primary = todo
 
 ---}}}
 
@@ -1285,6 +1279,7 @@ result =
       |. P.keyword "void"
     ]
 
+
 type MethodDeclarator =
     MethodDeclarator Identifier (Maybe ReceiverParameter)
                      (Maybe FormalParameterList) (Maybe Dims)
@@ -1412,63 +1407,245 @@ exceptionType =
       |= typeVariable
    ]
 
-{-
-!!
 
-!!
-MethodBody:
-    Block
-    ;
+type MethodBody = MethodBody_Block Block | MethodBody_Semi
 
-!!
-InstanceInitializer:
-    Block
+methodBody : Parser MethodBody
+methodBody =
+  P.oneOf
+    [ P.succeed MethodBody_Block
+      |= block
+    , P.succeed MethodBody_Semi
+      |. P.symbol ";"
+    ]
 
-StaticInitializer:
-    static Block
 
-ConstructorDeclaration:
-    (List ConstructorModifier) ConstructorDeclarator (Maybe Throws) ConstructorBody
+type InstanceInitializer = InstanceInitializer Block
 
-ConstructorModifier:
-    (one of)
-    Annotation public protected private
+instanceInitializer : Parser InstanceInitializer
+instanceInitializer = 
+  P.succeed InstanceInitializer
+  |= block
 
-ConstructorDeclarator:
-    (Maybe TypeParameters) SimpleTypeName ( [ReceiverParameter ,] (Maybe FormalParameterList) )
 
-!!
-SimpleTypeName:
-    TypeIdentifier
+type StaticInitializer = StaticInitializer Block
 
-ConstructorBody:
-    { (Maybe ExplicitConstructorInvocation) (Maybe BlockStatements) }
+staticInitializer : Parser StaticInitializer
+staticInitializer =
+  P.succeed StaticInitializer
+  |. P.keyword "static"
+  |. P.spaces
+  |= block
 
-ExplicitConstructorInvocation:
-    (Maybe TypeArguments) this ( (Maybe ArgumentList) ) ;
-    (Maybe TypeArguments) super ( (Maybe ArgumentList) ) ;
-    ExpressionName . (Maybe TypeArguments) super ( (Maybe ArgumentList) ) ;
-    Primary . (Maybe TypeArguments) super ( (Maybe ArgumentList) ) ;
 
-EnumDeclaration:
-    (List ClassModifier) enum TypeIdentifier (Maybe Superinterfaces) EnumBody
+type ConstructorDeclaration =
+    ConstructorDeclaration (List ConstructorModifier) ConstructorDeclarator
+                           (Maybe Throws) ConstructorBody
 
-EnumBody:
-    { (Maybe EnumConstantList) [,] (Maybe EnumBodyDeclarations) }
+constructorDeclaration : Parser ConstructorDeclaration
+constructorDeclaration =
+    P.succeed ConstructorDeclaration
+    |= list constructorModifier
+    |. P.spaces
+    |= constructorDeclarator
+    |. P.spaces
+    |= optional throws
+    |. P.spaces
+    |= constructorBody
 
-EnumConstantList:
-    EnumConstant {, EnumConstant}
 
-EnumConstant:
-    (List EnumConstantModifier) Identifier [( (Maybe ArgumentList) )] (Maybe ClassBody)
+type ConstructorModifier
+  = ConstructorModifier_Annotation Annotation
+  | ConstructorModifier_Public
+  | ConstructorModifier_Protected
+  | ConstructorModifier_Private
 
-!!
-EnumConstantModifier:
-    Annotation
+constructorModifier : Parser ConstructorModifier
+constructorModifier =
+  P.oneOf
+    [ P.succeed ConstructorModifier_Annotation
+      |= annotation
+    , P.succeed ConstructorModifier_Public
+      |. P.keyword "public"
+    , P.succeed ConstructorModifier_Protected
+      |. P.keyword "protected"
+    , P.succeed ConstructorModifier_Private
+      |. P.keyword "private"
+    ]
 
-EnumBodyDeclarations:
-    ; (List ClassBodyDeclaration)
--}
+
+type ConstructorDeclarator =
+    ConstructorDeclarator (Maybe TypeParameters) SimpleTypeName
+                   --( [ReceiverParameter ,] (Maybe FormalParameterList) )
+
+constructorDeclarator : Parser ConstructorDeclarator
+constructorDeclarator = todo
+
+
+type SimpleTypeName = SimpleTypeName TypeIdentifier
+
+simpleTypeName : Parser SimpleTypeName
+simpleTypeName =
+  P.succeed SimpleTypeName
+  |= typeIdentifier
+
+
+type ConstructorBody = ConstructorBody (Maybe ExplicitConstructorInvocation)
+                                       (Maybe BlockStatements)
+
+constructorBody : Parser ConstructorBody
+constructorBody =
+  P.succeed ConstructorBody
+  |. P.symbol "{"
+  |. P.spaces
+  |= optional explicitConstructorInvocation
+  |. P.spaces
+  |= optional blockStatements
+  |. P.spaces
+  |. P.symbol "}"
+
+
+type ExplicitConstructorInvocation
+  = ExplicitConstructorInvocation_This 
+        (Maybe TypeArguments) (Maybe ArgumentList)
+  | ExplicitConstructorInvocation_Super
+        (Maybe TypeArguments) (Maybe ArgumentList)
+  | ExplicitConstructorInvocation_ExpressionSuper ExpressionName
+        (Maybe TypeArguments) (Maybe ArgumentList)
+  | ExplicitConstructorInvocation_PrimarySuper Primary
+        (Maybe TypeArguments) (Maybe ArgumentList)
+
+explicitConstructorInvocation : Parser ExplicitConstructorInvocation
+explicitConstructorInvocation =
+  P.oneOf
+    [ P.succeed ExplicitConstructorInvocation_This
+      |= optional typeArguments
+      |. P.spaces
+      |. P.keyword "this"
+      |. P.spaces
+      |. P.symbol "("
+      |. P.spaces
+      |= optional argumentList
+      |. P.spaces
+      |. P.symbol ")"
+      |. P.spaces
+      |. P.symbol ";"
+    , P.succeed ExplicitConstructorInvocation_Super
+      |= optional typeArguments
+      |. P.spaces
+      |. P.keyword "super"
+      |. P.spaces
+      |. P.symbol "("
+      |. P.spaces
+      |= optional argumentList
+      |. P.spaces
+      |. P.symbol ")"
+      |. P.spaces
+      |. P.symbol ";"
+    , P.succeed ExplicitConstructorInvocation_ExpressionSuper
+      |= expressionName
+      |. P.spaces
+      |. P.keyword "."
+      |. P.spaces
+      |= optional typeArguments
+      |. P.spaces
+      |. P.keyword "super"
+      |. P.spaces
+      |. P.symbol "("
+      |. P.spaces
+      |= optional argumentList
+      |. P.spaces
+      |. P.symbol ")"
+      |. P.spaces
+      |. P.symbol ";"
+    , P.succeed ExplicitConstructorInvocation_PrimarySuper
+      |= primary
+      |. P.spaces
+      |. P.keyword "."
+      |. P.spaces
+      |= optional typeArguments
+      |. P.spaces
+      |. P.keyword "super"
+      |. P.spaces
+      |. P.symbol "("
+      |. P.spaces
+      |= optional argumentList
+      |. P.spaces
+      |. P.symbol ")"
+      |. P.spaces
+      |. P.symbol ";"
+    ]
+
+
+type EnumBody = EnumBody (Maybe EnumConstantList) (Maybe EnumBodyDeclarations)
+
+enumBody : Parser EnumBody
+enumBody =
+  P.succeed EnumBody
+  |. P.symbol "{"
+  |. P.spaces
+  |= optional enumConstantList
+  |. P.spaces
+  |. P.symbol ","
+  |. P.spaces
+  |= optional enumBodyDeclarations
+  |. P.spaces
+  |. P.symbol "{"
+
+
+type EnumConstantList = EnumConstantList EnumConstant (List EnumConstant)
+
+enumConstantList : Parser EnumConstantList
+enumConstantList =
+  P.succeed EnumConstantList
+  |= enumConstant
+  |. P.spaces
+  |= list
+     ( P.succeed identity
+       |. P.symbol ","
+       |. P.spaces
+       |= enumConstant
+     )
+
+
+type EnumConstant = EnumConstant (List EnumConstantModifier) Identifier
+                                 (Maybe (Maybe ArgumentList)) (Maybe ClassBody)
+
+enumConstant =
+  P.succeed EnumConstant
+  |= list enumConstantModifier
+  |. P.spaces
+  |= identifier
+  |. P.spaces
+  |= optional
+     ( P.succeed identity
+       |. P.symbol "("
+       |. P.spaces
+       |= optional argumentList
+       |. P.spaces
+       |. P.symbol ")"
+     )
+  |. P.spaces
+  |= optional classBody
+
+
+type EnumConstantModifier = EnumConstantModifier Annotation
+
+enumConstantModifier : Parser EnumConstantModifier
+enumConstantModifier =
+  P.succeed EnumConstantModifier
+  |= annotation
+
+
+type EnumBodyDeclarations = EnumBodyDeclarations (List ClassBodyDeclaration)
+
+enumBodyDeclarations : Parser EnumBodyDeclarations
+enumBodyDeclarations = todo
+  P.succeed identity
+  |. P.symbol ";"
+  |. P.spaces
+  |= list classBodyDeclaration
+
 -- }}}
 
 -- {{{ Productions from §9 (Interfaces)
@@ -1572,27 +1749,59 @@ MarkerAnnotation:
 
 SingleElementAnnotation:
     @ TypeName ( ElementValue )
-
+-}
 -- }}}
 
 -- {{{ Productions from §10 (Arrays)
 
-ArrayInitializer:
-    { (Maybe VariableInitializerList) [,] }
+type ArrayInitializer = ArrayInitializer (Maybe VariableInitializerList)
 
-VariableInitializerList:
-    VariableInitializer {, VariableInitializer}
+arrayInitializer : Parser ArrayInitializer
+arrayInitializer =
+    P.succeed ArrayInitializer
+    |. P.symbol "{"
+    |= optional (P.lazy (\_ -> variableInitializerList))
+    |. P.spaces
+    |. optional (P.symbol ",")
+    |. P.symbol "}"
 
+
+type VariableInitializerList =
+    VariableInitializerList VariableInitializer (List VariableInitializer)
+
+variableInitializerList : Parser VariableInitializerList
+variableInitializerList =
+    P.succeed VariableInitializerList
+    |= variableInitializer
+    |. P.spaces
+    |= list
+       ( P.succeed identity
+         |. P.symbol ","
+         |. P.spaces
+         |= variableInitializer
+       )
+    
 -- }}}
 
 -- {{{ Productions from §14 (Blocks and Statements)
 
-Block:
-    { (Maybe BlockStatements) }
+type Block = Block (Maybe BlockStatements)
 
-BlockStatements:
-    BlockStatement (List BlockStatement)
+block : Parser Block
+block =
+  P.succeed Block
+  |. P.symbol "{"
+  |= optional blockStatements
+  |. P.symbol "}"
 
+
+type BlockStatements = TODO0000000000000
+
+blockStatements : Parser BlockStatements
+blockStatements =
+    P.succeed TODO0000000000000
+    --BlockStatement (List BlockStatement)
+    {-
 BlockStatement:
     LocalVariableDeclarationStatement
     ClassDeclaration
@@ -1791,11 +2000,11 @@ ResourceList:
 Resource:
     (List VariableModifier) LocalVariableType Identifier = Expression
     VariableAccess
-
+    -}
 -- }}}
 
 -- {{{ Productions from §15 (Expressions)
-
+{-
 !!
 Primary:
     PrimaryNoNewArray
@@ -2019,5 +2228,5 @@ SwitchExpression:
 ConstantExpression:
     Expression
 
--- }}}
 -}
+-- }}}
