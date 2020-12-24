@@ -8,10 +8,6 @@ import Regex
 -- {{{ MOCK TYPES
 
 todo = Debug.todo "mock parser"
-type InterfaceDeclaration = TODO
-interfaceDeclaration = todo
-type Annotation = TODO0
-annotation = todo
 type EnumDeclaration = TODO7
 enumDeclaration = todo
 type Expression = TODO9
@@ -21,6 +17,36 @@ type ArgumentList = TODO1
 argumentList = todo
 type Primary = TODO2
 primary = todo
+type ConditionalExpression = TODO3
+conditionalExpression = todo
+type YieldStatement = TODO4
+yieldStatement = todo
+type ThrowStatement = TODO5
+throwStatement = todo
+type TryStatement = TODO6
+tryStatement = todo
+type SynchronizedStatement = TODO112
+synchronizedStatement = todo
+type ReturnStatement = TODO11111
+returnStatement = todo
+type ContinueStatement = TODO111
+continueStatement = todo
+type BreakStatement = TODO10
+breakStatement = todo
+type ClassInstanceCreationExpression = TODO11
+classInstanceCreationExpression = todo
+type MethodInvocation = TODO44
+methodInvocation = todo
+type PostIncrementExpression = TODO231yy
+postIncrementExpression = todo
+type PostDecrementExpression = TODO23123df
+postDecrementExpression = todo
+type PreIncrementExpression = TODO231
+preIncrementExpression = todo
+type PreDecrementExpression = TODO23123s
+preDecrementExpression = todo
+type Assignment = TODO23123
+assignment = todo
 
 ---}}}
 
@@ -1649,107 +1675,430 @@ enumBodyDeclarations = todo
 -- }}}
 
 -- {{{ Productions from §9 (Interfaces)
-{-
-InterfaceDeclaration:
-    NormalInterfaceDeclaration
-    AnnotationTypeDeclaration
 
-NormalInterfaceDeclaration:
-    (List InterfaceModifier) interface TypeIdentifier (Maybe TypeParameters) (Maybe ExtendsInterfaces) InterfaceBody
+type InterfaceDeclaration
+ = InterfaceDeclaration_Normal NormalInterfaceDeclaration
+ | InterfaceDeclaration_Annotation AnnotationTypeDeclaration
 
-InterfaceModifier:
-    (one of)
-    Annotation public protected private
-    abstract static strictfp
+interfaceDeclaration : Parser InterfaceDeclaration
+interfaceDeclaration =
+  P.oneOf
+    [ P.succeed InterfaceDeclaration_Normal
+      |= normalInterfaceDeclaration
+    , P.succeed InterfaceDeclaration_Annotation
+      |= annotationTypeDeclaration
+    ]
 
-ExtendsInterfaces:
-    extends InterfaceTypeList
 
-InterfaceBody:
-    { (List InterfaceMemberDeclaration) }
+type NormalInterfaceDeclaration = NormalInterfaceDeclaration
+                 (List InterfaceModifier) TypeIdentifier (Maybe TypeParameters)
+                 (Maybe ExtendsInterfaces) InterfaceBody
 
-!!
-InterfaceMemberDeclaration:
-    ConstantDeclaration
-    InterfaceMethodDeclaration
-    ClassDeclaration
-    InterfaceDeclaration
-    ;
+normalInterfaceDeclaration : Parser NormalInterfaceDeclaration
+normalInterfaceDeclaration =
+  P.succeed NormalInterfaceDeclaration
+  |= list interfaceModifier
+  |. P.spaces
+  |. P.keyword "interface"
+  |. P.spaces
+  |= typeIdentifier
+  |. P.spaces
+  |= optional typeParameters
+  |. P.spaces
+  |= optional extendsInterfaces
+  |. P.spaces
+  |= interfaceBody
 
-ConstantDeclaration:
-    (List ConstantModifier) UnannType VariableDeclaratorList ;
 
-ConstantModifier:
-    (one of)
-    Annotation public
-    static final
+type InterfaceModifier
+ = InterfaceModifier_Annotation Annotation
+ | InterfaceModifier_Public
+ | InterfaceModifier_Protected
+ | InterfaceModifier_Private
+ | InterfaceModifier_Abstract 
+ | InterfaceModifier_Static 
+ | InterfaceModifier_Strictfp
 
-InterfaceMethodDeclaration:
-    (List InterfaceMethodModifier) MethodHeader MethodBody
+interfaceModifier : Parser InterfaceModifier
+interfaceModifier =
+  P.oneOf
+    [ P.succeed InterfaceModifier_Annotation
+      |= annotation
+    , P.succeed InterfaceModifier_Public
+      |. P.keyword "public"
+    , P.succeed InterfaceModifier_Protected
+      |. P.keyword "protected"
+    , P.succeed InterfaceModifier_Private
+      |. P.keyword "private"
+    , P.succeed InterfaceModifier_Abstract
+      |. P.keyword "abstract"
+    , P.succeed InterfaceModifier_Static
+      |. P.keyword "static"
+    , P.succeed InterfaceModifier_Strictfp
+      |. P.keyword "strictfp"
+    ]
 
-InterfaceMethodModifier:
-    (one of)
-    Annotation public private
-    abstract default static strictfp
 
-AnnotationTypeDeclaration:
-    (List InterfaceModifier) @ interface TypeIdentifier AnnotationTypeBody
+type ExtendsInterfaces = ExtendsInterfaces InterfaceTypeList
 
-AnnotationTypeBody:
-    { (List AnnotationTypeMemberDeclaration) }
+extendsInterfaces : Parser ExtendsInterfaces
+extendsInterfaces =
+    P.succeed ExtendsInterfaces
+    |. P.keyword "extends"
+    |. P.spaces
+    |= interfaceTypeList
 
-!!
-AnnotationTypeMemberDeclaration:
-    AnnotationTypeElementDeclaration
-    ConstantDeclaration
-    ClassDeclaration
-    InterfaceDeclaration
-    ;
 
-AnnotationTypeElementDeclaration:
-    (List AnnotationTypeElementModifier) UnannType Identifier ( ) (Maybe Dims) (Maybe DefaultValue) ;
+type InterfaceBody = InterfaceBody (List InterfaceMemberDeclaration)
 
-AnnotationTypeElementModifier:
-    (one of)
-    Annotation public
-    abstract
+interfaceBody : Parser InterfaceBody
+interfaceBody =
+    P.succeed InterfaceBody
+    |. P.keyword "{"
+    |. P.spaces
+    |= list interfaceMemberDeclaration
+    |. P.spaces
+    |. P.keyword "}"
 
-DefaultValue:
-    default ElementValue
 
-!!
+type InterfaceMemberDeclaration
+ = InterfaceMemberDeclaration_Constant ConstantDeclaration
+ | InterfaceMemberDeclaration_Method InterfaceMethodDeclaration
+ | InterfaceMemberDeclaration_Class ClassDeclaration
+ | InterfaceMemberDeclaration_Interface InterfaceDeclaration
+ | InterfaceMemberDeclaration_Semi
+
+interfaceMemberDeclaration : Parser InterfaceMemberDeclaration
+interfaceMemberDeclaration =
+  P.oneOf
+    [ P.succeed InterfaceMemberDeclaration_Constant
+      |= constantDeclaration
+    , P.succeed InterfaceMemberDeclaration_Method
+      |= interfaceMethodDeclaration
+    , P.succeed InterfaceMemberDeclaration_Class
+      |= P.lazy (\_ -> classDeclaration)
+    , P.succeed InterfaceMemberDeclaration_Interface
+      |= P.lazy (\_ -> interfaceDeclaration)
+    , P.succeed InterfaceMemberDeclaration_Semi
+      |. P.symbol ","
+    ]
+
+
+type ConstantDeclaration = ConstantDeclaration (List ConstantModifier)
+                                               UnannType VariableDeclaratorList
+
+constantDeclaration : Parser ConstantDeclaration
+constantDeclaration =
+    P.succeed ConstantDeclaration
+    |= list constantModifier
+    |. P.spaces
+    |= unannType
+    |. P.spaces
+    |= variableDeclaratorList
+    |. P.spaces
+    |. P.symbol ";"
+
+
+type ConstantModifier
+  = ConstantModifier_Annotation Annotation
+  | ConstantModifier_Public
+  | ConstantModifier_Static
+  | ConstantModifier_Final
+
+constantModifier : Parser ConstantModifier
+constantModifier =
+  P.oneOf
+    [ P.succeed ConstantModifier_Annotation
+      |= annotation
+    , P.succeed ConstantModifier_Public
+      |. P.keyword "public"
+    , P.succeed ConstantModifier_Static
+      |. P.keyword "static"
+    , P.succeed ConstantModifier_Final
+      |. P.keyword "final"
+    ]
+
+
+type InterfaceMethodDeclaration = InterfaceMethodDeclaration
+                                    (List InterfaceMethodModifier)
+                                    MethodHeader MethodBody
+
+interfaceMethodDeclaration : Parser InterfaceMethodDeclaration
+interfaceMethodDeclaration =
+  P.succeed InterfaceMethodDeclaration
+  |= list interfaceMethodModifier
+  |. P.spaces
+  |= methodHeader
+  |. P.spaces
+  |= methodBody
+
+
+type InterfaceMethodModifier
+  = InterfaceMethodModifier_Annotation Annotation
+  | InterfaceMethodModifier_Public
+  | InterfaceMethodModifier_Private
+  | InterfaceMethodModifier_Abstract
+  | InterfaceMethodModifier_Default
+  | InterfaceMethodModifier_Static
+  | InterfaceMethodModifier_Strictfp
+
+interfaceMethodModifier : Parser InterfaceMethodModifier
+interfaceMethodModifier =
+  P.oneOf
+    [ P.succeed InterfaceMethodModifier_Annotation
+      |= annotation
+    , P.succeed InterfaceMethodModifier_Public  
+      |. P.keyword "public"
+    , P.succeed InterfaceMethodModifier_Private 
+      |. P.keyword "private"
+    , P.succeed InterfaceMethodModifier_Abstract
+      |. P.keyword "abstract"
+    , P.succeed InterfaceMethodModifier_Default
+      |. P.keyword "default"
+    , P.succeed InterfaceMethodModifier_Static
+      |. P.keyword "static"
+    , P.succeed InterfaceMethodModifier_Strictfp
+      |. P.keyword "strictfp"
+    ]
+
+type AnnotationTypeDeclaration =
+    AnnotationTypeDeclaration (List InterfaceModifier) TypeIdentifier
+                                                       AnnotationTypeBody
+
+annotationTypeDeclaration : Parser AnnotationTypeDeclaration
+annotationTypeDeclaration =
+  P.succeed AnnotationTypeDeclaration
+  |= list interfaceModifier
+  |. P.spaces
+  |. P.symbol "@"
+  |. P.spaces
+  |. P.keyword "interface"
+  |. P.spaces
+  |= typeIdentifier
+  |. P.spaces
+  |= annotationTypeBody
+
+
+type AnnotationTypeBody =
+    AnnotationTypeBody (List AnnotationTypeMemberDeclaration)
+
+annotationTypeBody : Parser AnnotationTypeBody
+annotationTypeBody =
+  P.succeed AnnotationTypeBody
+  |. P.symbol "{"
+  |. P.spaces
+  |= list annotationTypeMemberDeclaration
+  |. P.spaces
+  |. P.symbol "}"
+
+
+type AnnotationTypeMemberDeclaration
+ = AnnotationTypeMemberDeclaration_Element AnnotationTypeElementDeclaration
+ | AnnotationTypeMemberDeclaration_Constant ConstantDeclaration
+ | AnnotationTypeMemberDeclaration_Class ClassDeclaration
+ | AnnotationTypeMemberDeclaration_Interface InterfaceDeclaration
+ | AnnotationTypeMemberDeclaration_Semi
+
+annotationTypeMemberDeclaration : Parser AnnotationTypeMemberDeclaration
+annotationTypeMemberDeclaration =
+  P.oneOf
+    [ P.succeed AnnotationTypeMemberDeclaration_Element
+      |= annotationTypeElementDeclaration
+    , P.succeed AnnotationTypeMemberDeclaration_Constant
+      |= constantDeclaration
+    , P.succeed AnnotationTypeMemberDeclaration_Class
+      |= P.lazy (\_ -> classDeclaration)
+    , P.succeed AnnotationTypeMemberDeclaration_Interface
+      |= P.lazy (\_ -> interfaceDeclaration)
+    , P.succeed AnnotationTypeMemberDeclaration_Semi
+      |. P.symbol ";"
+    ]
+
+
+type AnnotationTypeElementDeclaration =
+    AnnotationTypeElementDeclaration (List AnnotationTypeElementModifier)
+                                     UnannType Identifier (Maybe Dims)
+                                     (Maybe DefaultValue)
+
+annotationTypeElementDeclaration : Parser AnnotationTypeElementDeclaration
+annotationTypeElementDeclaration =
+  P.succeed AnnotationTypeElementDeclaration
+  |= list annotationTypeElementModifier
+  |. P.spaces
+  |= unannType
+  |. P.spaces
+  |= identifier
+  |. P.spaces
+  |. P.symbol "("
+  |. P.spaces
+  |. P.symbol ")"
+  |. P.spaces
+  |= optional dims
+  |. P.spaces
+  |= optional defaultValue
+  |. P.spaces
+  |. P.symbol ";"
+
+
+type AnnotationTypeElementModifier
+  = AnnotationTypeElementModifier_Annotation Annotation
+  | AnnotationTypeElementModifier_Public
+  | AnnotationTypeElementModifier_Abstract
+
+annotationTypeElementModifier : Parser AnnotationTypeElementModifier
+annotationTypeElementModifier =
+  P.oneOf
+    [ P.succeed AnnotationTypeElementModifier_Annotation
+      |= annotation
+    , P.succeed AnnotationTypeElementModifier_Public
+      |. P.keyword "public"
+    , P.succeed AnnotationTypeElementModifier_Abstract
+      |. P.keyword "abstract"
+    ]
+
+
+type DefaultValue = DefaultValue ElementValue
+
+defaultValue : Parser DefaultValue
+defaultValue =
+  P.succeed DefaultValue
+  |. P.keyword "default"
+  |. P.spaces
+  |= elementValue
+
+
 type Annotation 
-    NormalAnnotation
-    MarkerAnnotation
-    SingleElementAnnotation
+  = Annotation_Normal NormalAnnotation
+  | Annotation_Marker MarkerAnnotation
+  | Annotation_SingleElement SingleElementAnnotation
 
-NormalAnnotation:
-    @ TypeName ( (Maybe ElementValuePairList) )
+annotation : Parser Annotation
+annotation =
+  P.oneOf
+    [ P.succeed Annotation_Normal
+      |= normalAnnotation
+    , P.succeed Annotation_Marker
+      |= markerAnnotation
+    , P.succeed Annotation_SingleElement
+      |= singleElementAnnotation
+    ]
 
-ElementValuePairList:
-    ElementValuePair {, ElementValuePair}
 
-ElementValuePair:
-    Identifier = ElementValue
+type NormalAnnotation = NormalAnnotation TypeName (Maybe ElementValuePairList)
 
-!!
-ElementValue:
-    ConditionalExpression
-    ElementValueArrayInitializer
-    Annotation
+normalAnnotation : Parser NormalAnnotation
+normalAnnotation =
+  P.succeed NormalAnnotation
+  |. P.symbol "@"
+  |. P.spaces
+  |= typeName
+  |. P.spaces
+  |. P.symbol "("
+  |. P.spaces
+  |= optional elementValuePairList
+  |. P.spaces
+  |. P.symbol ")"
 
-ElementValueArrayInitializer:
-    { (Maybe ElementValueList) [,] }
 
-ElementValueList:
-    ElementValue {, ElementValue}
+type ElementValuePairList = ElementValuePairList ElementValuePair
+                                                    (List ElementValuePair)
 
-MarkerAnnotation:
-    @ TypeName
+elementValuePairList : Parser ElementValuePairList
+elementValuePairList =
+  P.succeed ElementValuePairList
+  |= elementValuePair
+  |. P.spaces
+  |= list
+     ( P.succeed identity
+       |. P.symbol ","
+       |. P.spaces
+       |= elementValuePair
+     )
 
-SingleElementAnnotation:
-    @ TypeName ( ElementValue )
--}
+
+type ElementValuePair = ElementValuePair Identifier ElementValue
+
+elementValuePair : Parser ElementValuePair
+elementValuePair =
+  P.succeed ElementValuePair
+  |= identifier
+  |. P.spaces
+  |. P.symbol "="
+  |. P.spaces
+  |= elementValue
+
+
+type ElementValue
+  = ElementValue_Conditional ConditionalExpression
+  | ElementValue_ArrayInitializer ElementValueArrayInitializer
+  | ElementValue_Annotation Annotation
+
+elementValue : Parser ElementValue
+elementValue =
+  P.oneOf
+    [ P.succeed ElementValue_Conditional
+      |= conditionalExpression
+    , P.succeed ElementValue_ArrayInitializer
+      |= elementValueArrayInitializer
+    , P.succeed ElementValue_Annotation
+      |= P.lazy (\_ -> annotation)
+    ]
+
+
+type ElementValueArrayInitializer =
+    ElementValueArrayInitializer (Maybe ElementValueList)
+
+elementValueArrayInitializer : Parser ElementValueArrayInitializer
+elementValueArrayInitializer =
+  P.succeed ElementValueArrayInitializer
+  |. P.symbol "{"
+  |. P.spaces
+  |= optional (P.lazy (\_ -> elementValueList))
+  |. P.spaces
+  |. optional (P.symbol ",")
+  |. P.spaces
+  |. P.symbol "}"
+
+
+type ElementValueList = ElementValueList ElementValue (List ElementValue)
+
+elementValueList : Parser ElementValueList
+elementValueList =
+  P.succeed ElementValueList
+  |= elementValue
+  |. P.spaces
+  |= list
+     ( P.succeed identity
+       |. P.symbol ","
+       |. P.spaces
+       |= elementValue
+     )
+
+
+type MarkerAnnotation = MarkerAnnotation TypeName
+
+markerAnnotation : Parser MarkerAnnotation
+markerAnnotation =
+  P.succeed MarkerAnnotation
+  |. P.symbol "@"
+  |= typeName
+
+
+type SingleElementAnnotation = SingleElementAnnotation TypeName ElementValue
+
+singleElementAnnotation : Parser SingleElementAnnotation
+singleElementAnnotation =
+  P.succeed SingleElementAnnotation
+  |. P.symbol "@"
+  |. P.spaces
+  |= typeName
+  |. P.spaces
+  |. P.symbol "("
+  |. P.spaces
+  |= P.lazy (\_ -> elementValue)
+  |. P.spaces
+  |. P.symbol ")"
+
 -- }}}
 
 -- {{{ Productions from §10 (Arrays)
@@ -1795,161 +2144,576 @@ block =
   |. P.symbol "}"
 
 
-type BlockStatements = TODO0000000000000
+type BlockStatements = BlockStatements BlockStatement (List BlockStatement)
 
 blockStatements : Parser BlockStatements
 blockStatements =
-    P.succeed TODO0000000000000
-    --BlockStatement (List BlockStatement)
-    {-
-BlockStatement:
-    LocalVariableDeclarationStatement
-    ClassDeclaration
-    Statement
+    P.succeed BlockStatements
+    |= blockStatement
+    |. P.spaces
+    |= list blockStatement
+    |. P.spaces
 
-LocalVariableDeclarationStatement:
-    LocalVariableDeclaration ;
 
-LocalVariableDeclaration:
-    (List VariableModifier) LocalVariableType VariableDeclaratorList
+type BlockStatement
+ = BlockStatement_LocalVariable LocalVariableDeclarationStatement
+ | BlockStatement_Class ClassDeclaration
+ | BlockStatement_Statement Statement
 
-LocalVariableType:
-    UnannType
-    var
+blockStatement : Parser BlockStatement
+blockStatement =
+  P.oneOf
+    [ P.succeed BlockStatement_LocalVariable
+      |= localVariableDeclarationStatement
+    , P.succeed BlockStatement_Class
+      |= P.lazy (\_ -> classDeclaration)
+    , P.succeed BlockStatement_Statement
+      |= statement
+    ]
 
-!!
-Statement:
-    StatementWithoutTrailingSubstatement
-    LabeledStatement
-    IfThenStatement
-    IfThenElseStatement
-    WhileStatement
-    ForStatement
 
-!!
-StatementNoShortIf:
-    StatementWithoutTrailingSubstatement
-    LabeledStatementNoShortIf
-    IfThenElseStatementNoShortIf
-    WhileStatementNoShortIf
-    ForStatementNoShortIf
+type LocalVariableDeclarationStatement =
+    LocalVariableDeclarationStatement LocalVariableDeclaration
+ 
+localVariableDeclarationStatement : Parser LocalVariableDeclarationStatement
+localVariableDeclarationStatement =
+  P.succeed LocalVariableDeclarationStatement
+  |= localVariableDeclaration
+  |. P.spaces
+  |. P.symbol ";"
 
-!!
-StatementWithoutTrailingSubstatement:
-    Block
-    EmptyStatement
-    ExpressionStatement
-    AssertStatement
-    SwitchStatement
-    DoStatement
-    BreakStatement
-    ContinueStatement
-    ReturnStatement
-    SynchronizedStatement
-    ThrowStatement
-    TryStatement
-    YieldStatement
 
-!!
-EmptyStatement:
-    ;
+type LocalVariableDeclaration =
+    LocalVariableDeclaration (List VariableModifier) LocalVariableType
+                                                     VariableDeclaratorList
 
-LabeledStatement:
-    Identifier : Statement
+localVariableDeclaration : Parser LocalVariableDeclaration
+localVariableDeclaration =
+  P.succeed LocalVariableDeclaration
+  |= list variableModifier
+  |. P.spaces
+  |= localVariableType
+  |. P.spaces
+  |= variableDeclaratorList
 
-LabeledStatementNoShortIf:
-    Identifier : StatementNoShortIf
 
-ExpressionStatement:
-    StatementExpression ;
+type LocalVariableType
+  = LocalVariableType_UnannType UnannType
+  | LocalVariableType_Var
 
-!!
-StatementExpression:
-    Assignment
-    PreIncrementExpression
-    PreDecrementExpression
-    PostIncrementExpression
-    PostDecrementExpression
-    MethodInvocation
-    ClassInstanceCreationExpression
+localVariableType : Parser LocalVariableType
+localVariableType =
+  P.oneOf
+    [ P.succeed LocalVariableType_UnannType
+      |= unannType
+    , P.succeed LocalVariableType_Var
+      |. P.keyword "var"
+    ]
 
-IfThenStatement:
-    if ( Expression ) Statement
 
-IfThenElseStatement:
-    if ( Expression ) StatementNoShortIf else Statement
 
-IfThenElseStatementNoShortIf:
-    if ( Expression ) StatementNoShortIf else StatementNoShortIf
+type Statement
+  = Statement_Statement StatementWithoutTrailingSubstatement
+  | Statement_Labeled LabeledStatement
+  | Statement_If IfThenStatement
+  | Statement_IfThenElse IfThenElseStatement
+  | Statement_While WhileStatement
+  | Statement_For ForStatement
 
-AssertStatement:
-    assert Expression ;
-    assert Expression : Expression ;
+statement : Parser Statement
+statement =
+  P.oneOf
+    [ P.succeed Statement_Statement
+      |= statementWithoutTrailingSubstatement
+    , P.succeed Statement_Labeled
+      |= labeledStatement
+    , P.succeed Statement_If
+      |= ifThenStatement
+    , P.succeed Statement_IfThenElse
+      |= ifThenElseStatement
+    , P.succeed Statement_While
+      |= whileStatement
+    , P.succeed Statement_For
+      |= forStatement
+    ]
 
-SwitchStatement:
-    switch ( Expression ) SwitchBlock
 
-SwitchBlock:
-    { SwitchRule (List SwitchRule) }
-    { (List SwitchBlockStatementGroup) {SwitchLabel :} }
+type StatementNoShortIf
+  = StatementNoShortIf_NoTrailing StatementWithoutTrailingSubstatement
+  | StatementNoShortIf_Labeled LabeledStatementNoShortIf
+  | StatementNoShortIf_IfThenElse IfThenElseStatementNoShortIf
+  | StatementNoShortIf_While WhileStatementNoShortIf
+  | StatementNoShortIf_For ForStatementNoShortIf
 
-SwitchRule:
-    SwitchLabel -> Expression ;
-    SwitchLabel -> Block
-    SwitchLabel -> ThrowStatement
+statementNoShortIf : Parser StatementNoShortIf
+statementNoShortIf =
+  P.oneOf
+    [ P.succeed StatementNoShortIf_NoTrailing
+      |= statementWithoutTrailingSubstatement
+    , P.succeed StatementNoShortIf_Labeled
+      |= labeledStatementNoShortIf
+    , P.succeed StatementNoShortIf_IfThenElse
+      |= ifThenElseStatementNoShortIf
+    , P.succeed StatementNoShortIf_While
+      |= whileStatementNoShortIf
+    , P.succeed StatementNoShortIf_For
+      |= forStatementNoShortIf
+    ]
 
-SwitchBlockStatementGroup:
-    SwitchLabel : {SwitchLabel :} BlockStatements
 
-SwitchLabel:
-    case CaseConstant {, CaseConstant}
-    default
+type StatementWithoutTrailingSubstatement
+  = StatementWithoutTrailingSubstatement_Block Block
+  | StatementWithoutTrailingSubstatement_Empty EmptyStatement
+  | StatementWithoutTrailingSubstatement_Expression ExpressionStatement
+  | StatementWithoutTrailingSubstatement_Assert AssertStatement
+  | StatementWithoutTrailingSubstatement_Switch SwitchStatement
+  | StatementWithoutTrailingSubstatement_Do DoStatement
+  | StatementWithoutTrailingSubstatement_Break BreakStatement
+  | StatementWithoutTrailingSubstatement_Continue ContinueStatement
+  | StatementWithoutTrailingSubstatement_Return ReturnStatement
+  | StatementWithoutTrailingSubstatement_Synchronized SynchronizedStatement
+  | StatementWithoutTrailingSubstatement_Throw ThrowStatement
+  | StatementWithoutTrailingSubstatement_Try TryStatement
+  | StatementWithoutTrailingSubstatement_Yield YieldStatement
 
-CaseConstant:
-    ConditionalExpression
+statementWithoutTrailingSubstatement : Parser StatementWithoutTrailingSubstatement
+statementWithoutTrailingSubstatement =
+  P.oneOf
+    [ P.succeed StatementWithoutTrailingSubstatement_Block
+      |= P.lazy (\_ -> block)
+    , P.succeed StatementWithoutTrailingSubstatement_Empty
+      |= emptyStatement
+    , P.succeed StatementWithoutTrailingSubstatement_Expression
+      |= expressionStatement
+    , P.succeed StatementWithoutTrailingSubstatement_Assert
+      |= assertStatement
+    , P.succeed StatementWithoutTrailingSubstatement_Switch
+      |= switchStatement
+    , P.succeed StatementWithoutTrailingSubstatement_Do
+      |= doStatement
+    , P.succeed StatementWithoutTrailingSubstatement_Break
+      |= breakStatement
+    , P.succeed StatementWithoutTrailingSubstatement_Continue
+      |= continueStatement
+    , P.succeed StatementWithoutTrailingSubstatement_Return
+      |= returnStatement
+    , P.succeed StatementWithoutTrailingSubstatement_Synchronized
+      |= synchronizedStatement
+    , P.succeed StatementWithoutTrailingSubstatement_Throw
+      |= throwStatement
+    , P.succeed StatementWithoutTrailingSubstatement_Try
+      |= tryStatement
+    , P.succeed StatementWithoutTrailingSubstatement_Yield
+      |= yieldStatement
+    ]
 
-WhileStatement:
-    while ( Expression ) Statement
+type EmptyStatement = EmptyStatement
 
-WhileStatementNoShortIf:
-    while ( Expression ) StatementNoShortIf
+emptyStatement : Parser EmptyStatement
+emptyStatement =
+  P.succeed EmptyStatement
+  |. P.symbol ";"
 
-DoStatement:
-    do Statement while ( Expression ) ;
 
-!!
-ForStatement:
-    BasicForStatement
-    EnhancedForStatement
+type LabeledStatement =
+    LabeledStatement Identifier Statement
 
-!!
-ForStatementNoShortIf:
-    BasicForStatementNoShortIf
-    EnhancedForStatementNoShortIf
+labeledStatement : Parser LabeledStatement
+labeledStatement =
+    P.succeed LabeledStatement
+    |= identifier
+    |. P.spaces
+    |. P.symbol ":"
+    |. P.spaces
+    |= P.lazy (\_ -> statement)
 
-BasicForStatement:
-    for ( (Maybe ForInit) ; (Maybe Expression) ; (Maybe ForUpdate) ) Statement
 
-BasicForStatementNoShortIf:
-    for ( (Maybe ForInit) ; (Maybe Expression) ; (Maybe ForUpdate) ) StatementNoShortIf
+type LabeledStatementNoShortIf =
+    LabeledStatementNoShortIf Identifier StatementNoShortIf
 
-!!
+labeledStatementNoShortIf : Parser LabeledStatementNoShortIf
+labeledStatementNoShortIf =
+    P.succeed LabeledStatementNoShortIf
+    |= identifier
+    |. P.spaces
+    |. P.symbol ":"
+    |. P.spaces
+    |= P.lazy (\_ -> statementNoShortIf)
+
+
+type ExpressionStatement = ExpressionStatement StatementExpression
+
+expressionStatement : Parser ExpressionStatement
+expressionStatement =
+  P.succeed ExpressionStatement
+  |= statementExpression
+  |. P.spaces
+  |. P.symbol ";"
+
+
+type StatementExpression
+  = StatementExpression_Assignment Assignment
+  | StatementExpression_PreIncrement PreIncrementExpression
+  | StatementExpression_PreDecrement PreDecrementExpression
+  | StatementExpression_PostIncrement PostIncrementExpression
+  | StatementExpression_PostDecrement PostDecrementExpression
+  | StatementExpression_MethodInvocation MethodInvocation
+  | StatementExpression_ClassCreation ClassInstanceCreationExpression
+
+statementExpression : Parser StatementExpression
+statementExpression =
+  P.oneOf
+    [ P.succeed StatementExpression_Assignment
+      |= assignment
+    , P.succeed StatementExpression_PreIncrement
+      |= preIncrementExpression
+    , P.succeed StatementExpression_PreDecrement
+      |= preDecrementExpression
+    , P.succeed StatementExpression_PostIncrement
+      |= postIncrementExpression
+    , P.succeed StatementExpression_PostDecrement
+      |= postDecrementExpression
+    , P.succeed StatementExpression_MethodInvocation
+      |= methodInvocation
+    , P.succeed StatementExpression_ClassCreation
+      |= classInstanceCreationExpression
+    ]
+
+type IfThenStatement = IfThenStatement Expression Statement
+
+ifThenStatement : Parser IfThenStatement
+ifThenStatement =
+  P.succeed IfThenStatement
+  |. P.keyword "if"
+  |. P.spaces
+  |. P.symbol "("
+  |. P.spaces
+  |= expression
+  |. P.spaces
+  |. P.symbol ")"
+  |. P.spaces
+  |= P.lazy (\_ -> statement)
+
+
+type IfThenElseStatement = IfThenElseStatement Expression
+                                               StatementNoShortIf Statement
+
+ifThenElseStatement : Parser IfThenElseStatement
+ifThenElseStatement =
+  P.succeed IfThenElseStatement
+  |. P.keyword "if"
+  |. P.spaces
+  |. P.symbol "("
+  |. P.spaces
+  |= expression
+  |. P.spaces
+  |. P.symbol ")"
+  |. P.spaces
+  |= statementNoShortIf
+  |. P.spaces
+  |. P.keyword "else"
+  |. P.spaces
+  |= P.lazy (\_ -> statement)
+
+
+type IfThenElseStatementNoShortIf = IfThenElseStatementNoShortIf
+    Expression StatementNoShortIf StatementNoShortIf
+
+ifThenElseStatementNoShortIf : Parser IfThenElseStatementNoShortIf
+ifThenElseStatementNoShortIf =
+  P.succeed IfThenElseStatementNoShortIf
+  |. P.keyword "if"
+  |. P.spaces
+  |. P.symbol "("
+  |. P.spaces
+  |= expression
+  |. P.spaces
+  |. P.symbol ")"
+  |. P.spaces
+  |= P.lazy (\_ -> statementNoShortIf)
+  |. P.spaces
+  |. P.keyword "else"
+  |. P.spaces
+  |= P.lazy (\_ -> statementNoShortIf)
+
+
+type AssertStatement
+  = AssertStatement_Expression Expression
+  | AssertStatement_WithError Expression Expression
+
+assertStatement : Parser AssertStatement
+assertStatement =
+  P.oneOf
+    [ P.succeed AssertStatement_Expression
+      |. P.keyword "assert"
+      |. P.spaces
+      |= expression
+      |. P.spaces
+      |. P.symbol ";"
+    , P.succeed AssertStatement_WithError
+      |. P.keyword "assert"
+      |. P.spaces
+      |= expression
+      |. P.spaces
+      |. P.symbol ":"
+      |. P.spaces
+      |= expression
+      |. P.spaces
+      |. P.symbol ";"
+    ]
+
+
+type SwitchStatement = SwitchStatement Expression SwitchBlock
+
+switchStatement : Parser SwitchStatement
+switchStatement =
+  P.succeed SwitchStatement
+  |. P.keyword "switch"
+  |. P.spaces 
+  |. P.symbol "("
+  |. P.spaces 
+  |= expression
+  |. P.spaces 
+  |. P.symbol ")"
+  |. P.spaces 
+  |= switchBlock
+
+
+type SwitchBlock
+  = SwitchBlock_Rule SwitchRule (List SwitchRule)
+  | SwitchBlock_Group (List SwitchBlockStatementGroup) (List SwitchLabel)
+
+switchBlock : Parser SwitchBlock
+switchBlock =
+  P.succeed identity
+  |. P.symbol "{"
+  |. P.spaces
+  |= P.oneOf
+       [ P.succeed SwitchBlock_Rule
+         |= switchRule
+         |. P.spaces
+         |= list switchRule
+       , P.succeed SwitchBlock_Group
+         |= list switchBlockStatementGroup
+         |. P.spaces
+         |= list
+            ( P.succeed identity
+              |= switchLabel
+              |. P.spaces
+              |. P.symbol ":"
+            )
+       ]
+  |. P.spaces
+  |. P.symbol "}"
+
+
+type SwitchRule
+  = SwitchRule_Expression SwitchLabel Expression
+  | SwitchRule_Block SwitchLabel Block
+  | SwitchRule_Throw SwitchLabel ThrowStatement
+
+switchRule : Parser SwitchRule
+switchRule =
+  P.oneOf
+    [ P.succeed SwitchRule_Expression
+      |= switchLabel
+      |. P.spaces
+      |. P.symbol "->"
+      |. P.spaces
+      |= expression
+      |. P.spaces
+      |. P.symbol ";"
+    , P.succeed SwitchRule_Block
+      |= switchLabel
+      |. P.spaces
+      |. P.symbol "->"
+      |. P.spaces
+      |= P.lazy (\_ -> block)
+      |. P.spaces
+      |. P.symbol ";"
+    , P.succeed SwitchRule_Throw
+      |= switchLabel
+      |. P.spaces
+      |. P.symbol "->"
+      |. P.spaces
+      |= throwStatement
+      |. P.spaces
+      |. P.symbol ";"
+    ]
+
+
+type SwitchBlockStatementGroup =
+    SwitchBlockStatementGroup SwitchLabel (List SwitchLabel) BlockStatements
+
+switchBlockStatementGroup : Parser SwitchBlockStatementGroup
+switchBlockStatementGroup =
+  P.succeed SwitchBlockStatementGroup
+  |= switchLabel
+  |. P.spaces
+  |. P.symbol ":"
+  |. P.spaces
+  |= list
+     ( P.succeed identity
+       |= switchLabel
+       |. P.spaces
+       |. P.keyword ":"
+     )
+  |. P.spaces
+  |= P.lazy (\_ -> blockStatements)
+
+
+type SwitchLabel
+  = SwitchLabel_Case CaseConstant (List CaseConstant)
+  | SwitchLabel_Default
+    
+switchLabel : Parser SwitchLabel
+switchLabel =
+  P.oneOf
+    [ P.succeed SwitchLabel_Case
+      |. P.keyword "case"
+      |. P.spaces
+      |= caseConstant
+      |= list
+         ( P.succeed identity
+           |. P.symbol ","
+           |. P.spaces
+           |= caseConstant
+         )
+    , P.succeed SwitchLabel_Default
+      |. P.keyword "default"
+    ]
+
+
+type CaseConstant = CaseConstant ConditionalExpression
+
+caseConstant : Parser CaseConstant
+caseConstant =
+  P.succeed CaseConstant
+  |= conditionalExpression
+
+
+type WhileStatement = WhileStatement Expression Statement
+
+whileStatement : Parser WhileStatement
+whileStatement =
+  P.succeed WhileStatement
+  |. P.keyword "while"
+  |. P.spaces
+  |. P.symbol "("
+  |. P.spaces
+  |= expression
+  |. P.spaces
+  |. P.symbol ")"
+  |. P.spaces
+  |= P.lazy (\_ -> statement)
+
+
+type WhileStatementNoShortIf =
+    WhileStatementNoShortIf Expression StatementNoShortIf
+
+whileStatementNoShortIf : Parser WhileStatementNoShortIf
+whileStatementNoShortIf =
+  P.succeed WhileStatementNoShortIf
+  |. P.keyword "while"
+  |. P.spaces
+  |. P.symbol "("
+  |. P.spaces
+  |= expression
+  |. P.spaces
+  |. P.symbol ")"
+  |. P.spaces
+  |= P.lazy (\_ -> statementNoShortIf)
+
+
+type DoStatement = DoStatement Statement Expression
+
+doStatement : Parser DoStatement
+doStatement =
+  P.succeed DoStatement
+  |. P.keyword "do"
+  |. P.spaces
+  |= P.lazy (\_ -> statement)
+  |. P.spaces
+  |. P.keyword "while"
+  |. P.spaces
+  |. P.symbol "("
+  |. P.spaces
+  |= expression
+  |. P.spaces
+  |. P.symbol ")"
+  |. P.spaces
+  |. P.symbol ";"
+
+
+type ForStatement
+  = ForStatement_Basic BasicForStatement
+  | ForStatement_Enhanced EnhancedForStatement
+
+forStatement : Parser ForStatement
+forStatement =
+  P.oneOf
+    [ P.succeed ForStatement_Basic
+      |= basicForStatement
+    , P.succeed ForStatement_Enhanced
+      |= enhancedForStatement
+    ]
+
+
+type ForStatementNoShortIf
+  = ForStatementNoShortIf_Basic BasicForStatementNoShortIf
+  | ForStatementNoShortIf_Enhanced EnhancedForStatementNoShortIf
+
+forStatementNoShortIf : Parser ForStatementNoShortIf
+forStatementNoShortIf =
+  P.oneOf
+    [ P.succeed ForStatementNoShortIf_Basic
+      |= basicForStatementNoShortIf
+    , P.succeed ForStatementNoShortIf_Enhanced
+      |= enhancedForStatementNoShortIf
+    ]
+
+
+type BasicForStatement = BasicForStatement
+
+basicForStatement : Parser BasicForStatement
+basicForStatement = todo
+--BasicForStatement:
+    --for ( (Maybe ForInit) ; (Maybe Expression) ; (Maybe ForUpdate) ) Statement
+
+
+type BasicForStatementNoShortIf = BasicForStatementNoShortIf
+basicForStatementNoShortIf : Parser BasicForStatementNoShortIf
+basicForStatementNoShortIf = todo
+--type BasicForStatementNoShortIf:
+    --for ( (Maybe ForInit) ; (Maybe Expression) ; (Maybe ForUpdate) ) StatementNoShortIf
+
+{-
 ForInit:
     StatementExpressionList
     LocalVariableDeclaration
 
-!!
 ForUpdate:
     StatementExpressionList
 
 StatementExpressionList:
     StatementExpression {, StatementExpression}
 
-EnhancedForStatement:
-    for ( (List VariableModifier) LocalVariableType VariableDeclaratorId : Expression ) Statement
+-}
+type EnhancedForStatement = EnhancedForStatement
 
-EnhancedForStatementNoShortIf:
-    for ( (List VariableModifier) LocalVariableType VariableDeclaratorId : Expression ) StatementNoShortIf
+enhancedForStatement : Parser EnhancedForStatement
+enhancedForStatement = todo
+--EnhancedForStatement:
+    --for ( (List VariableModifier) LocalVariableType VariableDeclaratorId : Expression ) Statement
+
+type EnhancedForStatementNoShortIf = EnhancedForStatementNoShortIf
+
+enhancedForStatementNoShortIf : Parser EnhancedForStatementNoShortIf
+enhancedForStatementNoShortIf = todo
+--EnhancedForStatementNoShortIf:
+    --for ( (List VariableModifier) LocalVariableType VariableDeclaratorId : Expression ) StatementNoShortIf
+
+{-
 BreakStatement:
     break (Maybe Identifier) ;
 
@@ -2005,7 +2769,6 @@ Resource:
 
 -- {{{ Productions from §15 (Expressions)
 {-
-!!
 Primary:
     PrimaryNoNewArray
     ArrayCreationExpression
