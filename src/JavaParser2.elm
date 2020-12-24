@@ -19,20 +19,6 @@ type Primary = TODO2
 primary = todo
 type ConditionalExpression = TODO3
 conditionalExpression = todo
-type YieldStatement = TODO4
-yieldStatement = todo
-type ThrowStatement = TODO5
-throwStatement = todo
-type TryStatement = TODO6
-tryStatement = todo
-type SynchronizedStatement = TODO112
-synchronizedStatement = todo
-type ReturnStatement = TODO11111
-returnStatement = todo
-type ContinueStatement = TODO111
-continueStatement = todo
-type BreakStatement = TODO10
-breakStatement = todo
 type ClassInstanceCreationExpression = TODO11
 classInstanceCreationExpression = todo
 type MethodInvocation = TODO44
@@ -47,6 +33,8 @@ type PreDecrementExpression = TODO23123s
 preDecrementExpression = todo
 type Assignment = TODO23123
 assignment = todo
+type FieldAccess = TODO111
+fieldAccess = todo
 
 ---}}}
 
@@ -2211,7 +2199,6 @@ localVariableType =
     ]
 
 
-
 type Statement
   = Statement_Statement StatementWithoutTrailingSubstatement
   | Statement_Labeled LabeledStatement
@@ -2378,6 +2365,7 @@ statementExpression =
     , P.succeed StatementExpression_ClassCreation
       |= classInstanceCreationExpression
     ]
+
 
 type IfThenStatement = IfThenStatement Expression Statement
 
@@ -2673,101 +2661,399 @@ forStatementNoShortIf =
     ]
 
 
-type BasicForStatement = BasicForStatement
+type BasicForStatement = BasicForStatement (Maybe ForInit) (Maybe Expression)
+                                            (Maybe ForUpdate) Statement
 
 basicForStatement : Parser BasicForStatement
-basicForStatement = todo
---BasicForStatement:
-    --for ( (Maybe ForInit) ; (Maybe Expression) ; (Maybe ForUpdate) ) Statement
+basicForStatement =
+  P.succeed BasicForStatement
+  |. P.keyword "for"
+  |. P.spaces
+  |. P.symbol "("
+  |. P.spaces
+  |= optional forInit
+  |. P.spaces
+  |. P.symbol ";"
+  |. P.spaces
+  |= optional expression
+  |. P.spaces
+  |. P.symbol ";"
+  |. P.spaces
+  |= optional forUpdate
+  |. P.spaces
+  |. P.symbol ")"
+  |. P.spaces
+  |= P.lazy (\_ -> statement)
 
 
-type BasicForStatementNoShortIf = BasicForStatementNoShortIf
+type BasicForStatementNoShortIf =
+    BasicForStatementNoShortIf (Maybe ForInit) (Maybe Expression)
+                                 (Maybe ForUpdate) StatementNoShortIf
+
 basicForStatementNoShortIf : Parser BasicForStatementNoShortIf
-basicForStatementNoShortIf = todo
---type BasicForStatementNoShortIf:
-    --for ( (Maybe ForInit) ; (Maybe Expression) ; (Maybe ForUpdate) ) StatementNoShortIf
+basicForStatementNoShortIf =
+  P.succeed BasicForStatementNoShortIf
+  |. P.keyword "for"
+  |. P.spaces
+  |. P.symbol "("
+  |. P.spaces
+  |= optional forInit
+  |. P.spaces
+  |. P.symbol ";"
+  |. P.spaces
+  |= optional expression
+  |. P.spaces
+  |. P.symbol ";"
+  |. P.spaces
+  |= optional forUpdate
+  |. P.spaces
+  |. P.symbol ")"
+  |. P.spaces
+  |= P.lazy (\_ -> statementNoShortIf)
 
-{-
-ForInit:
-    StatementExpressionList
-    LocalVariableDeclaration
 
-ForUpdate:
-    StatementExpressionList
+type ForInit
+  = ForInit_StatementList StatementExpressionList
+  | ForInit_Variable LocalVariableDeclaration
 
-StatementExpressionList:
-    StatementExpression {, StatementExpression}
+forInit : Parser ForInit
+forInit =
+  P.oneOf
+    [ P.succeed ForInit_StatementList
+      |= statementExpressionList
+    , P.succeed ForInit_Variable
+      |= localVariableDeclaration
+    ]
 
--}
-type EnhancedForStatement = EnhancedForStatement
+
+type ForUpdate = ForUpdate StatementExpressionList
+
+forUpdate : Parser ForUpdate
+forUpdate =
+  P.succeed ForUpdate
+  |= statementExpressionList
+
+
+type StatementExpressionList =
+    StatementExpressionList StatementExpression (List StatementExpression)
+
+statementExpressionList : Parser StatementExpressionList
+statementExpressionList =
+  P.succeed StatementExpressionList
+  |= statementExpression
+  |. P.spaces
+  |= list
+     ( P.succeed identity
+       |. P.symbol ","
+       |. P.spaces
+       |= statementExpression
+     )
+
+
+type EnhancedForStatement =
+    EnhancedForStatement (List VariableModifier) LocalVariableType
+                                     VariableDeclaratorId Expression Statement
 
 enhancedForStatement : Parser EnhancedForStatement
-enhancedForStatement = todo
---EnhancedForStatement:
-    --for ( (List VariableModifier) LocalVariableType VariableDeclaratorId : Expression ) Statement
+enhancedForStatement =
+  P.succeed EnhancedForStatement
+  |. P.keyword "for"
+  |. P.spaces
+  |. P.symbol "("
+  |. P.spaces
+  |= list variableModifier
+  |. P.spaces
+  |= localVariableType
+  |. P.spaces
+  |= variableDeclaratorId
+  |. P.spaces
+  |. P.symbol ":"
+  |. P.spaces
+  |= expression
+  |. P.spaces
+  |. P.symbol ")"
+  |. P.spaces
+  |= P.lazy (\_ -> statement)
 
-type EnhancedForStatementNoShortIf = EnhancedForStatementNoShortIf
+
+type EnhancedForStatementNoShortIf =
+    EnhancedForStatementNoShortIf (List VariableModifier) LocalVariableType
+                            VariableDeclaratorId Expression StatementNoShortIf
 
 enhancedForStatementNoShortIf : Parser EnhancedForStatementNoShortIf
-enhancedForStatementNoShortIf = todo
---EnhancedForStatementNoShortIf:
-    --for ( (List VariableModifier) LocalVariableType VariableDeclaratorId : Expression ) StatementNoShortIf
+enhancedForStatementNoShortIf =
+  P.succeed EnhancedForStatementNoShortIf
+  |. P.keyword "for"
+  |. P.spaces
+  |. P.symbol "("
+  |. P.spaces
+  |= list variableModifier
+  |. P.spaces
+  |= localVariableType
+  |. P.spaces
+  |= variableDeclaratorId
+  |. P.spaces
+  |. P.symbol ":"
+  |. P.spaces
+  |= expression
+  |. P.spaces
+  |. P.symbol ")"
+  |. P.spaces
+  |= P.lazy (\_ -> statementNoShortIf)
 
-{-
-BreakStatement:
-    break (Maybe Identifier) ;
 
-YieldStatement:
-    yield Expression ;
+type BreakStatement = BreakStatement (Maybe Identifier)
 
-ContinueStatement:
-    continue (Maybe Identifier) ;
+breakStatement : Parser BreakStatement
+breakStatement =
+  P.succeed BreakStatement
+  |. P.keyword "break"
+  |. P.spaces
+  |= optional identifier
+  |. P.spaces
+  |. P.symbol ";"
 
-ReturnStatement:
-    return (Maybe Expression) ;
 
-ThrowStatement:
-    throw Expression ;
+type YieldStatement = YieldStatement Expression
 
-SynchronizedStatement:
-    synchronized ( Expression ) Block
+yieldStatement : Parser YieldStatement
+yieldStatement =
+  P.succeed YieldStatement
+  |. P.keyword "yield"
+  |. P.spaces
+  |= expression
+  |. P.spaces
+  |. P.symbol ";"
 
-TryStatement:
-    try Block Catches
-    try Block (Maybe Catches) Finally
-    TryWithResourcesStatement
 
-Catches:
-    CatchClause (List CatchClause)
+type ContinueStatement = ContinueStatement (Maybe Identifier)
 
-CatchClause:
-    catch ( CatchFormalParameter ) Block
+continueStatement : Parser ContinueStatement
+continueStatement =
+  P.succeed ContinueStatement
+  |. P.keyword "continue"
+  |. P.spaces
+  |= optional identifier
+  |. P.spaces
+  |. P.symbol ";"
 
-CatchFormalParameter:
-    (List VariableModifier) CatchType VariableDeclaratorId
 
-CatchType:
-    UnannClassType {| ClassType}
+type ReturnStatement = ReturnStatement (Maybe Expression)
 
-Finally:
-    finally Block
+returnStatement : Parser ReturnStatement
+returnStatement =
+  P.succeed ReturnStatement
+  |. P.keyword "return"
+  |. P.spaces
+  |= optional expression
+  |. P.spaces
+  |. P.symbol ";"
 
-TryWithResourcesStatement:
-    try ResourceSpecification Block (Maybe Catches) (Maybe Finally)
+type ThrowStatement = ThrowStatement Expression
 
-ResourceSpecification:
-    ( ResourceList [;] )
+throwStatement : Parser ThrowStatement
+throwStatement =
+  P.succeed ThrowStatement
+  |. P.keyword "throw"
+  |. P.spaces
+  |= expression
+  |. P.spaces
+  |. P.symbol ";"
 
-ResourceList:
-    Resource {; Resource}
 
-Resource:
-    (List VariableModifier) LocalVariableType Identifier = Expression
-    VariableAccess
-    -}
+type SynchronizedStatement = SynchronizedStatement Expression Block
+
+synchronizedStatement : Parser SynchronizedStatement
+synchronizedStatement =
+  P.succeed SynchronizedStatement
+  |. P.keyword "synchronized"
+  |. P.spaces
+  |. P.symbol "("
+  |. P.spaces
+  |= expression
+  |. P.spaces
+  |. P.symbol "("
+  |. P.spaces
+  |= P.lazy (\_ -> block)
+
+
+type TryStatement
+  = TryStatement_Normal Block Catches
+  | TryStatement_Finally Block (Maybe Catches) Finally
+  | TryStatement_With TryWithResourcesStatement
+
+tryStatement : Parser TryStatement
+tryStatement =
+  P.oneOf
+    [ P.succeed TryStatement_Normal
+      |. P.keyword "try"
+      |. P.spaces
+      |= P.lazy (\_ -> block)
+      |. P.spaces
+      |= catches
+    , P.succeed TryStatement_Finally
+      |. P.keyword "try"
+      |. P.spaces
+      |= P.lazy (\_ -> block)
+      |. P.spaces
+      |= optional catches
+      |. P.spaces
+      |= finally
+    , P.succeed TryStatement_With
+      |= tryWithResourcesStatement
+    ]
+
+
+type Catches = Catches CatchClause (List CatchClause)
+
+catches : Parser Catches
+catches =
+  P.succeed Catches
+  |= catchClause
+  |. P.spaces
+  |= list catchClause
+
+
+type CatchClause = CatchClause CatchFormalParameter Block
+
+catchClause : Parser CatchClause
+catchClause =
+  P.succeed CatchClause
+  |. P.keyword "catch"
+  |. P.spaces
+  |. P.symbol "("
+  |. P.spaces
+  |= catchFormalParameter
+  |. P.spaces
+  |. P.symbol ")"
+  |. P.spaces
+  |= P.lazy (\_ -> block)
+
+
+type CatchFormalParameter = CatchFormalParameter (List VariableModifier)
+                                                 CatchType VariableDeclaratorId
+
+catchFormalParameter : Parser CatchFormalParameter
+catchFormalParameter =
+  P.succeed CatchFormalParameter
+  |= list variableModifier
+  |. P.spaces
+  |= catchType
+  |. P.spaces
+  |= variableDeclaratorId
+
+
+type CatchType = CatchType UnannClassType (List ClassType)
+
+catchType : Parser CatchType
+catchType =
+  P.succeed CatchType
+  |= unannClassType
+  |. P.spaces
+  |= list
+     ( P.succeed identity
+       |. P.symbol "|"
+       |. P.spaces
+       |= classType
+     )
+
+
+type Finally = Finally Block
+
+finally : Parser Finally
+finally =
+  P.succeed Finally
+  |. P.succeed "finally"
+  |. P.spaces
+  |= P.lazy (\_ -> block)
+
+
+type TryWithResourcesStatement =
+    TryWithResourcesStatement ResourceSpecification Block
+                                            (Maybe Catches) (Maybe Finally)
+
+tryWithResourcesStatement : Parser TryWithResourcesStatement
+tryWithResourcesStatement = todo
+  P.succeed TryWithResourcesStatement
+  |. P.keyword "try"
+  |. P.spaces
+  |= resourceSpecification
+  |. P.spaces
+  |= P.lazy (\_ -> block)
+  |. P.spaces
+  |= optional catches
+  |. P.spaces
+  |= optional finally
+
+
+type ResourceSpecification = ResourceSpecification ResourceList
+
+resourceSpecification : Parser ResourceSpecification
+resourceSpecification =
+  P.succeed ResourceSpecification
+  |. P.symbol "("
+  |. P.spaces
+  |= resourceList
+  |. P.spaces
+  |. optional (P.symbol ";")
+  |. P.spaces
+  |. P.symbol ")"
+
+
+type ResourceList = ResourceList Resource (List Resource)
+
+resourceList : Parser ResourceList
+resourceList =
+  P.succeed ResourceList
+  |= resource
+  |. P.spaces
+  |= list
+     ( P.succeed identity
+       |. P.symbol ";"
+       |. P.spaces
+       |= resource
+     )
+
+
+type Resource
+  = Resource_Declaration (List VariableModifier) LocalVariableType Identifier
+                                                                    Expression
+  | Resource_VariableAccess VariableAccess
+
+resource : Parser Resource
+resource =
+  P.oneOf
+    [ P.succeed Resource_Declaration
+      |= list variableModifier
+      |. P.spaces
+      |= localVariableType
+      |. P.spaces
+      |= identifier
+      |. P.spaces
+      |. P.symbol "="
+      |. P.spaces
+      |= expression
+    , P.succeed Resource_VariableAccess
+      |= variableAccess
+    ]
+
+type VariableAccess
+  = VariableAccess_Expression ExpressionName
+  | VariableAccess_Field FieldAccess 
+
+variableAccess : Parser VariableAccess
+variableAccess =
+  P.oneOf
+    [ P.succeed VariableAccess_Expression
+      |= expressionName
+    , P.succeed VariableAccess_Field
+      |= fieldAccess
+    ]
+
 -- }}}
 
 -- {{{ Productions from §15 (Expressions)
+
 {-
 Primary:
     PrimaryNoNewArray
