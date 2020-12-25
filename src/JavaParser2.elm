@@ -15,12 +15,8 @@ expression = todo
 boolean = todo
 type ArgumentList = TODO1
 argumentList = todo
-type Primary = TODO2
-primary = todo
 type ConditionalExpression = TODO3
 conditionalExpression = todo
-type ClassInstanceCreationExpression = TODO11
-classInstanceCreationExpression = todo
 type MethodInvocation = TODO44
 methodInvocation = todo
 type PostIncrementExpression = TODO231yy
@@ -33,8 +29,12 @@ type PreDecrementExpression = TODO23123s
 preDecrementExpression = todo
 type Assignment = TODO23123
 assignment = todo
-type FieldAccess = TODO111
-fieldAccess = todo
+type MethodReference = TODO2222
+methodReference = todo
+type ArrayCreationExpression = TODO2223
+arrayCreationExpression = todo
+type ArrayAccess = TODO444
+arrayAccess = todo
 
 ---}}}
 
@@ -101,6 +101,8 @@ list p =
 dotted : Parser a -> Parser (List a)
 dotted = sepBy "."
 
+brackets : Parser Int
+brackets = todo
 --}}}
 
 -- {{{ Productions from §3 (Lexical Structure)
@@ -3054,45 +3056,229 @@ variableAccess =
 
 -- {{{ Productions from §15 (Expressions)
 
+type Primary
+  = Primary_NoNewArray PrimaryNoNewArray
+  | Primary_Creation ArrayCreationExpression
+
+primary : Parser Primary
+primary =
+  P.oneOf
+    [ P.succeed Primary_NoNewArray
+      |= primaryNoNewArray
+    , P.succeed Primary_Creation
+      |= arrayCreationExpression
+    ]
+
+type PrimaryNoNewArray
+  = PrimaryNoNewArray_Literal Literal
+  | PrimaryNoNewArray_ClassLiteral ClassLiteral
+  | PrimaryNoNewArray_This
+  | PrimaryNoNewArray_TypeThis TypeName
+  | PrimaryNoNewArray_BracketsExpression Expression
+  | PrimaryNoNewArray_ClassCreation ClassInstanceCreationExpression
+  | PrimaryNoNewArray_FieldAccess FieldAccess
+  | PrimaryNoNewArray_ArrayAccess ArrayAccess
+  | PrimaryNoNewArray_MethodInvocation MethodInvocation
+  | PrimaryNoNewArray_MethodReference MethodReference
+
+primaryNoNewArray : Parser PrimaryNoNewArray
+primaryNoNewArray =
+  P.oneOf
+    [ P.succeed PrimaryNoNewArray_Literal
+      |= literal
+    , P.succeed PrimaryNoNewArray_ClassLiteral
+      |= classLiteral
+    , P.succeed PrimaryNoNewArray_This
+      |. P.keyword "this"
+    , P.succeed PrimaryNoNewArray_TypeThis
+      |= typeName
+      |. P.spaces
+      |. P.symbol "."
+      |. P.spaces
+      |. P.keyword "this"
+    , P.succeed PrimaryNoNewArray_BracketsExpression
+      |. P.symbol "("
+      |. P.spaces
+      |= expression
+      |. P.spaces
+      |. P.symbol ")"
+    , P.succeed PrimaryNoNewArray_ClassCreation
+      |= classInstanceCreationExpression
+    , P.succeed PrimaryNoNewArray_FieldAccess
+      |= fieldAccess
+    , P.succeed PrimaryNoNewArray_ArrayAccess
+      |= arrayAccess
+    , P.succeed PrimaryNoNewArray_MethodInvocation
+      |= methodInvocation
+    , P.succeed PrimaryNoNewArray_MethodReference
+      |= methodReference
+    ]
+
+type ClassLiteral
+  = ClassLiteral_TypeName TypeName Int
+  | ClassLiteral_Numeric NumericType Int
+  | ClassLiteral_Boolean Int
+  | ClassLiteral_Void
+
+classLiteral : Parser ClassLiteral
+classLiteral =
+  P.oneOf
+    [ P.succeed ClassLiteral_TypeName
+      |= typeName
+      |. P.spaces
+      |= brackets
+      |. P.spaces
+      |. P.symbol "."
+      |. P.spaces
+      |. P.keyword "class"
+    , P.succeed ClassLiteral_Numeric
+      |= numericType
+      |. P.spaces
+      |= brackets
+      |. P.spaces
+      |. P.symbol "."
+      |. P.spaces
+      |. P.keyword "class"
+    , P.succeed ClassLiteral_Boolean
+      |. P.keyword "boolean"
+      |. P.spaces
+      |= brackets
+      |. P.spaces
+      |. P.symbol "."
+      |. P.spaces
+      |. P.keyword "class"
+    , P.succeed ClassLiteral_Void
+      |. P.keyword "void"
+      |. P.spaces
+      |. P.symbol "."
+      |. P.spaces
+      |. P.keyword "class"
+    ]
+
+
+type ClassInstanceCreationExpression
+  = ClassInstanceCreationExpression_Normal
+                        UnqualifiedClassInstanceCreationExpression
+  | ClassInstanceCreationExpression_Expression ExpressionName
+                        UnqualifiedClassInstanceCreationExpression
+  | ClassInstanceCreationExpression_Primary Primary
+                        UnqualifiedClassInstanceCreationExpression
+
+classInstanceCreationExpression : Parser ClassInstanceCreationExpression
+classInstanceCreationExpression =
+  P.oneOf
+    [ P.succeed ClassInstanceCreationExpression_Normal
+      |= unqualifiedClassInstanceCreationExpression
+    , P.succeed ClassInstanceCreationExpression_Expression
+      |= expressionName
+      |. P.spaces
+      |. P.symbol "."
+      |. P.spaces
+      |= unqualifiedClassInstanceCreationExpression
+    , P.succeed ClassInstanceCreationExpression_Primary
+      |= P.lazy (\_ -> primary)
+      |. P.spaces
+      |. P.symbol "."
+      |. P.spaces
+      |= unqualifiedClassInstanceCreationExpression
+    ]
+
+
+type UnqualifiedClassInstanceCreationExpression =
+    UnqualifiedClassInstanceCreationExpression (Maybe TypeArguments)
+                ClassOrInterfaceTypeToInstantiate (Maybe ArgumentList)
+                                                    (Maybe ClassBody)
+
+unqualifiedClassInstanceCreationExpression : Parser UnqualifiedClassInstanceCreationExpression
+unqualifiedClassInstanceCreationExpression =
+  P.succeed UnqualifiedClassInstanceCreationExpression
+  |. P.keyword "new"
+  |. P.spaces
+  |= optional typeArguments
+  |. P.spaces
+  |= classOrInterfaceTypeToInstantiate
+  |. P.spaces
+  |. P.symbol "("
+  |. P.spaces
+  |= optional argumentList
+  |. P.spaces
+  |. P.symbol ")"
+  |. P.spaces
+  |= optional (P.lazy (\_ -> classBody))
+
+
+type ClassOrInterfaceTypeToInstantiate =
+    ClassOrInterfaceTypeToInstantiate (List Annotation) Identifier
+                (List ((List Annotation), Identifier))
+                (Maybe TypeArgumentsOrDiamond)
+
+classOrInterfaceTypeToInstantiate : Parser ClassOrInterfaceTypeToInstantiate
+classOrInterfaceTypeToInstantiate =
+  P.succeed ClassOrInterfaceTypeToInstantiate
+  |= list annotation
+  |. P.spaces
+  |= identifier
+  |. P.spaces
+  |= list
+     ( P.succeed Tuple.pair
+       |. P.symbol "."
+       |. P.spaces
+       |= list annotation
+       |. P.spaces
+       |= identifier
+     )
+  |. P.spaces
+  |= optional typeArgumentsOrDiamond
+
+
+type TypeArgumentsOrDiamond
+  = TypeArguments_TypeArguments TypeArguments
+  | TypeArguments_Diamond
+
+typeArgumentsOrDiamond : Parser TypeArgumentsOrDiamond
+typeArgumentsOrDiamond =
+  P.oneOf
+    [ P.succeed TypeArguments_TypeArguments
+      |= typeArguments
+    , P.succeed TypeArguments_Diamond
+      |. P.symbol "<>"
+    ]
+
+
+type FieldAccess
+  = FieldAccess_Primary Primary Identifier
+  | FieldAccess_Super Identifier
+  | FieldAccess_TypeNameSuper TypeName Identifier
+
+fieldAccess : Parser FieldAccess
+fieldAccess =
+  P.oneOf
+    [ P.succeed FieldAccess_Primary
+      |= P.lazy (\_ -> primary)
+      |. P.spaces
+      |. P.symbol "."
+      |. P.spaces
+      |= identifier
+    , P.succeed FieldAccess_Super
+      |. P.keyword "super"
+      |. P.spaces
+      |. P.symbol "."
+      |. P.spaces
+      |= identifier
+    , P.succeed FieldAccess_TypeNameSuper
+      |= typeName
+      |. P.spaces
+      |. P.symbol "."
+      |. P.spaces
+      |. P.keyword "super"
+      |. P.spaces
+      |. P.symbol "."
+      |. P.spaces
+      |= identifier
+    ]
+
 {-
-Primary:
-    PrimaryNoNewArray
-    ArrayCreationExpression
-
-PrimaryNoNewArray:
-    Literal
-    ClassLiteral
-    this
-    TypeName . this
-    ( Expression )
-    ClassInstanceCreationExpression
-    FieldAccess
-    ArrayAccess
-    MethodInvocation
-    MethodReference
-
-ClassLiteral:
-    TypeName {[ ]} . class
-    NumericType {[ ]} . class
-    boolean {[ ]} . class
-    void . class
-    ClassInstanceCreationExpression:
-    UnqualifiedClassInstanceCreationExpression
-    ExpressionName . UnqualifiedClassInstanceCreationExpression
-    Primary . UnqualifiedClassInstanceCreationExpression
-    UnqualifiedClassInstanceCreationExpression:
-    new (Maybe TypeArguments) ClassOrInterfaceTypeToInstantiate ( (Maybe ArgumentList) ) (Maybe ClassBody)
-    ClassOrInterfaceTypeToInstantiate:
-    (List Annotation) Identifier {. (List Annotation) Identifier} (Maybe TypeArgumentsOrDiamond)
-    TypeArgumentsOrDiamond:
-    TypeArguments
-    <>
-
-FieldAccess:
-    Primary . Identifier
-    super . Identifier
-    TypeName . super . Identifier
-    ArrayAccess:
+ArrayAccess:
     ExpressionName [ Expression ]
     PrimaryNoNewArray [ Expression ]
 
@@ -3128,7 +3314,6 @@ DimExprs:
 DimExpr:
     (List Annotation) [ Expression ]
 
-!!
 Expression:
     LambdaExpression
     AssignmentExpression
@@ -3152,12 +3337,10 @@ LambdaParameterType:
     UnannType
     var
 
-!!
 LambdaBody:
     Expression
     Block
 
-!!
 AssignmentExpression:
     ConditionalExpression
     Assignment
@@ -3165,18 +3348,56 @@ AssignmentExpression:
 Assignment:
     LeftHandSide AssignmentOperator Expression
 
-!!
 LeftHandSide:
     ExpressionName
     FieldAccess
     ArrayAccess
+-}
 
-AssignmentOperator:
-(one of)
+type AssignmentOperator
+  = AssignmentOperator_Normal
+  | AssignmentOperator_Multiply
+  | AssignmentOperator_Divide
+  | AssignmentOperator_Modulus
+  | AssignmentOperator_Add
+  | AssignmentOperator_Subtract
+  | AssignmentOperator_LeftShift
+  | AssignmentOperator_RightShift
+  | AssignmentOperator_RightShift3
+  | AssignmentOperator_And
+  | AssignmentOperator_Xor
+  | AssignmentOperator_Or
 
-    =  *=  /=  %=  +=  -=  <<=  >>=  >>>=  &=  ^=  |=
+assignmentOperator : Parser AssignmentOperator
+assignmentOperator =
+  P.oneOf
+    [ P.succeed AssignmentOperator_Normal
+      |. P.symbol "="
+    , P.succeed AssignmentOperator_Multiply
+      |. P.symbol "*="
+    , P.succeed AssignmentOperator_Divide
+      |. P.symbol "/="
+    , P.succeed AssignmentOperator_Modulus
+      |. P.symbol "%="
+    , P.succeed AssignmentOperator_Add
+      |. P.symbol "+="
+    , P.succeed AssignmentOperator_Subtract
+      |. P.symbol "-="
+    , P.succeed AssignmentOperator_LeftShift
+      |. P.symbol "<<="
+    , P.succeed AssignmentOperator_RightShift
+      |. P.symbol ">>="
+    , P.succeed AssignmentOperator_RightShift3
+      |. P.symbol ">>>="
+    , P.succeed AssignmentOperator_And
+      |. P.symbol "&="
+    , P.succeed AssignmentOperator_Xor
+      |. P.symbol "^="
+    , P.succeed AssignmentOperator_Or
+      |. P.symbol "|="
+    ]
 
-
+{-
 ConditionalExpression:
     ConditionalOrExpression
     ConditionalOrExpression ? Expression : ConditionalExpression
@@ -3252,7 +3473,6 @@ UnaryExpressionNotPlusMinus:
     CastExpression
     SwitchExpression
 
-!!
 PostfixExpression:
     Primary
     ExpressionName
@@ -3273,7 +3493,6 @@ CastExpression:
 SwitchExpression:
     switch ( Expression ) SwitchBlock
 
-!!
 ConstantExpression:
     Expression
 
