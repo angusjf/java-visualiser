@@ -1,4 +1,4 @@
-module JavaParser2 exposing (CompilationUnit, compilationUnit)
+module JavaParser2 exposing (..)
 
 import Parser as P exposing (Parser, (|.), (|=))
 import Set exposing (Set)
@@ -141,16 +141,54 @@ type Literal
 
 literal : Parser Literal
 literal =
-  P.oneOf -- TODO
-    [-- P.succeed Literal_IntegerLiteral integerLiteral
-    --, P.succeed Literal_FloatingPointLiteral floatingPointLiteral
-    --, P.succeed Literal_BooleanLiteral booleanLiteral
-    --, P.succeed Literal_CharacterLiteral characterLiteral
-    --, P.succeed Literal_StringLiteral stringLiteral
-    --, P.succeed Literal_TextBlock textBlock
-    --, P.succeed Literal_NullLiteral nullLiteral
+  P.oneOf
+    [ P.succeed Literal_NullLiteral
+      |. nullLiteral
+    , P.succeed Literal_BooleanLiteral
+      |= booleanLiteral
+    , P.succeed Literal_CharacterLiteral
+      |= characterLiteral
+    , P.succeed Literal_TextBlock
+      |= textBlock
+    , P.succeed Literal_StringLiteral
+      |= stringLiteral
+    , P.succeed Literal_IntegerLiteral
+      |= integerLiteral
+    , P.succeed Literal_FloatingPointLiteral
+      |= floatingPointLiteral
     ]
 
+nullLiteral : Parser ()
+nullLiteral = P.keyword "null"
+
+booleanLiteral : Parser Bool
+booleanLiteral =
+  P.oneOf
+    [ P.succeed True
+      |. P.keyword "true"
+    , P.succeed False
+      |. P.keyword "false"
+    ]
+
+characterLiteral : Parser Char
+characterLiteral =
+  P.succeed 'c' -- TODO
+
+textBlock : Parser String
+textBlock =
+  P.succeed "TODO" -- TODO
+
+stringLiteral : Parser String
+stringLiteral =
+  P.succeed "TODO" -- TODO
+
+integerLiteral : Parser Int
+integerLiteral =
+  P.succeed 1 -- TODO
+
+floatingPointLiteral : Parser Float
+floatingPointLiteral =
+  P.succeed 1 -- TODO
 -- }}}
 
 -- {{{ Productions from §4 (Types, Values, and Variables)
