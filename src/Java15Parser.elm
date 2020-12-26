@@ -35,18 +35,12 @@ nonEmptySep sep p =
   P.succeed (::)
   |= p
   |. P.spaces
-  |= sepBy sep p
-
-sepBy : String -> Parser a -> Parser (List a)
-sepBy sep p =
-  P.sequence
-    { start = ""
-    , separator = sep
-    , end = ""
-    , spaces = P.spaces
-    , item = p
-    , trailing = P.Forbidden
-    }
+  |= list
+     ( P.succeed identity
+       |. P.symbol sep
+       |. P.spaces
+       |= p
+     )
 
 list : Parser a -> Parser (List a)
 list p =
@@ -60,7 +54,7 @@ list p =
     }
 
 dotted : Parser a -> Parser (List a)
-dotted = sepBy "."
+dotted = nonEmptySep "."
 
 brackets : Parser Int
 brackets =
@@ -173,22 +167,27 @@ booleanLiteral =
 characterLiteral : Parser Char
 characterLiteral =
   P.succeed 'c' -- TODO
+  |. P.symbol "'"
 
 textBlock : Parser String
 textBlock =
   P.succeed "TODO" -- TODO
+  |. P.symbol "\""
 
 stringLiteral : Parser String
 stringLiteral =
   P.succeed "TODO" -- TODO
+  |. P.symbol "\""
 
 integerLiteral : Parser Int
 integerLiteral =
   P.succeed 1 -- TODO
+  |. P.symbol "1"
 
 floatingPointLiteral : Parser Float
 floatingPointLiteral =
   P.succeed 1 -- TODO
+  |. P.symbol "1"
 -- }}}
 
 -- {{{ Productions from §4 (Types, Values, and Variables)
