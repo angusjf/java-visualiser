@@ -1,4 +1,4 @@
-module JavaParser exposing (..)
+module Java7Parser exposing (..)
 
 import Set exposing (Set)
 import Parser as P exposing (Parser, (|=), (|.), Step)

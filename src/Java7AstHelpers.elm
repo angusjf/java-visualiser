@@ -1,6 +1,6 @@
-module JavaAstHelpers exposing (getRefsInClassBody, getRefsInReferenceType)
+module Java7AstHelpers exposing (getRefsInClassBody, getRefsInReferenceType)
 
-import JavaParser exposing (..)
+import Java7Parser exposing (..)
 import List.Nonempty
 
 getRefsInClassBody : ClassBody -> List String

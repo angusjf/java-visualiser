@@ -2,10 +2,10 @@ module Package.JavaToGraph exposing (..) -- TODO (fromSources)
 
 import Graph exposing (NodeId)
 import Package.Graph exposing (..)
-import JavaParser as JP
+import Java7Parser as JP
+import Java7AstHelpers
 import Parser
 import List.Nonempty as Nonempty exposing (Nonempty(..))
-import JavaAstHelpers
 import Set
 
 type alias Subgraph =
@@ -185,7 +185,7 @@ getReferences pkg body =
       |> List.filterMap memberToAttribute
       |> List.concatMap (attributeToNodeIds pkg)
     allReferences =
-        JavaAstHelpers.getRefsInClassBody body
+        Java7AstHelpers.getRefsInClassBody body
         |> removeDuplicates
         |> List.map (prefixIfNotAlready pkg)
   in
