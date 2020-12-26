@@ -5,29 +5,6 @@ import Set exposing (Set)
 import Char exposing (Char)
 import Regex
 
--- {{{ MOCK TYPES
-
-todo = Debug.todo "mock parser"
-type EnumDeclaration = TODO7
-enumDeclaration = todo
-type Expression = TODO9
-expression = todo
-boolean = todo
-type ArgumentList = TODO1
-argumentList = todo
-type MethodInvocation = TODO44
-methodInvocation = todo
-type Assignment = TODO23123
-assignment = todo
-type MethodReference = TODO2222
-methodReference = todo
-type ArrayCreationExpression = TODO2223
-arrayCreationExpression = todo
-type ArrayAccess = TODO444
-arrayAccess = todo
-
----}}}
-
 type Either a b = Left a | Right b
 
 -- {{{ helpers
@@ -86,7 +63,9 @@ dotted : Parser a -> Parser (List a)
 dotted = sepBy "."
 
 brackets : Parser Int
-brackets = todo
+brackets =
+  P.map List.length (list (P.symbol "[" |. P.spaces |. P.symbol "]"))
+
 --}}}
 
 -- {{{ Productions from §3 (Lexical Structure)
@@ -94,13 +73,17 @@ brackets = todo
 keywords : Set String
 keywords =
   Set.fromList
-    [ "abstract", "continue", "for", "new", "switch", "assert", "default"
-    , "goto", "package", "synchronized", "boolean", "do", "if", "private"
-    , "this", "break", "double", "implements", "protected", "throw", "byte"
-    , "else", "import", "public", "throws", "case", "enum", "instanceof"
-    , "return", "transient", "catch", "extends", "int", "short", "try", "char"
-    , "final", "interface", "static", "void", "class", "finally", "long"
-    , "strictfp", "volatile", "const", "float", "native", "super", "while"
+    [ "abstract" , "continue" , "for"        , "new"       , "switch"
+    , "assert"   , "default"  , "if"         , "package"   , "synchronized"
+    , "boolean"  , "do"       , "goto"       , "private"   , "this"
+    , "break"    , "double"   , "implements" , "protected" , "throw"
+    , "byte"     , "else"     , "import"     , "public"    , "throws"
+    , "case"     , "enum"     , "instanceof" , "return"    , "transient"
+    , "catch"    , "extends"  , "int"        , "short"     , "try"
+    , "char"     , "final"    , "interface"  , "static"    , "void"
+    , "class"    , "finally"  , "long"       , "strictfp"  , "volatile"
+    , "const"    , "float"    , "native"     , "super"     , "while"
+    , "_"
     ]
 
 type Identifier = Identifier String
@@ -1054,6 +1037,7 @@ variableDeclaratorId =
     |. P.spaces
     |= optional dims
 
+
 type VariableInitializer
   = VariableInitializer_Expression Expression
   | VariableInitializer_ArrayInitializer ArrayInitializer
@@ -1066,6 +1050,7 @@ variableInitializer =
     , P.succeed VariableInitializer_ArrayInitializer
       |= arrayInitializer
     ]
+
 
 type UnannType
   = UnannType_Primitive UnannPrimitiveType
@@ -1083,7 +1068,7 @@ unannType =
 
 type UnannPrimitiveType
   = UnannPrimitiveType_Numeric NumericType
-  | UnannPrimitiveType_Boolean Bool
+  | UnannPrimitiveType_Boolean
 
 unannPrimitiveType : Parser UnannPrimitiveType
 unannPrimitiveType =
@@ -1091,8 +1076,9 @@ unannPrimitiveType =
     [ P.succeed UnannPrimitiveType_Numeric
       |= numericType
     , P.succeed UnannPrimitiveType_Boolean
-      |= boolean
+      |. P.keyword "boolean"
     ]
+
 
 type UnannReferenceType
   = UnannReferenceType_Class UnannClassOrInterfaceType
@@ -1477,10 +1463,27 @@ constructorModifier =
 
 type ConstructorDeclarator =
     ConstructorDeclarator (Maybe TypeParameters) SimpleTypeName
-                   --( [ReceiverParameter ,] (Maybe FormalParameterList) )
+                          (Maybe ReceiverParameter) (Maybe FormalParameterList)
 
 constructorDeclarator : Parser ConstructorDeclarator
-constructorDeclarator = todo
+constructorDeclarator =
+  P.succeed ConstructorDeclarator
+  |= optional typeParameters
+  |. P.spaces
+  |= simpleTypeName
+  |. P.spaces
+  |. P.symbol "("
+  |. P.spaces
+  |= optional
+     ( P.succeed identity
+       |= receiverParameter
+       |. P.spaces
+       |. P.symbol ","
+     )
+  |. P.spaces
+  |= optional formalParameterList
+  |. P.spaces
+  |. P.symbol ")"
 
 
 type SimpleTypeName = SimpleTypeName TypeIdentifier
@@ -1578,6 +1581,24 @@ explicitConstructorInvocation =
     ]
 
 
+type EnumDeclaration =
+    EnumDeclaration (List ClassModifier) TypeIdentifier (Maybe Superinterfaces)
+                                                                    EnumBody
+
+enumDeclaration : Parser EnumDeclaration
+enumDeclaration =
+  P.succeed EnumDeclaration
+  |= list classModifier
+  |. P.spaces
+  |. P.keyword "enum"
+  |. P.spaces
+  |= typeIdentifier
+  |. P.spaces
+  |= optional superinterfaces
+  |. P.spaces
+  |= enumBody
+
+
 type EnumBody = EnumBody (Maybe EnumConstantList) (Maybe EnumBodyDeclarations)
 
 enumBody : Parser EnumBody
@@ -1641,8 +1662,8 @@ enumConstantModifier =
 type EnumBodyDeclarations = EnumBodyDeclarations (List ClassBodyDeclaration)
 
 enumBodyDeclarations : Parser EnumBodyDeclarations
-enumBodyDeclarations = todo
-  P.succeed identity
+enumBodyDeclarations =
+  P.succeed EnumBodyDeclarations
   |. P.symbol ";"
   |. P.spaces
   |= list classBodyDeclaration
@@ -2960,7 +2981,7 @@ type TryWithResourcesStatement =
                                             (Maybe Catches) (Maybe Finally)
 
 tryWithResourcesStatement : Parser TryWithResourcesStatement
-tryWithResourcesStatement = todo
+tryWithResourcesStatement =
   P.succeed TryWithResourcesStatement
   |. P.keyword "try"
   |. P.spaces
@@ -3088,7 +3109,7 @@ primaryNoNewArray =
       |. P.spaces
       |. P.symbol ")"
     , P.succeed PrimaryNoNewArray_ClassCreation
-      |= classInstanceCreationExpression
+      |= P.lazy (\_ -> classInstanceCreationExpression)
     , P.succeed PrimaryNoNewArray_FieldAccess
       |= fieldAccess
     , P.succeed PrimaryNoNewArray_ArrayAccess
@@ -3262,85 +3283,447 @@ fieldAccess =
       |= identifier
     ]
 
-{-
-ArrayAccess:
-    ExpressionName [ Expression ]
-    PrimaryNoNewArray [ Expression ]
+type ArrayAccess
+  = ArrayAccess_Expression ExpressionName Expression
+  | ArrayAccess_Primary PrimaryNoNewArray Expression
 
-MethodInvocation:
-    MethodName ( (Maybe ArgumentList) )
-    TypeName . (Maybe TypeArguments) Identifier ( (Maybe ArgumentList) )
-    ExpressionName . (Maybe TypeArguments) Identifier ( (Maybe ArgumentList) )
-    Primary . (Maybe TypeArguments) Identifier ( (Maybe ArgumentList) )
-    super . (Maybe TypeArguments) Identifier ( (Maybe ArgumentList) )
-    TypeName . super . (Maybe TypeArguments) Identifier ( (Maybe ArgumentList) )
+arrayAccess : Parser ArrayAccess
+arrayAccess =
+  P.oneOf
+    [ P.succeed ArrayAccess_Expression
+      |= expressionName
+      |. P.spaces
+      |. P.symbol "["
+      |. P.spaces
+      |= P.lazy (\_ -> expression)
+      |. P.spaces
+      |. P.symbol "]"
+    , P.succeed ArrayAccess_Primary
+      |= P.lazy (\_ -> primaryNoNewArray)
+      |. P.spaces
+      |. P.symbol "["
+      |. P.spaces
+      |= P.lazy (\_ -> expression)
+      |. P.spaces
+      |. P.symbol "]"
+    ]
 
-ArgumentList:
-    Expression {, Expression}
 
-MethodReference:
-    ExpressionName :: (Maybe TypeArguments) Identifier
-    Primary :: (Maybe TypeArguments) Identifier
-    ReferenceType :: (Maybe TypeArguments) Identifier
-    super :: (Maybe TypeArguments) Identifier
-    TypeName . super :: (Maybe TypeArguments) Identifier
-    ClassType :: (Maybe TypeArguments) new
-    ArrayType :: new
+type MethodInvocation
+  = MethodInvocation_Name MethodName (Maybe ArgumentList)
+  | MethodInvocation_Type TypeName (Maybe TypeArguments) Identifier
+                                                            (Maybe ArgumentList)
+  | MethodInvocation_Expression ExpressionName (Maybe TypeArguments) Identifier
+                                                            (Maybe ArgumentList)
+  | MethodInvocation_Primary Primary (Maybe TypeArguments) Identifier
+                                                            (Maybe ArgumentList)
+  | MethodInvocation_Super (Maybe TypeArguments) Identifier (Maybe ArgumentList)
+  | MethodInvocation_TypeSuper TypeName (Maybe TypeArguments) Identifier
+                                                            (Maybe ArgumentList)
 
-ArrayCreationExpression:
-    new PrimitiveType DimExprs (Maybe Dims)
-    new ClassOrInterfaceType DimExprs (Maybe Dims)
-    new PrimitiveType Dims ArrayInitializer
-    new ClassOrInterfaceType Dims ArrayInitializer
+methodInvocation : Parser MethodInvocation
+methodInvocation =
+  P.oneOf
+    [ P.succeed MethodInvocation_Name
+      |= methodName
+      |. P.spaces
+      |. P.symbol "("
+      |. P.spaces
+      |= optional argumentList
+      |. P.spaces
+      |. P.symbol ")"
+    , P.succeed MethodInvocation_Type
+      |= typeName
+      |. P.spaces
+      |. P.symbol "."
+      |. P.spaces
+      |= optional typeArguments
+      |. P.spaces
+      |= identifier
+      |. P.spaces
+      |. P.symbol "("
+      |. P.spaces
+      |= optional argumentList
+      |. P.spaces
+      |. P.symbol ")"
+    , P.succeed MethodInvocation_Expression
+      |= expressionName
+      |. P.spaces
+      |. P.symbol "."
+      |. P.spaces
+      |= optional typeArguments
+      |. P.spaces
+      |= identifier
+      |. P.spaces
+      |. P.symbol "("
+      |. P.spaces
+      |= optional argumentList
+      |. P.spaces
+      |. P.symbol ")"
+    , P.succeed MethodInvocation_Primary
+      |= P.lazy (\_ -> primary)
+      |. P.spaces
+      |. P.symbol "."
+      |. P.spaces
+      |= optional typeArguments
+      |. P.spaces
+      |= identifier
+      |. P.spaces
+      |. P.symbol "("
+      |. P.spaces
+      |= optional argumentList
+      |. P.spaces
+      |. P.symbol ")"
+    , P.succeed MethodInvocation_Super
+      |. P.symbol "super"
+      |. P.spaces
+      |. P.symbol "."
+      |. P.spaces
+      |= optional typeArguments
+      |. P.spaces
+      |= identifier
+      |. P.spaces
+      |. P.symbol "("
+      |. P.spaces
+      |= optional argumentList
+      |. P.spaces
+      |. P.symbol ")"
+    , P.succeed MethodInvocation_TypeSuper
+      |= typeName
+      |. P.spaces
+      |. P.symbol "."
+      |. P.spaces
+      |. P.keyword "super"
+      |. P.spaces
+      |. P.symbol "."
+      |. P.spaces
+      |= optional typeArguments
+      |. P.spaces
+      |= identifier
+      |. P.spaces
+      |. P.symbol "("
+      |. P.spaces
+      |= optional argumentList
+      |. P.spaces
+      |. P.symbol ")"
+    ]
 
-DimExprs:
-    DimExpr (List DimExpr)
 
-DimExpr:
-    (List Annotation) [ Expression ]
+type ArgumentList = ArgumentList Expression (List Expression)
 
-Expression:
-    LambdaExpression
-    AssignmentExpression
--}
+argumentList : Parser ArgumentList
+argumentList =
+  P.succeed ArgumentList
+  |= expression
+  |= list
+     ( P.succeed identity
+       |. P.symbol ","
+       |. P.spaces
+       |= expression
+     )
 
-lambdaExpression = todo
-type LambdaExpression = TODO11
-    --LambdaParameters -> LambdaBody
 
-{-
-LambdaParameters:
-    ( (Maybe LambdaParameterList) )
-    Identifier
+type MethodReference
+  = MethodReference_Expression ExpressionName (Maybe TypeArguments) Identifier
+  | MethodReference_Primary Primary (Maybe TypeArguments) Identifier
+  | MethodReference_Reference ReferenceType (Maybe TypeArguments) Identifier
+  | MethodReference_Super (Maybe TypeArguments) Identifier
+  | MethodReference_TypeSuper TypeName (Maybe TypeArguments) Identifier
+  | MethodReference_ClassNew ClassType (Maybe TypeArguments)
+  | MethodReference_ArrayNew ArrayType
 
-LambdaParameterList:
-    LambdaParameter {, LambdaParameter}
-    Identifier {, Identifier}
+methodReference : Parser MethodReference
+methodReference =
+  P.oneOf
+    [ P.succeed MethodReference_Expression
+      |= expressionName
+      |. P.spaces
+      |. P.symbol "::"
+      |. P.spaces
+      |= optional typeArguments
+      |. P.spaces
+      |= identifier
+    , P.succeed MethodReference_Primary
+      |= P.lazy (\_ -> primary)
+      |. P.spaces
+      |. P.symbol "::"
+      |. P.spaces
+      |= optional typeArguments
+      |. P.spaces
+      |= identifier
+    , P.succeed MethodReference_Reference
+      |= referenceType
+      |. P.spaces
+      |. P.symbol "::"
+      |. P.spaces
+      |= optional typeArguments
+      |. P.spaces
+      |= identifier
+    , P.succeed MethodReference_Super
+      |. P.keyword "super"
+      |. P.spaces
+      |. P.symbol "::"
+      |. P.spaces
+      |= optional typeArguments
+      |. P.spaces
+      |= identifier
+    , P.succeed MethodReference_TypeSuper
+      |. P.spaces
+      |= typeName
+      |. P.spaces
+      |. P.symbol "."
+      |. P.spaces
+      |. P.keyword "super"
+      |. P.spaces
+      |. P.symbol "::"
+      |. P.spaces
+      |= optional typeArguments
+      |. P.spaces
+      |= identifier
+    , P.succeed MethodReference_ClassNew
+      |= classType
+      |. P.spaces
+      |. P.symbol "::"
+      |. P.spaces
+      |= optional typeArguments
+      |. P.spaces
+      |. P.keyword "new"
+    , P.succeed MethodReference_ArrayNew
+      |= arrayType
+      |. P.spaces
+      |. P.symbol "::"
+      |. P.spaces
+      |. P.keyword "new"
+    ]
 
-LambdaParameter:
-    (List VariableModifier) LambdaParameterType VariableDeclaratorId
-    VariableArityParameter
 
-LambdaParameterType:
-    UnannType
-    var
+type ArrayCreationExpression
+  = ArrayCreationExpression_Primitive PrimitiveType DimExprs (Maybe Dims)
+  | ArrayCreationExpression_Class ClassOrInterfaceType DimExprs (Maybe Dims)
+  | ArrayCreationExpression_PrimitiveArrayInit PrimitiveType Dims ArrayInitializer
+  | ArrayCreationExpression_ClassArrayInit ClassOrInterfaceType Dims ArrayInitializer
 
-LambdaBody:
-    Expression
-    Block
+arrayCreationExpression : Parser ArrayCreationExpression
+arrayCreationExpression =
+  P.oneOf
+    [ P.succeed ArrayCreationExpression_Primitive
+      |. P.keyword "new"
+      |. P.spaces
+      |= primitiveType
+      |. P.spaces
+      |= dimExprs
+      |. P.spaces
+      |= optional dims
+    , P.succeed ArrayCreationExpression_Class
+      |. P.keyword "new"
+      |. P.spaces
+      |= classOrInterfaceType
+      |. P.spaces
+      |= dimExprs
+      |. P.spaces
+      |= optional dims
+    , P.succeed ArrayCreationExpression_PrimitiveArrayInit
+      |. P.keyword "new"
+      |. P.spaces
+      |= primitiveType
+      |. P.spaces
+      |= dims
+      |. P.spaces
+      |= arrayInitializer
+    , P.succeed ArrayCreationExpression_ClassArrayInit
+      |. P.keyword "new"
+      |. P.spaces
+      |= classOrInterfaceType
+      |. P.spaces
+      |= dims
+      |. P.spaces
+      |= arrayInitializer
+    ]
 
-AssignmentExpression:
-    ConditionalExpression
-    Assignment
 
-Assignment:
-    LeftHandSide AssignmentOperator Expression
+type DimExprs = DimExprs DimExpr (List DimExpr)
 
-LeftHandSide:
-    ExpressionName
-    FieldAccess
-    ArrayAccess
--}
+dimExprs : Parser DimExprs
+dimExprs =
+  P.succeed DimExprs
+  |= dimExpr
+  |. P.spaces
+  |= list dimExpr
+
+
+type DimExpr = DimExpr (List Annotation) Expression
+
+dimExpr : Parser DimExpr
+dimExpr =
+  P.succeed DimExpr
+  |= list annotation
+  |. P.spaces
+  |. P.symbol "["
+  |. P.spaces
+  |= expression
+  |. P.spaces
+  |. P.symbol "]"
+
+
+type Expression
+  = Expression_Lambda LambdaExpression
+  | Expression_Assignment AssignmentExpression
+
+expression : Parser Expression
+expression =
+  P.oneOf
+    [ P.succeed Expression_Lambda
+      |= lambdaExpression
+    , P.succeed Expression_Assignment
+      |= assignmentExpression
+    ]
+
+
+type LambdaExpression = LambdaExpression LambdaParameters LambdaBody
+
+lambdaExpression : Parser LambdaExpression
+lambdaExpression =
+  P.succeed LambdaExpression
+  |= lambdaParameters
+  |. P.spaces
+  |. P.symbol "->"
+  |. P.spaces
+  |= lambdaBody
+
+
+type LambdaParameters
+  = LambdaParameters_List (Maybe LambdaParameterList)
+  | LambdaParameters_Identifier Identifier
+
+lambdaParameters : Parser LambdaParameters
+lambdaParameters =
+  P.oneOf
+    [ P.succeed LambdaParameters_List
+      |. P.symbol "("
+      |. P.spaces
+      |= optional lambdaParameterList
+      |. P.spaces
+      |. P.symbol ")"
+    , P.succeed LambdaParameters_Identifier
+      |= identifier
+    ]
+
+
+type LambdaParameterList
+  = LambdaParameterList_Parameters LambdaParameter (List LambdaParameter)
+  | LambdaParameterList_Identifiers Identifier (List Identifier)
+
+lambdaParameterList : Parser LambdaParameterList
+lambdaParameterList =
+  P.oneOf
+    [ P.succeed LambdaParameterList_Parameters
+      |= lambdaParameter
+      |. P.spaces
+      |= list
+         ( P.succeed identity
+           |. P.symbol ","
+           |. P.spaces
+           |= lambdaParameter
+         )
+    , P.succeed LambdaParameterList_Identifiers
+      |= identifier
+      |. P.spaces
+      |= list
+         ( P.succeed identity
+           |. P.symbol ","
+           |. P.spaces
+           |= identifier
+         )
+    ]
+
+
+type LambdaParameter
+  = LambdaParameter_Normal (List VariableModifier) LambdaParameterType VariableDeclaratorId
+  | LambdaParameter_Arity VariableArityParameter
+
+lambdaParameter : Parser LambdaParameter
+lambdaParameter =
+  P.oneOf
+    [ P.succeed LambdaParameter_Normal
+      |= list variableModifier
+      |. P.spaces
+      |= lambdaParameterType
+      |. P.spaces
+      |= variableDeclaratorId
+    , P.succeed LambdaParameter_Arity
+      |= variableArityParameter
+    ]
+
+
+type LambdaParameterType
+  = LambdaParameterType_Unann UnannType
+  | LambdaParameterType_Var
+
+lambdaParameterType : Parser LambdaParameterType
+lambdaParameterType =
+  P.oneOf
+    [ P.succeed LambdaParameterType_Unann
+      |= P.lazy (\_ -> unannType)
+    , P.succeed LambdaParameterType_Var
+      |. P.keyword "var"
+    ]
+
+
+type LambdaBody
+  = LambdaBody_Expression Expression
+  | LambdaBody_Block Block
+
+lambdaBody : Parser LambdaBody
+lambdaBody =
+  P.oneOf
+    [ P.succeed LambdaBody_Expression
+      |= P.lazy (\_ -> expression)
+    , P.succeed LambdaBody_Block
+      |= P.lazy (\_ -> block)
+    ]
+
+
+type AssignmentExpression
+  = AssignmentExpression_Conditional ConditionalExpression
+  | AssignmentExpression_Assignment Assignment
+
+assignmentExpression : Parser AssignmentExpression
+assignmentExpression =
+  P.oneOf
+    [ P.succeed AssignmentExpression_Conditional
+      |= conditionalExpression
+    , P.succeed AssignmentExpression_Assignment
+      |= assignment
+    ]
+
+
+type Assignment = Assignment LeftHandSide AssignmentOperator Expression
+
+assignment : Parser Assignment
+assignment =
+  P.succeed Assignment
+  |= leftHandSide
+  |. P.spaces
+  |= assignmentOperator
+  |. P.spaces
+  |= P.lazy (\_ -> expression)
+
+type LeftHandSide
+  = LeftHandSide_Expression ExpressionName
+  | LeftHandSide_Field FieldAccess
+  | LeftHandSide_Array ArrayAccess
+
+leftHandSide : Parser LeftHandSide
+leftHandSide =
+  P.oneOf
+  [ P.succeed LeftHandSide_Expression
+    |= expressionName
+  , P.succeed LeftHandSide_Field
+    |= fieldAccess
+  , P.succeed LeftHandSide_Array
+    |= arrayAccess
+  ]
+
 
 type AssignmentOperator
   = AssignmentOperator_Normal
@@ -3403,7 +3786,7 @@ conditionalExpression =
       |. P.spaces
       |. P.symbol "?"
       |. P.spaces
-      |= expression
+      |= P.lazy (\_ -> expression)
       |. P.spaces
       |. P.symbol ":"
       |. P.spaces
@@ -3413,11 +3796,11 @@ conditionalExpression =
       |. P.spaces
       |. P.symbol "?"
       |. P.spaces
-      |= expression
+      |= P.lazy (\_ -> expression)
       |. P.spaces
       |. P.symbol ":"
       |. P.spaces
-      |= lambdaExpression
+      |= P.lazy (\_ -> lambdaExpression)
     ]
 
 
