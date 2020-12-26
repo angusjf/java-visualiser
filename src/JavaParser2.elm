@@ -15,18 +15,8 @@ expression = todo
 boolean = todo
 type ArgumentList = TODO1
 argumentList = todo
-type ConditionalExpression = TODO3
-conditionalExpression = todo
 type MethodInvocation = TODO44
 methodInvocation = todo
-type PostIncrementExpression = TODO231yy
-postIncrementExpression = todo
-type PostDecrementExpression = TODO23123df
-postDecrementExpression = todo
-type PreIncrementExpression = TODO231
-preIncrementExpression = todo
-type PreDecrementExpression = TODO23123s
-preDecrementExpression = todo
 type Assignment = TODO23123
 assignment = todo
 type MethodReference = TODO2222
@@ -55,12 +45,6 @@ removeCommentsAndTabs src =
       |> Maybe.withDefault Regex.never
   in
     Regex.replace re (always "") src
-
-or : (a -> x) -> (b -> x) -> Either a b -> x
-or f g e =
-    case e of
-        Left a -> f a
-        Right b -> g b
 
 optional : Parser a -> Parser (Maybe a)
 optional p =
@@ -174,7 +158,7 @@ type Literal
 
 literal : Parser Literal
 literal =
-  P.oneOf
+  P.oneOf -- TODO
     [-- P.succeed Literal_IntegerLiteral integerLiteral
     --, P.succeed Literal_FloatingPointLiteral floatingPointLiteral
     --, P.succeed Literal_BooleanLiteral booleanLiteral
@@ -208,13 +192,14 @@ type PrimitiveType
 
 primitiveType : Parser PrimitiveType
 primitiveType =
-  P.succeed
-    (\x -> or (PrimitiveType_Numeric x) (always (PrimitiveType_Boolean x)))
+  P.succeed (\annotations f -> f annotations)
   |= list annotation
   |. P.spaces
   |= P.oneOf
-     [ P.map Left numericType
-     , P.map Right (P.keyword "boolean")
+     [ P.succeed (\num -> (\ann -> PrimitiveType_Numeric ann num))
+       |= numericType
+     , P.succeed PrimitiveType_Boolean
+       |. P.keyword "boolean"
      ]
 
 
@@ -3317,10 +3302,13 @@ DimExpr:
 Expression:
     LambdaExpression
     AssignmentExpression
+-}
 
-LambdaExpression:
-    LambdaParameters -> LambdaBody
+lambdaExpression = todo
+type LambdaExpression = TODO11
+    --LambdaParameters -> LambdaBody
 
+{-
 LambdaParameters:
     ( (Maybe LambdaParameterList) )
     Identifier
@@ -3397,104 +3385,468 @@ assignmentOperator =
       |. P.symbol "|="
     ]
 
-{-
-ConditionalExpression:
-    ConditionalOrExpression
-    ConditionalOrExpression ? Expression : ConditionalExpression
-    ConditionalOrExpression ? Expression : LambdaExpression
 
-ConditionalOrExpression:
-    ConditionalAndExpression
-    ConditionalOrExpression || ConditionalAndExpression
+type ConditionalExpression
+  = ConditionalExpression_Or ConditionalOrExpression
+  | ConditionalExpression_TernaryConditional ConditionalOrExpression Expression
+                                                    ConditionalExpression
+  | ConditionalExpression_TernaryLambda ConditionalOrExpression Expression
+                                                    LambdaExpression
 
-ConditionalAndExpression:
-    InclusiveOrExpression
-    ConditionalAndExpression && InclusiveOrExpression
+conditionalExpression : Parser ConditionalExpression
+conditionalExpression =
+  P.oneOf
+    [ P.succeed ConditionalExpression_Or
+      |= conditionalOrExpression
+    , P.succeed ConditionalExpression_TernaryConditional
+      |= conditionalOrExpression
+      |. P.spaces
+      |. P.symbol "?"
+      |. P.spaces
+      |= expression
+      |. P.spaces
+      |. P.symbol ":"
+      |. P.spaces
+      |= P.lazy (\_ -> conditionalExpression)
+    , P.succeed ConditionalExpression_TernaryLambda
+      |= conditionalOrExpression
+      |. P.spaces
+      |. P.symbol "?"
+      |. P.spaces
+      |= expression
+      |. P.spaces
+      |. P.symbol ":"
+      |. P.spaces
+      |= lambdaExpression
+    ]
 
-InclusiveOrExpression:
-    ExclusiveOrExpression
-    InclusiveOrExpression | ExclusiveOrExpression
 
-ExclusiveOrExpression:
-    AndExpression
-    ExclusiveOrExpression ^ AndExpression
+type ConditionalOrExpression
+  = ConditionalOrExpression_And ConditionalAndExpression
+  | ConditionalOrExpression_Or ConditionalOrExpression ConditionalAndExpression
 
-AndExpression:
-    EqualityExpression
-    AndExpression & EqualityExpression
+conditionalOrExpression : Parser ConditionalOrExpression
+conditionalOrExpression =
+  P.oneOf
+    [ P.succeed ConditionalOrExpression_And
+      |= conditionalAndExpression
+    , P.succeed ConditionalOrExpression_Or
+      |= P.lazy (\_ -> conditionalOrExpression)
+      |. P.spaces
+      |. P.symbol "||"
+      |. P.spaces
+      |= conditionalAndExpression
+    ]
 
-EqualityExpression:
-    RelationalExpression
-    EqualityExpression == RelationalExpression
-    EqualityExpression != RelationalExpression
 
-RelationalExpression:
-    ShiftExpression
-    RelationalExpression < ShiftExpression
-    RelationalExpression > ShiftExpression
-    RelationalExpression <= ShiftExpression
-    RelationalExpression >= ShiftExpression
-    RelationalExpression instanceof ReferenceType
+type ConditionalAndExpression
+  = ConditionalAndExpression_Or InclusiveOrExpression
+  | ConditionalAndExpression_And ConditionalAndExpression InclusiveOrExpression
 
-ShiftExpression:
-    AdditiveExpression
-    ShiftExpression << AdditiveExpression
-    ShiftExpression >> AdditiveExpression
-    ShiftExpression >>> AdditiveExpression
+conditionalAndExpression : Parser ConditionalAndExpression
+conditionalAndExpression =
+  P.oneOf
+    [ P.succeed ConditionalAndExpression_Or
+      |= inclusiveOrExpression
+    , P.succeed ConditionalAndExpression_And
+      |= P.lazy (\_ -> conditionalAndExpression)
+      |. P.spaces
+      |. P.symbol "&&"
+      |. P.spaces
+      |= inclusiveOrExpression
+    ]
 
-AdditiveExpression:
-    MultiplicativeExpression
-    AdditiveExpression + MultiplicativeExpression
-    AdditiveExpression - MultiplicativeExpression
 
-MultiplicativeExpression:
-    UnaryExpression
-    MultiplicativeExpression * UnaryExpression
-    MultiplicativeExpression / UnaryExpression
-    MultiplicativeExpression % UnaryExpression
+type InclusiveOrExpression
+  = InclusiveOrExpression_Xor ExclusiveOrExpression
+  | InclusiveOrExpression_Or InclusiveOrExpression ExclusiveOrExpression
 
-UnaryExpression:
-    PreIncrementExpression
-    PreDecrementExpression
-    + UnaryExpression
-    - UnaryExpression
-    UnaryExpressionNotPlusMinus
+inclusiveOrExpression : Parser InclusiveOrExpression
+inclusiveOrExpression =
+  P.oneOf
+    [ P.succeed InclusiveOrExpression_Xor
+      |= exclusiveOrExpression
+    , P.succeed InclusiveOrExpression_Or
+      |= P.lazy (\_ -> inclusiveOrExpression)
+      |. P.spaces
+      |. P.symbol "|"
+      |. P.spaces
+      |= exclusiveOrExpression
+    ]
 
-PreIncrementExpression:
-    ++ UnaryExpression
 
-PreDecrementExpression:
-    -- UnaryExpression
+type ExclusiveOrExpression
+  = ExclusiveOrExpression_And AndExpression
+  | ExclusiveOrExpression_Xor ExclusiveOrExpression AndExpression
 
-UnaryExpressionNotPlusMinus:
-    PostfixExpression
-    ~ UnaryExpression
-    ! UnaryExpression
-    CastExpression
-    SwitchExpression
+exclusiveOrExpression : Parser ExclusiveOrExpression
+exclusiveOrExpression =
+  P.oneOf
+    [ P.succeed ExclusiveOrExpression_And
+      |= andExpression
+    , P.succeed ExclusiveOrExpression_Xor
+      |= P.lazy (\_ -> exclusiveOrExpression)
+      |. P.spaces
+      |. P.symbol "^"
+      |. P.spaces
+      |= andExpression
+    ]
 
-PostfixExpression:
-    Primary
-    ExpressionName
-    PostIncrementExpression
-    PostDecrementExpression
 
-PostIncrementExpression:
-    PostfixExpression ++
+type AndExpression
+  = AndExpression_Equality EqualityExpression
+  | AndExpression_And AndExpression EqualityExpression
 
-PostDecrementExpression:
-    PostfixExpression --
+andExpression : Parser AndExpression
+andExpression =
+  P.oneOf
+    [ P.succeed AndExpression_Equality
+      |= equalityExpression
+    , P.succeed AndExpression_And
+      |= P.lazy (\_ -> andExpression)
+      |. P.spaces
+      |. P.symbol "&"
+      |. P.spaces
+      |= equalityExpression
+    ]
 
-CastExpression:
-    ( PrimitiveType ) UnaryExpression
-    ( ReferenceType (List AdditionalBound) ) UnaryExpressionNotPlusMinus
-    ( ReferenceType (List AdditionalBound) ) LambdaExpression
 
-SwitchExpression:
-    switch ( Expression ) SwitchBlock
+type EqualityExpression
+  = EqualityExpression_Relational RelationalExpression
+  | EqualityExpression_Equals EqualityExpression RelationalExpression
+  | EqualityExpression_NotEquals EqualityExpression RelationalExpression
 
-ConstantExpression:
-    Expression
+equalityExpression : Parser EqualityExpression
+equalityExpression =
+  P.oneOf
+    [ P.succeed EqualityExpression_Relational
+      |= P.lazy (\_ -> relationalExpression)
+    , P.succeed EqualityExpression_Equals
+      |= P.lazy (\_ -> equalityExpression)
+      |. P.spaces
+      |. P.symbol "=="
+      |. P.spaces
+      |= P.lazy (\_ -> relationalExpression)
+    , P.succeed EqualityExpression_NotEquals
+      |= P.lazy (\_ -> equalityExpression)
+      |. P.spaces
+      |. P.symbol "!="
+      |. P.spaces
+      |= P.lazy (\_ -> relationalExpression)
+    ]
 
--}
+
+type RelationalExpression
+  = RelationalExpression_Shift ShiftExpression
+  | RelationalExpression_Less RelationalExpression ShiftExpression
+  | RelationalExpression_Greater RelationalExpression ShiftExpression
+  | RelationalExpression_LessEqual RelationalExpression ShiftExpression
+  | RelationalExpression_GreaterEqual RelationalExpression ShiftExpression
+  | RelationalExpression_Instanceof RelationalExpression ReferenceType
+
+relationalExpression : Parser RelationalExpression
+relationalExpression =
+  P.oneOf
+    [ P.succeed RelationalExpression_Shift
+      |= shiftExpression
+    , P.succeed RelationalExpression_Less
+      |= P.lazy (\_ -> relationalExpression)
+      |. P.spaces
+      |. P.symbol "<"
+      |. P.spaces
+      |= shiftExpression
+    , P.succeed RelationalExpression_Greater
+      |= P.lazy (\_ -> relationalExpression)
+      |. P.spaces
+      |. P.symbol ">"
+      |. P.spaces
+      |= shiftExpression
+    , P.succeed RelationalExpression_LessEqual
+      |= P.lazy (\_ -> relationalExpression)
+      |. P.spaces
+      |. P.symbol "<="
+      |. P.spaces
+      |= shiftExpression
+    , P.succeed RelationalExpression_GreaterEqual
+      |= P.lazy (\_ -> relationalExpression)
+      |. P.spaces
+      |. P.symbol ">="
+      |. P.spaces
+      |= shiftExpression
+    , P.succeed RelationalExpression_Instanceof
+      |= P.lazy (\_ -> relationalExpression)
+      |. P.spaces
+      |. P.keyword "instanceof"
+      |. P.spaces
+      |= referenceType
+    ]
+
+type ShiftExpression
+  = ShiftExpression_Additive AdditiveExpression
+  | ShiftExpression_Left ShiftExpression AdditiveExpression
+  | ShiftExpression_Right ShiftExpression AdditiveExpression
+  | ShiftExpression_Right2 ShiftExpression AdditiveExpression
+
+shiftExpression : Parser ShiftExpression
+shiftExpression =
+  P.oneOf
+    [ P.succeed ShiftExpression_Additive
+      |= additiveExpression
+    , P.succeed ShiftExpression_Left
+      |= P.lazy (\_ -> shiftExpression)
+      |. P.spaces
+      |. P.symbol "<<"
+      |. P.spaces
+      |= additiveExpression
+    , P.succeed ShiftExpression_Right
+      |= P.lazy (\_ -> shiftExpression)
+      |. P.spaces
+      |. P.symbol ">>"
+      |. P.spaces
+      |= additiveExpression
+    , P.succeed ShiftExpression_Right2
+      |= P.lazy (\_ -> shiftExpression)
+      |. P.spaces
+      |. P.symbol ">>>"
+      |. P.spaces
+      |= additiveExpression
+    ]
+
+
+type AdditiveExpression
+  = AdditiveExpression_Multiplicative MultiplicativeExpression
+  | AdditiveExpression_Plus AdditiveExpression MultiplicativeExpression
+  | AdditiveExpression_Minus AdditiveExpression MultiplicativeExpression
+
+additiveExpression : Parser AdditiveExpression
+additiveExpression =
+  P.oneOf
+    [ P.succeed AdditiveExpression_Multiplicative
+      |= multiplicativeExpression
+    , P.succeed AdditiveExpression_Plus
+      |= P.lazy (\_ -> additiveExpression)
+      |. P.spaces
+      |. P.symbol "+"
+      |. P.spaces
+      |= multiplicativeExpression
+    , P.succeed AdditiveExpression_Minus
+      |= P.lazy (\_ -> additiveExpression)
+      |. P.spaces
+      |. P.symbol "-"
+      |. P.spaces
+      |= multiplicativeExpression
+    ]
+
+
+
+type MultiplicativeExpression
+  = MultiplicativeExpression_Unary UnaryExpression
+  | MultiplicativeExpression_Multiply MultiplicativeExpression UnaryExpression
+  | MultiplicativeExpression_Divide MultiplicativeExpression UnaryExpression
+  | MultiplicativeExpression_Mod MultiplicativeExpression UnaryExpression
+
+multiplicativeExpression : Parser MultiplicativeExpression
+multiplicativeExpression =
+  P.oneOf
+    [ P.succeed MultiplicativeExpression_Unary
+      |= unaryExpression
+    , P.succeed MultiplicativeExpression_Multiply
+      |= P.lazy (\_ -> multiplicativeExpression)
+      |. P.spaces
+      |. P.symbol "*"
+      |. P.spaces
+      |= unaryExpression
+    , P.succeed MultiplicativeExpression_Divide
+      |= P.lazy (\_ -> multiplicativeExpression)
+      |. P.spaces
+      |. P.symbol "/"
+      |. P.spaces
+      |= unaryExpression
+    , P.succeed MultiplicativeExpression_Mod
+      |= P.lazy (\_ -> multiplicativeExpression)
+      |. P.spaces
+      |. P.symbol "%"
+      |. P.spaces
+      |= unaryExpression
+    ]
+
+
+type UnaryExpression
+  = UnaryExpression_PreIncrement PreIncrementExpression
+  | UnaryExpression_PreDecrement PreDecrementExpression
+  | UnaryExpression_Plus UnaryExpression
+  | UnaryExpression_Minus UnaryExpression
+  | UnaryExpression_NotPlusMinus UnaryExpressionNotPlusMinus
+
+unaryExpression : Parser UnaryExpression
+unaryExpression =
+  P.oneOf
+    [ P.succeed UnaryExpression_PreIncrement
+      |= preIncrementExpression
+    , P.succeed UnaryExpression_PreDecrement
+      |= preDecrementExpression
+    , P.succeed UnaryExpression_Plus
+      |. P.symbol "+"
+      |. P.spaces
+      |= P.lazy (\_ -> unaryExpression)
+    , P.succeed UnaryExpression_Minus
+      |. P.symbol "-"
+      |. P.spaces
+      |= P.lazy (\_ -> unaryExpression)
+    , P.succeed UnaryExpression_NotPlusMinus
+      |= unaryExpressionNotPlusMinus
+    ]
+
+
+type PreIncrementExpression = PreIncrementExpression UnaryExpression
+
+preIncrementExpression : Parser PreIncrementExpression
+preIncrementExpression =
+  P.succeed PreIncrementExpression
+  |. P.symbol "++"
+  |. P.spaces
+  |= P.lazy (\_ -> unaryExpression)
+
+
+type PreDecrementExpression = PreDecrementExpression UnaryExpression
+
+preDecrementExpression : Parser PreDecrementExpression
+preDecrementExpression =
+  P.succeed PreDecrementExpression
+  |. P.symbol "--"
+  |. P.spaces
+  |= P.lazy (\_ -> unaryExpression)
+
+
+type UnaryExpressionNotPlusMinus
+  = UnaryExpressionNotPlusMinus_Postfix PostfixExpression
+  | UnaryExpressionNotPlusMinus_BitwiseNot UnaryExpression
+  | UnaryExpressionNotPlusMinus_LogicalNot UnaryExpression
+  | UnaryExpressionNotPlusMinus_Cast CastExpression
+  | UnaryExpressionNotPlusMinus_Switch SwitchExpression
+
+
+unaryExpressionNotPlusMinus : Parser UnaryExpressionNotPlusMinus
+unaryExpressionNotPlusMinus =
+  P.oneOf
+    [ P.succeed UnaryExpressionNotPlusMinus_Postfix
+      |= postfixExpression
+    , P.succeed UnaryExpressionNotPlusMinus_BitwiseNot
+      |. P.symbol "~"
+      |. P.spaces
+      |= P.lazy (\_ -> unaryExpression)
+    , P.succeed UnaryExpressionNotPlusMinus_LogicalNot
+      |. P.symbol "!"
+      |. P.spaces
+      |= P.lazy (\_ -> unaryExpression)
+    , P.succeed UnaryExpressionNotPlusMinus_Cast
+      |= P.lazy (\_ -> castExpression)
+    , P.succeed UnaryExpressionNotPlusMinus_Switch
+      |= P.lazy (\_ -> switchExpression)
+    ]
+
+
+type PostfixExpression
+  = PostfixExpression_Primary Primary
+  | PostfixExpression_Name ExpressionName
+  | PostfixExpression_Increment PostIncrementExpression
+  | PostfixExpression_Decrement PostDecrementExpression
+
+postfixExpression : Parser PostfixExpression
+postfixExpression =
+  P.oneOf
+    [ P.succeed PostfixExpression_Primary
+      |= P.lazy (\_ -> primary)
+    , P.succeed PostfixExpression_Name
+      |= expressionName
+    , P.succeed PostfixExpression_Increment
+      |= postIncrementExpression
+    , P.succeed PostfixExpression_Decrement
+      |= postDecrementExpression
+    ]
+
+
+type PostIncrementExpression = PostIncrementExpression PostfixExpression
+
+postIncrementExpression : Parser PostIncrementExpression
+postIncrementExpression =
+  P.succeed PostIncrementExpression
+  |= P.lazy (\_ -> postfixExpression)
+  |. P.spaces
+  |. P.symbol "++"
+
+
+type PostDecrementExpression = PostDecrementExpression PostfixExpression
+
+postDecrementExpression : Parser PostDecrementExpression
+postDecrementExpression =
+  P.succeed PostDecrementExpression
+  |= P.lazy (\_ -> postfixExpression)
+  |. P.spaces
+  |. P.symbol "--"
+
+
+type CastExpression
+  = CastExpression_Unary PrimitiveType UnaryExpression
+  | CastExpression_UnaryAdditional ReferenceType (List AdditionalBound)
+                                                    UnaryExpressionNotPlusMinus
+  | CastExpression_Lambda ReferenceType (List AdditionalBound) LambdaExpression
+
+castExpression : Parser CastExpression
+castExpression =
+  P.oneOf
+    [ P.succeed CastExpression_Unary
+      |. P.symbol "("
+      |. P.spaces
+      |= primitiveType
+      |. P.spaces
+      |. P.symbol ")"
+      |. P.spaces
+      |= P.lazy (\_ -> unaryExpression)
+    , P.succeed CastExpression_UnaryAdditional
+      |. P.symbol "("
+      |. P.spaces
+      |= referenceType
+      |. P.spaces
+      |= list additionalBound
+      |. P.spaces
+      |. P.symbol ")"
+      |. P.spaces
+      |= P.lazy (\_ -> unaryExpressionNotPlusMinus)
+    , P.succeed CastExpression_Lambda
+      |. P.symbol "("
+      |. P.spaces
+      |= referenceType
+      |. P.spaces
+      |= list additionalBound
+      |. P.spaces
+      |. P.symbol ")"
+      |. P.spaces
+      |= lambdaExpression
+    ]
+
+
+type SwitchExpression = SwitchExpression Expression SwitchBlock
+
+switchExpression : Parser SwitchExpression
+switchExpression =
+  P.succeed SwitchExpression
+  |. P.keyword "switch"
+  |. P.spaces
+  |. P.symbol "("
+  |. P.spaces
+  |= expression
+  |. P.spaces
+  |. P.symbol ")"
+  |. P.spaces
+  |= switchBlock
+
+
+type ConstantExpression = ConstantExpression Expression
+
+constantExpression : Parser ConstantExpression
+constantExpression =
+  P.succeed ConstantExpression
+  |= expression
+
 -- }}}
