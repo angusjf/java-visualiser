@@ -275,9 +275,8 @@ type ReferenceType
 referenceType : Parser ReferenceType
 referenceType =
   P.oneOf
-    [ P.lazy (\_ -> P.succeed ReferenceType_ClassOrInterfaceType
-                    |= classOrInterfaceType
-             )
+    [ P.succeed ReferenceType_ClassOrInterfaceType
+      |= P.lazy (\_ -> classOrInterfaceType)
     , P.succeed ReferenceType_TypeVariable
       |= typeVariable
     , P.succeed ReferenceType_ArrayType
@@ -3793,10 +3792,10 @@ assignmentOperator =
       |. P.symbol "-="
     , P.succeed AssignmentOperator_LeftShift
       |. P.symbol "<<="
-    , P.succeed AssignmentOperator_RightShift
-      |. P.symbol ">>="
     , P.succeed AssignmentOperator_RightShift3
       |. P.symbol ">>>="
+    , P.succeed AssignmentOperator_RightShift
+      |. P.symbol ">>="
     , P.succeed AssignmentOperator_And
       |. P.symbol "&="
     , P.succeed AssignmentOperator_Xor
