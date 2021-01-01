@@ -10,7 +10,7 @@ import Set exposing (Set)
 -- {{{ helpers
 
 
-parse : Parser a -> String -> Result (List P.DeadEnd) a
+--parse : Parser a -> String -> Result (List P.DeadEnd) a
 parse parser =
     P.run parser << removeCommentsAndTabs
 
@@ -30,7 +30,8 @@ removeCommentsAndTabs src =
 optional : Parser a -> Parser (Maybe a)
 optional p =
     P.oneOf
-        [ P.map Just p
+        [ P.succeed Just
+          |= p
         , P.succeed Nothing
         ]
 
@@ -3661,7 +3662,7 @@ arrayAccess =
             |. P.spaces
             |. P.symbol "]"
         , P.succeed ArrayAccess_Primary
-            |= P.lazy (\_ -> primaryNoNewArray)
+            |= P.lazy (\_ -> Debug.todo "primaryNoNewArray")
             |. P.spaces
             |. P.symbol "["
             |. P.spaces
@@ -4054,7 +4055,7 @@ lambdaBody =
         [ P.succeed LambdaBody_Expression
             |= P.lazy (\_ -> expression)
         , P.succeed LambdaBody_Block
-            |= P.lazy (\_ -> block)
+            |= P.lazy (\_ -> Debug.todo "block")
         ]
 
 
@@ -4271,7 +4272,7 @@ andExpression =
         [ P.succeed AndExpression_Equality
             |= equalityExpression
         , P.succeed AndExpression_And
-            |= P.lazy (\_ -> andExpression)
+            |= P.lazy (\_ -> Debug.todo "andExpression")
             |. P.spaces
             |. P.symbol "&"
             |. P.spaces
@@ -4289,19 +4290,19 @@ equalityExpression : Parser EqualityExpression
 equalityExpression =
     P.oneOf
         [ P.succeed EqualityExpression_Relational
-            |= P.lazy (\_ -> relationalExpression)
+            |= P.lazy (\_ -> Debug.todo "relationalExpression")
         , P.succeed EqualityExpression_Equals
             |= P.lazy (\_ -> equalityExpression)
             |. P.spaces
             |. P.symbol "=="
             |. P.spaces
-            |= P.lazy (\_ -> relationalExpression)
+            |= P.lazy (\_ -> Debug.todo "relationalExpression")
         , P.succeed EqualityExpression_NotEquals
             |= P.lazy (\_ -> equalityExpression)
             |. P.spaces
             |. P.symbol "!="
             |. P.spaces
-            |= P.lazy (\_ -> relationalExpression)
+            |= P.lazy (\_ -> Debug.todo "relationalExpression")
         ]
 
 

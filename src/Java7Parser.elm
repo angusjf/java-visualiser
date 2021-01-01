@@ -5,8 +5,6 @@ import Parser as P exposing (Parser, (|=), (|.), Step)
 import List.Nonempty as Nonempty exposing (Nonempty(..))
 import Regex
 
--- TODO: Lambda expresions, :: scoper, anything else new in Java 8 grammar
-
 -- types i {{{
 
 type alias CompilationUnit =
