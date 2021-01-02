@@ -1,18 +1,14 @@
 module Java15Parser exposing (..)
 
 import Char exposing (Char)
-import Parser as P exposing ((|.), (|=), Parser)
+import CustomParser exposing (..)
 import Regex
 import Set exposing (Set)
+import Result
 
-
-
--- {{{ helpers
-
-
---parse : Parser a -> String -> Result (List P.DeadEnd) a
+parse : Parser a -> String -> Result.Result String a
 parse parser =
-    P.run parser << removeCommentsAndTabs
+    Result.map Tuple.first << parser << removeCommentsAndTabs
 
 
 removeCommentsAndTabs : String -> String
@@ -27,58 +23,11 @@ removeCommentsAndTabs src =
     Regex.replace re (always "") src
 
 
-optional : Parser a -> Parser (Maybe a)
-optional p =
-    P.oneOf
-        [ P.succeed Just
-          |= p
-        , P.succeed Nothing
-        ]
-
-
-nonEmptySep : String -> Parser a -> Parser (List a)
-nonEmptySep sep p =
-    P.succeed (::)
-        |= p
-        |. P.spaces
-        |= list
-            (P.succeed identity
-                |. P.symbol sep
-                |. P.spaces
-                |= p
-            )
-
-
-list : Parser a -> Parser (List a)
-list p =
-    P.sequence
-        { start = ""
-        , separator = ""
-        , end = ""
-        , spaces = P.spaces
-        , item = p
-        , trailing = P.Optional
-        }
-
-
-dotted : Parser a -> Parser (List a)
-dotted =
-    nonEmptySep "."
-
-
-brackets : Parser Int
-brackets =
-    P.map List.length (list (P.symbol "[" |. P.spaces |. P.symbol "]"))
-
-
-
---}}}
 -- {{{ Productions from §3 (Lexical Structure)
 
 
-keywords : Set String
+keywords : List String
 keywords =
-    Set.fromList
         [ "abstract"
         , "continue"
         , "for"
@@ -135,16 +84,28 @@ keywords =
 
 type Identifier
     = Identifier String
+    
+takeWhile : (Char -> Bool) -> String -> String
+takeWhile f str =
+    let
+        helper l =
+            case l of
+                x::xs -> if f x then x :: helper xs else []
+                [] -> []
+    in
+      String.fromList <| helper <| String.toList str
 
 
 identifier : Parser Identifier
 identifier =
-    P.map Identifier <|
-        P.variable
-            { start = javaLetter
-            , inner = javaLetterOrDigit
-            , reserved = Set.union keywords (Set.fromList [ "true", "false", "null" ])
-            }
+  \str ->
+    let
+      ident = takeWhile javaLetter str
+    in
+      if String.length ident > 0 then
+         Ok (Identifier ident, String.dropLeft (String.length ident) str)
+      else
+         Err str
 
 
 javaLetter : Char -> Bool
@@ -159,36 +120,22 @@ javaLetterOrDigit c =
 
 type TypeIdentifier
     = TypeIdentifier Identifier
+    
 
 
 typeIdentifier : Parser TypeIdentifier
 typeIdentifier =
-    P.andThen
-        (\(Identifier str) ->
-            if str == "var" || str == "yield" then
-                P.problem <| str ++ " is not a valid type identifier"
-
-            else
-                P.succeed <| TypeIdentifier (Identifier str)
-        )
-        identifier
+    kmap TypeIdentifier identifier
 
 
 type UnqualifiedMethodIdentifier
     = UnqualifiedMethodIdentifier Identifier
+    
 
 
 unqualifiedMethodIdentifier : Parser UnqualifiedMethodIdentifier
 unqualifiedMethodIdentifier =
-    P.andThen
-        (\(Identifier str) ->
-            if str == "yield" then
-                P.problem "yield is not a valid type identifier"
-
-            else
-                P.succeed <| UnqualifiedMethodIdentifier (Identifier str)
-        )
-        identifier
+    kmap UnqualifiedMethodIdentifier identifier
 
 
 type Literal
@@ -199,76 +146,63 @@ type Literal
     | Literal_StringLiteral String
     | Literal_TextBlock String
     | Literal_NullLiteral
+    
 
 
 literal : Parser Literal
 literal =
-    P.oneOf
-        [ P.succeed Literal_NullLiteral
-            |. nullLiteral
-        , P.succeed Literal_BooleanLiteral
-            |= booleanLiteral
-        , P.succeed Literal_CharacterLiteral
-            |= characterLiteral
-        , P.succeed Literal_TextBlock
-            |= textBlock
-        , P.succeed Literal_StringLiteral
-            |= stringLiteral
-        , P.succeed Literal_IntegerLiteral
-            |= integerLiteral
-        , P.succeed Literal_FloatingPointLiteral
-            |= floatingPointLiteral
+    oneOf
+        [ imap Literal_NullLiteral nullLiteral
+        , kmap Literal_BooleanLiteral booleanLiteral
+        , kmap Literal_CharacterLiteral characterLiteral
+        , kmap Literal_TextBlock textBlock
+        , kmap Literal_StringLiteral stringLiteral
+        , kmap Literal_IntegerLiteral integerLiteral
+        , kmap Literal_FloatingPointLiteral floatingPointLiteral
         ]
 
 
 nullLiteral : Parser ()
 nullLiteral =
-    P.keyword "null"
+    (keyword "null")
 
 
 booleanLiteral : Parser Bool
 booleanLiteral =
-    P.oneOf
-        [ P.succeed True
-            |. P.keyword "true"
-        , P.succeed False
-            |. P.keyword "false"
+    oneOf
+        [ imap True (keyword "true")
+        , imap False (keyword "false")
         ]
 
 
 characterLiteral : Parser Char
 characterLiteral =
-    P.succeed 'c'
+    ignorer (succeed 'c') (symbol "'")
         -- TODO
-        |. P.symbol "'"
 
 
 textBlock : Parser String
 textBlock =
-    P.succeed "TODO"
+    ignorer (succeed "TODO") (symbol "\"")
         -- TODO
-        |. P.symbol "\""
 
 
 stringLiteral : Parser String
 stringLiteral =
-    P.succeed "TODO"
+    ignorer (succeed "TODO") (symbol "\"")
         -- TODO
-        |. P.symbol "\""
 
 
 integerLiteral : Parser Int
 integerLiteral =
-    P.succeed 1
+    ignorer (succeed 1) (symbol "1")
         -- TODO
-        |. P.symbol "1"
 
 
 floatingPointLiteral : Parser Float
 floatingPointLiteral =
-    P.succeed 1
+    ignorer (succeed 1) (symbol "1")
         -- TODO
-        |. P.symbol "1"
 
 
 
@@ -279,48 +213,48 @@ floatingPointLiteral =
 type Type
     = Type_PrimitiveType PrimitiveType
     | Type_ReferenceType ReferenceType
+    
 
 
 type_ : Parser Type
 type_ =
-    P.oneOf
-        [ P.succeed Type_PrimitiveType
-            |= primitiveType
-        , P.succeed Type_ReferenceType
-            |= referenceType
+    oneOf
+        [ kmap Type_PrimitiveType primitiveType
+        , kmap Type_ReferenceType referenceType
         ]
 
 
 type PrimitiveType
     = PrimitiveType_Numeric (List Annotation) NumericType
     | PrimitiveType_Boolean (List Annotation)
+    
 
 
 primitiveType : Parser PrimitiveType
 primitiveType =
-    P.succeed (\annotations f -> f annotations)
-        |= list annotation
-        |. P.spaces
-        |= P.oneOf
-            [ P.succeed (\num -> \ann -> PrimitiveType_Numeric ann num)
-                |= numericType
-            , P.succeed PrimitiveType_Boolean
-                |. P.keyword "boolean"
-            ]
+    keeper (
+    ignorer (
+    keeper (
+    succeed (\annotations f -> f annotations) ) <|
+    list annotation ) <|
+    spaces ) <|
+    oneOf
+      [ kmap (\num -> \ann -> PrimitiveType_Numeric ann num) numericType
+      , imap PrimitiveType_Boolean (keyword "boolean")
+      ]
 
 
 type NumericType
     = NumericType_IntegralType IntegralType
     | NumericType_FloatingPointType FloatingPointType
+    
 
 
 numericType : Parser NumericType
 numericType =
-    P.oneOf
-        [ P.succeed NumericType_IntegralType
-            |= integralType
-        , P.succeed NumericType_FloatingPointType
-            |= floatingPointType
+    oneOf
+        [ kmap NumericType_IntegralType integralType
+        , kmap NumericType_FloatingPointType floatingPointType
         ]
 
 
@@ -330,29 +264,31 @@ type IntegralType
     | IntegralType_Int
     | IntegralType_Long
     | IntegralType_Char
+    
 
 
 integralType : Parser IntegralType
 integralType =
-    P.oneOf
-        [ P.succeed IntegralType_Byte |. P.keyword "byte"
-        , P.succeed IntegralType_Short |. P.keyword "short"
-        , P.succeed IntegralType_Int |. P.keyword "int"
-        , P.succeed IntegralType_Long |. P.keyword "long"
-        , P.succeed IntegralType_Char |. P.keyword "char"
+    oneOf
+        [ imap IntegralType_Byte (keyword "byte")
+        , imap IntegralType_Short (keyword "short")
+        , imap IntegralType_Int (keyword "int")
+        , imap IntegralType_Long (keyword "long")
+        , imap IntegralType_Char (keyword "char")
         ]
 
 
 type FloatingPointType
     = FloatingPointType_Float
     | FloatingPointType_Double
+    
 
 
 floatingPointType : Parser FloatingPointType
 floatingPointType =
-    P.oneOf
-        [ P.succeed FloatingPointType_Float |. P.keyword "float"
-        , P.succeed FloatingPointType_Double |. P.keyword "double"
+    oneOf
+        [ imap FloatingPointType_Float (keyword "float")
+        , imap FloatingPointType_Double (keyword "double")
         ]
 
 
@@ -360,32 +296,31 @@ type ReferenceType
     = ReferenceType_ClassOrInterfaceType ClassOrInterfaceType
     | ReferenceType_TypeVariable TypeVariable
     | ReferenceType_ArrayType ArrayType
+    
 
 
 referenceType : Parser ReferenceType
 referenceType =
-    P.oneOf
-        [ P.succeed ReferenceType_ClassOrInterfaceType
-            |= P.lazy (\_ -> classOrInterfaceType)
-        , P.succeed ReferenceType_TypeVariable
-            |= typeVariable
-        , P.succeed ReferenceType_ArrayType
-            |= arrayType
-        ]
+    lazy (\_ ->
+        oneOf
+            [ kmap ReferenceType_ClassOrInterfaceType classOrInterfaceType
+            , kmap ReferenceType_TypeVariable typeVariable
+            , kmap ReferenceType_ArrayType arrayType
+            ]
+    )
 
 
 type ClassOrInterfaceType
     = ClassOrInterfaceType_ClassType ClassType
     | ClassOrInterfaceType_InterfaceType InterfaceType
+    
 
 
 classOrInterfaceType : Parser ClassOrInterfaceType
 classOrInterfaceType =
-    P.oneOf
-        [ P.succeed ClassOrInterfaceType_ClassType
-            |= classType
-        , P.succeed ClassOrInterfaceType_InterfaceType
-            |= interfaceType
+    oneOf
+        [ kmap ClassOrInterfaceType_ClassType classType
+        , kmap ClassOrInterfaceType_InterfaceType interfaceType
         ]
 
 
@@ -393,226 +328,284 @@ type ClassType
     = ClassType_NoPackage (List Annotation) TypeIdentifier (Maybe TypeArguments)
     | ClassType_Package PackageName (List Annotation) TypeIdentifier (Maybe TypeArguments)
     | ClassType_ClassOrInterfaceType ClassOrInterfaceType (List Annotation) TypeIdentifier (Maybe TypeArguments)
+    
 
 
 classType : Parser ClassType
 classType =
-    P.oneOf
-        [ P.succeed ClassType_NoPackage
-            |= list annotation
-            |. P.spaces
-            |= typeIdentifier
-            |. P.spaces
-            |= optional typeArguments
-        , P.succeed ClassType_Package
-            |= packageName
-            |. P.spaces
-            |. P.symbol "."
-            |. P.spaces
-            |= list annotation
-            |. P.spaces
-            |= typeIdentifier
-            |. P.spaces
-            |= optional typeArguments
-        , P.succeed ClassType_ClassOrInterfaceType
-            |= P.lazy (\_ -> classOrInterfaceType)
-            |. P.spaces
-            |. P.symbol "."
-            |. P.spaces
-            |= list annotation
-            |. P.spaces
-            |= typeIdentifier
-            |. P.spaces
-            |= optional typeArguments
-        ]
+    lazy (\_ ->
+        oneOf
+            [ keeper (
+              ignorer (
+              keeper (
+              ignorer (
+              keeper (
+              succeed ClassType_NoPackage ) <|
+              list annotation ) <|
+              spaces ) <|
+              typeIdentifier ) <|
+              spaces ) <|
+              optional typeArguments
+            , keeper (
+              ignorer (
+              keeper (
+              ignorer (
+              keeper (
+              ignorer (
+              ignorer (
+              ignorer (
+              keeper (
+              succeed ClassType_Package ) <|
+              packageName ) <|
+              spaces ) <|
+              (symbol ".") ) <|
+              spaces ) <|
+              list annotation ) <|
+              spaces ) <|
+              typeIdentifier ) <|
+              spaces ) <|
+              optional typeArguments
+            , keeper (
+              ignorer (
+              keeper (
+              ignorer (
+              keeper (
+              ignorer (
+              ignorer (
+              ignorer (
+              keeper (
+              succeed ClassType_ClassOrInterfaceType ) <|
+              classOrInterfaceType ) <|
+              spaces ) <|
+              (symbol ".") ) <|
+              spaces ) <|
+              list annotation ) <|
+              spaces ) <|
+              typeIdentifier ) <|
+              spaces ) <|
+              optional typeArguments
+            ]
+    )
 
 
 type InterfaceType
     = InterfaceType_ClassType ClassType
+    
 
 
 interfaceType : Parser InterfaceType
 interfaceType =
-    P.succeed InterfaceType_ClassType
-        |= classType
+    kmap InterfaceType_ClassType classType
 
 
 type TypeVariable
     = TypeVariable (List Annotation) TypeIdentifier
+    
 
 
 typeVariable : Parser TypeVariable
 typeVariable =
-    P.succeed TypeVariable
-        |= list annotation
-        |. P.spaces
-        |= typeIdentifier
+    keeper (
+    ignorer (
+    keeper (
+    succeed TypeVariable ) <|
+    list annotation ) <|
+    spaces ) <|
+    typeIdentifier
 
 
 type ArrayType
     = ArrayType_PrimitiveType PrimitiveType Dims
     | ArrayType_ClassOrInterfaceType ClassOrInterfaceType Dims
     | ArrayType_TypeVariable TypeVariable Dims
+    
 
 
 arrayType : Parser ArrayType
 arrayType =
-    P.oneOf
-        [ P.succeed ArrayType_PrimitiveType
-            |= primitiveType
-            |. P.spaces
-            |= dims
-        , P.lazy
-            (\_ ->
-                P.succeed ArrayType_ClassOrInterfaceType
-                    |= classOrInterfaceType
-                    |. P.spaces
-                    |= dims
-            )
-        , P.succeed ArrayType_TypeVariable
-            |= typeVariable
-            |. P.spaces
-            |= dims
+    oneOf
+        [ keeper (
+          ignorer (
+          keeper (
+          succeed ArrayType_PrimitiveType ) <|
+          primitiveType ) <|
+          spaces ) <|
+          dims
+        , keeper (
+          ignorer (
+          keeper (
+          succeed ArrayType_ClassOrInterfaceType ) <|
+          classOrInterfaceType ) <|
+          spaces ) <|
+          dims
+        , keeper (
+          ignorer (
+          keeper (
+          succeed ArrayType_TypeVariable ) <|
+          typeVariable ) <|
+          spaces ) <|
+          dims
         ]
 
 
 type Dims
     = Dims (List (List Annotation))
+    
 
 
 dims : Parser Dims
 dims =
-    P.succeed Dims
-        |= list
-            (P.succeed identity
-                |= list annotation
-                |. P.spaces
-                |. P.symbol "["
-                |. P.spaces
-                |. P.symbol "]"
+    kmap Dims
+        ( list
+            (
+                ignorer (
+                ignorer (
+                ignorer (
+                ignorer (
+                list (annotation) ) <| -- ?
+                spaces ) <|
+                (symbol "[") ) <|
+                spaces ) <|
+                (symbol "]")
             )
+          )
 
 
 type TypeParameter
     = TypeParameter (List TypeParameterModifier) TypeIdentifier (Maybe TypeBound)
+    
 
 
 typeParameter : Parser TypeParameter
 typeParameter =
-    P.succeed TypeParameter
-        |= list typeParameterModifier
-        |. P.spaces
-        |= typeIdentifier
-        |. P.spaces
-        |= optional typeBound
+        keeper (
+        ignorer (
+        keeper (
+        ignorer (
+        keeper (
+        succeed TypeParameter ) <|
+        list typeParameterModifier ) <|
+        spaces ) <|
+        typeIdentifier ) <|
+        spaces ) <|
+        optional typeBound
 
 
 type TypeParameterModifier
     = TypeParameterModifier Annotation
+    
 
 
 typeParameterModifier : Parser TypeParameterModifier
 typeParameterModifier =
-    P.succeed TypeParameterModifier
-        |= annotation
+    kmap TypeParameterModifier annotation
 
 
 type TypeBound
     = TypeBound_TypeVariable TypeVariable
     | TypeBound_ClassOrInterfaceType ClassOrInterfaceType (List AdditionalBound)
+    
 
 
 typeBound : Parser TypeBound
 typeBound =
-    P.succeed identity
-        |. P.keyword "extends"
-        |. P.spaces
-        |= P.oneOf
-            [ P.succeed TypeBound_TypeVariable
-                |= typeVariable
-            , P.succeed TypeBound_ClassOrInterfaceType
-                |= classOrInterfaceType
-                |. P.spaces
-                |= list additionalBound
+    keeper (
+    ignorer (
+    ignorer (
+    succeed identity ) <|
+    (keyword "extends") ) <|
+    spaces ) <|
+    oneOf
+            [ kmap TypeBound_TypeVariable typeVariable
+            , kikmap TypeBound_ClassOrInterfaceType
+                classOrInterfaceType
+                spaces
+                (list additionalBound)
             ]
 
 
 type AdditionalBound
     = AdditionalBound InterfaceType
+    
 
 
 additionalBound : Parser AdditionalBound
 additionalBound =
-    P.succeed AdditionalBound
-        |. P.symbol "&"
-        |. P.spaces
-        |= interfaceType
+    iikmap AdditionalBound
+        (symbol "&")
+        spaces
+        interfaceType
 
 
 type TypeArguments
     = TypeArguments_Brackets TypeArgumentList
+    
 
 
 typeArguments : Parser TypeArguments
 typeArguments =
-    P.succeed TypeArguments_Brackets
-        |. P.symbol "<"
-        |= typeArgumentList
-        |. P.symbol ">"
+    ikimap TypeArguments_Brackets
+        (symbol "<")
+        typeArgumentList
+        (symbol ">")
 
 
 type TypeArgumentList
     = TypeArgumentList (List TypeArgument)
+    
 
 
 typeArgumentList : Parser TypeArgumentList
 typeArgumentList =
-    P.succeed TypeArgumentList
-        |= nonEmptySep "," typeArgument
+    kmap TypeArgumentList
+        (nonEmptySep "," typeArgument)
 
 
 type TypeArgument
     = TypeArgument_ReferenceType ReferenceType
     | TypeArgument_Wildcard Wildcard
+    
 
 
 typeArgument : Parser TypeArgument
 typeArgument =
-    P.oneOf
-        [ P.succeed TypeArgument_ReferenceType
-            |= referenceType
-        , P.succeed TypeArgument_Wildcard
-            |= wildcard
+    oneOf
+        [ kmap TypeArgument_ReferenceType referenceType
+        , kmap TypeArgument_Wildcard wildcard
         ]
 
 
 type Wildcard
     = Wildcard (List Annotation) (Maybe WildcardBounds)
+    
 
 
 wildcard : Parser Wildcard
 wildcard =
-    P.succeed Wildcard
-        |= list annotation
-        |. P.spaces
-        |. P.symbol "?"
-        |= optional wildcardBounds
+    lazy (\_ ->
+        kiikmap Wildcard
+            (list annotation)
+            spaces
+            (symbol "?")
+            (optional wildcardBounds)
+        )
 
 
 type WildcardBounds
     = WildcardBounds_Extends ReferenceType
     | WildcardBounds_Super ReferenceType
+    
 
 
 wildcardBounds : Parser WildcardBounds
 wildcardBounds =
-    P.oneOf
-        [ P.succeed WildcardBounds_Extends
-            |. P.keyword "extends"
-            |= referenceType
-        , P.succeed WildcardBounds_Super
-            |. P.keyword "super"
-            |= referenceType
+    oneOf
+        [ ikmap WildcardBounds_Extends
+            (keyword "extends")
+            referenceType
+        , ikmap WildcardBounds_Super
+            (keyword "super")
+            referenceType
         ]
 
 
@@ -623,81 +616,79 @@ wildcardBounds =
 
 type ModuleName
     = ModuleName (List Identifier)
+    
 
 
 moduleName : Parser ModuleName
 moduleName =
-    P.succeed ModuleName
-        |= dotted identifier
+    kmap ModuleName (dotted identifier)
 
 
 type PackageName
     = PackageName (List Identifier)
+    
 
 
 packageName : Parser PackageName
 packageName =
-    P.succeed PackageName
-        |= dotted identifier
+    kmap PackageName (dotted identifier)
 
 
 type TypeName
     = TypeName (List TypeIdentifier)
+    
 
 
 typeName : Parser TypeName
 typeName =
-    P.succeed TypeName
-        |= dotted typeIdentifier
+    kmap TypeName (dotted typeIdentifier)
 
 
 type ExpressionName
     = ExpressionName_Identifier Identifier
     | ExpressionName_AmbiguousDotIdentifier AmbiguousName Identifier
+    
 
 
 expressionName : Parser ExpressionName
 expressionName =
-    P.oneOf
-        [ P.succeed ExpressionName_Identifier
-            |= identifier
-        , P.succeed ExpressionName_AmbiguousDotIdentifier
-            |= ambiguousName
-            |. P.spaces
-            |. P.symbol "."
-            |. P.spaces
-            |= identifier
+    oneOf
+        [ kmap ExpressionName_Identifier identifier
+        , kikmap ExpressionName_AmbiguousDotIdentifier
+            ambiguousName
+            (ignorer spaces (ignorer (symbol ".") spaces))
+            (identifier)
         ]
 
 
 type MethodName
     = MethodName UnqualifiedMethodIdentifier
+    
 
 
 methodName : Parser MethodName
 methodName =
-    P.succeed MethodName
-        |= unqualifiedMethodIdentifier
+    kmap MethodName unqualifiedMethodIdentifier
 
 
 type PackageOrTypeName
     = PackageOrTypeName (List Identifier)
+    
 
 
 packageOrTypeName : Parser PackageOrTypeName
 packageOrTypeName =
-    P.succeed PackageOrTypeName
-        |= dotted identifier
+    kmap PackageOrTypeName (dotted identifier)
 
 
 type AmbiguousName
     = AmbiguousName (List Identifier)
+    
 
 
 ambiguousName : Parser AmbiguousName
 ambiguousName =
-    P.succeed AmbiguousName
-        |= dotted identifier
+    kmap AmbiguousName (dotted identifier)
 
 
 
@@ -708,68 +699,70 @@ ambiguousName =
 type CompilationUnit
     = CompilationUnit_Ordinary OrdinaryCompilationUnit
     | CompilationUnit_Modular ModularCompilationUnit
+    
 
 
 compilationUnit : Parser CompilationUnit
 compilationUnit =
-    P.oneOf
-        [ P.succeed CompilationUnit_Ordinary
-            |= ordinaryCompilationUnit
-        , P.succeed CompilationUnit_Modular
-            |= modularCompilationUnit
+    oneOf
+        [ kmap CompilationUnit_Ordinary ordinaryCompilationUnit
+        , kmap CompilationUnit_Modular modularCompilationUnit
         ]
 
 
 type OrdinaryCompilationUnit
     = OrdinaryCompilationUnit (Maybe PackageDeclaration) (List ImportDeclaration) (List TypeDeclaration)
+    
 
 
 ordinaryCompilationUnit : Parser OrdinaryCompilationUnit
 ordinaryCompilationUnit =
-    P.succeed OrdinaryCompilationUnit
-        |= optional packageDeclaration
-        |. P.spaces
-        |= list importDeclaration
-        |. P.spaces
-        |= list typeDeclaration
+    kikikmap OrdinaryCompilationUnit
+        (optional packageDeclaration)
+        spaces
+        (list importDeclaration)
+        spaces
+        (list typeDeclaration)
 
 
 type ModularCompilationUnit
     = ModularCompilationUnit (List ImportDeclaration) ModuleDeclaration
+    
 
 
 modularCompilationUnit : Parser ModularCompilationUnit
 modularCompilationUnit =
-    P.succeed ModularCompilationUnit
-        |= list importDeclaration
-        |. P.spaces
-        |= moduleDeclaration
+    kikmap ModularCompilationUnit
+        (list importDeclaration)
+        spaces
+        (moduleDeclaration)
 
 
 type PackageDeclaration
     = PackageDeclaration (List PackageModifier) (List Identifier)
+    
 
 
 packageDeclaration : Parser PackageDeclaration
 packageDeclaration =
-    P.succeed PackageDeclaration
-        |= list packageModifier
-        |. P.spaces
-        |. P.keyword "package"
-        |. P.spaces
-        |= nonEmptySep "." identifier
-        |. P.spaces
-        |. P.symbol ";"
+    kiiikiimap PackageDeclaration
+        (list packageModifier)
+        spaces
+        (keyword "package")
+        spaces
+        (nonEmptySep "." identifier)
+        spaces
+        (symbol ";")
 
 
 type PackageModifier
     = PackageModifier Annotation
+    
 
 
 packageModifier : Parser PackageModifier
 packageModifier =
-    P.succeed PackageModifier
-        |= annotation
+    kmap PackageModifier annotation
 
 
 type ImportDeclaration
@@ -777,131 +770,131 @@ type ImportDeclaration
     | ImportDeclaration_TypeImportOnDemand TypeImportOnDemandDeclaration
     | ImportDeclaration_SingleStaticImport SingleStaticImportDeclaration
     | ImportDeclaration_StaticImportOnDemand StaticImportOnDemandDeclaration
+    
 
 
 importDeclaration : Parser ImportDeclaration
 importDeclaration =
-    P.oneOf
-        [ P.succeed ImportDeclaration_SingleTypeImport
-            |= singleTypeImportDeclaration
-        , P.succeed ImportDeclaration_TypeImportOnDemand
-            |= typeImportOnDemandDeclaration
-        , P.succeed ImportDeclaration_SingleStaticImport
-            |= singleStaticImportDeclaration
-        , P.succeed ImportDeclaration_StaticImportOnDemand
-            |= staticImportOnDemandDeclaration
+    oneOf
+        [ kmap ImportDeclaration_SingleTypeImport singleTypeImportDeclaration
+        , kmap ImportDeclaration_TypeImportOnDemand typeImportOnDemandDeclaration
+        , kmap ImportDeclaration_SingleStaticImport singleStaticImportDeclaration
+        , kmap ImportDeclaration_StaticImportOnDemand staticImportOnDemandDeclaration
         ]
 
 
 type SingleTypeImportDeclaration
     = SingleTypeImportDeclaration TypeName
+    
 
 
 singleTypeImportDeclaration : Parser SingleTypeImportDeclaration
 singleTypeImportDeclaration =
-    P.succeed SingleTypeImportDeclaration
-        |. P.keyword "import"
-        |. P.spaces
-        |= typeName
-        |. P.spaces
-        |. P.symbol ";"
+    iikiimap SingleTypeImportDeclaration
+        (keyword "import")
+        spaces
+        typeName
+        spaces
+        (symbol ";")
 
 
 type TypeImportOnDemandDeclaration
     = TypeImportOnDemandDeclaration PackageOrTypeName
+    
 
 
 typeImportOnDemandDeclaration : Parser TypeImportOnDemandDeclaration
 typeImportOnDemandDeclaration =
-    P.succeed TypeImportOnDemandDeclaration
-        |. P.keyword "import"
-        |. P.spaces
-        |= packageOrTypeName
-        |. P.symbol "."
-        |. P.spaces
-        |. P.symbol "*"
-        |. P.spaces
-        |. P.symbol ";"
+    iikiiiiimap TypeImportOnDemandDeclaration
+        (keyword "import")
+        spaces
+        packageOrTypeName
+        (symbol ".")
+        spaces
+        (symbol "*")
+        spaces
+        (symbol ";")
 
 
 type SingleStaticImportDeclaration
     = SingleStaticImportDeclaration TypeName Identifier
+    
 
 
 singleStaticImportDeclaration : Parser SingleStaticImportDeclaration
 singleStaticImportDeclaration =
-    P.succeed SingleStaticImportDeclaration
-        |. P.keyword "import"
-        |. P.spaces
-        |. P.keyword "static"
-        |. P.spaces
-        |= typeName
-        |. P.spaces
-        |. P.symbol "."
-        |. P.spaces
-        |= identifier
-        |. P.spaces
-        |. P.symbol ";"
+    iiiikiiikiimap SingleStaticImportDeclaration
+        (keyword "import")
+        spaces
+        (keyword "static")
+        spaces
+        typeName
+        spaces
+        (symbol ".")
+        spaces
+        identifier
+        spaces
+        (symbol ";")
 
 
 type StaticImportOnDemandDeclaration
     = StaticImportOnDemandDeclaration TypeName
+    
 
 
 staticImportOnDemandDeclaration : Parser StaticImportOnDemandDeclaration
 staticImportOnDemandDeclaration =
-    P.succeed StaticImportOnDemandDeclaration
-        |. P.keyword "import"
-        |. P.spaces
-        |. P.keyword "static"
-        |. P.spaces
-        |= typeName
-        |. P.spaces
-        |. P.symbol "."
-        |. P.spaces
-        |. P.symbol "*"
-        |. P.spaces
-        |. P.symbol ";"
+    iiiikiiiiiimap StaticImportOnDemandDeclaration
+        (keyword "import")
+        spaces
+        (keyword "static")
+        spaces
+        typeName
+        spaces
+        (symbol ".")
+        spaces
+        (symbol "*")
+        spaces
+        (symbol ";")
 
 
 type TypeDeclaration
     = TypeDeclaration_ClassDeclaration ClassDeclaration
     | TypeDeclaration_InterfaceDeclaration InterfaceDeclaration
     | TypeDeclaration_Semi
+    
 
 
 typeDeclaration : Parser TypeDeclaration
 typeDeclaration =
-    P.oneOf
-        [ P.succeed TypeDeclaration_ClassDeclaration
-            |= classDeclaration
-        , P.succeed TypeDeclaration_InterfaceDeclaration
-            |= interfaceDeclaration
-        , P.succeed TypeDeclaration_Semi
-            |. P.symbol ";"
+    oneOf
+        [ kmap TypeDeclaration_ClassDeclaration classDeclaration
+        , kmap TypeDeclaration_InterfaceDeclaration interfaceDeclaration
+        , imap TypeDeclaration_Semi (symbol ";")
         ]
 
 
 type ModuleDeclaration
     = ModuleDeclaration (List Annotation) (Maybe ()) (List Identifier) (List ModuleDirective)
+    
 
 
 moduleDeclaration : Parser ModuleDeclaration
 moduleDeclaration =
-    P.succeed ModuleDeclaration
-        |= list annotation
-        |. P.spaces
-        |= optional (P.keyword "open")
-        |. P.spaces
-        |. P.keyword "module "
-        |. P.spaces
-        |= nonEmptySep "." identifier
-        |. P.spaces
-        |. P.symbol "{"
-        |. P.spaces
-        |= list moduleDirective
-        |. P.spaces
-        |. P.symbol "}"
+    kikiiikiiikiimap ModuleDeclaration
+        (list annotation)
+        spaces
+        (optional (keyword "open"))
+        spaces
+        (keyword "module ")
+        spaces
+        (nonEmptySep "." identifier)
+        spaces
+        (symbol "{")
+        spaces
+        (list moduleDirective)
+        spaces
+        (symbol "}") 
 
 
 type ModuleDirective
@@ -910,76 +903,79 @@ type ModuleDirective
     | ModuleDirective_Opens PackageName (Maybe (List ModuleName))
     | ModuleDirective_Uses TypeName
     | ModuleDirective_Provides TypeName (List TypeName)
+    
 
 
 moduleDirective : Parser ModuleDirective
 moduleDirective =
-    P.oneOf
-        [ P.succeed ModuleDirective_Requires
-            |. P.keyword "requires"
-            |. P.spaces
-            |= list requiresModifier
-            |. P.spaces
-            |= moduleName
-            |. P.spaces
-            |. P.symbol ";"
-        , P.succeed ModuleDirective_Exports
-            |. P.keyword "exports"
-            |. P.spaces
-            |= packageName
-            |. P.spaces
-            |= (optional <|
-                    P.succeed identity
-                        |. P.keyword "to"
-                        |. P.spaces
-                        |= nonEmptySep "," moduleName
-               )
-            |. P.spaces
-            |. P.symbol ";"
-        , P.succeed ModuleDirective_Opens
-            |. P.keyword "opens"
-            |. P.spaces
-            |= packageName
-            |. P.spaces
-            |= (optional <|
-                    P.succeed identity
-                        |. P.keyword "to"
-                        |. P.spaces
-                        |= nonEmptySep "," moduleName
-               )
-            |. P.spaces
-            |. P.symbol ";"
-        , P.succeed ModuleDirective_Uses
-            |. P.keyword "uses"
-            |. P.spaces
-            |= typeName
-            |. P.spaces
-            |. P.symbol ";"
-        , P.succeed ModuleDirective_Provides
-            |. P.keyword "provides"
-            |. P.spaces
-            |= typeName
-            |. P.spaces
-            |. P.keyword "with"
-            |. P.spaces
-            |= nonEmptySep "," typeName
-            |. P.spaces
-            |. P.symbol ";"
+    oneOf
+        [ iikikiimap ModuleDirective_Requires
+            (keyword "requires")
+            spaces
+            (list requiresModifier)
+            spaces
+            moduleName
+            spaces
+            (symbol ";")
+        , iikikiimap ModuleDirective_Exports
+            (keyword "exports")
+            spaces
+            packageName
+            spaces
+            (optional
+                ( iikmap identity
+                        (keyword "to")
+                        spaces
+                        (nonEmptySep "," moduleName)
+                 )
+            )
+            spaces
+            (symbol ";")
+        , iikikiimap ModuleDirective_Opens
+            (keyword "opens")
+            spaces
+            packageName
+            spaces
+            (optional
+              ( iikmap identity
+                        (keyword "to")
+                        spaces
+                        (nonEmptySep "," moduleName)
+              )
+            )
+            spaces
+            (symbol ";")
+        , iikiimap ModuleDirective_Uses
+            (keyword "uses")
+            spaces
+            typeName
+            spaces
+            (symbol ";")
+        , iikiiikiimap ModuleDirective_Provides
+            (keyword "provides")
+            spaces
+            typeName
+            spaces
+            (keyword "with")
+            spaces
+            (nonEmptySep "," typeName)
+            spaces
+            (symbol ";")
         ]
 
 
 type RequiresModifier
     = RequiresModifier_Transitive
     | RequiresModifier_Static
+    
 
 
 requiresModifier : Parser RequiresModifier
 requiresModifier =
-    P.oneOf
-        [ P.succeed RequiresModifier_Transitive |. P.keyword "transitive"
-        , P.succeed RequiresModifier_Static |. P.keyword "static"
+    oneOf
+        [ imap RequiresModifier_Transitive (keyword "transitive")
+        , imap RequiresModifier_Static (keyword "static")
         ]
-
 
 
 -- }}}
@@ -989,40 +985,51 @@ requiresModifier =
 type ClassDeclaration
     = ClassDeclaration_Normal NormalClassDeclaration
     | ClassDeclaration_Enum EnumDeclaration
+    
 
 
 classDeclaration : Parser ClassDeclaration
 classDeclaration =
-    P.oneOf
-        [ P.succeed ClassDeclaration_Normal
-            |= normalClassDeclaration
-        , P.succeed ClassDeclaration_Enum
-            |= enumDeclaration
+    oneOf
+        [ kmap ClassDeclaration_Normal normalClassDeclaration
+        , kmap ClassDeclaration_Enum enumDeclaration
         ]
 
 
 type NormalClassDeclaration
     = NormalClassDeclaration (List ClassModifier) TypeIdentifier (Maybe TypeParameters) (Maybe Superclass) (Maybe Superinterfaces) ClassBody
+    
 
 
 normalClassDeclaration : Parser NormalClassDeclaration
 normalClassDeclaration =
-    P.succeed NormalClassDeclaration
-        |= list classModifier
-        |. P.spaces
-        |. P.keyword "class"
-        |. P.spaces
-        |= typeIdentifier
-        |. P.spaces
-        |= optional typeParameters
-        |. P.spaces
-        |= optional superclass
-        |. P.spaces
-        |= optional superinterfaces
-        |. P.spaces
-        |= classBody
-        |. P.spaces
-
+        keeper (
+        ignorer (
+        keeper (
+        ignorer (
+        keeper (
+        ignorer (
+        keeper (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        succeed NormalClassDeclaration ) <|
+        list classModifier ) <|
+        spaces ) <|
+        (keyword "class") ) <|
+        spaces ) <|
+        typeIdentifier ) <|
+        spaces ) <|
+        optional typeParameters ) <|
+        spaces ) <|
+        optional superclass ) <|
+        spaces ) <|
+        optional superinterfaces ) <|
+        spaces ) <|
+        classBody
 
 type ClassModifier
     = ClassModifier_Annotation Annotation
@@ -1033,92 +1040,100 @@ type ClassModifier
     | ClassModifier_Static
     | ClassModifier_Final
     | ClassModifier_StrictFp
+    
 
 
 classModifier : Parser ClassModifier
 classModifier =
-    P.oneOf
-        [ P.succeed ClassModifier_Annotation |= annotation
-        , P.succeed ClassModifier_Public |. P.keyword "public"
-        , P.succeed ClassModifier_Protected |. P.keyword "protected"
-        , P.succeed ClassModifier_Private |. P.keyword "private"
-        , P.succeed ClassModifier_Abstract |. P.keyword "abstract"
-        , P.succeed ClassModifier_Static |. P.keyword "static"
-        , P.succeed ClassModifier_Final |. P.keyword "final"
-        , P.succeed ClassModifier_StrictFp |. P.keyword "strictfp"
+    oneOf
+        [ kmap ClassModifier_Annotation annotation
+        , imap ClassModifier_Public (keyword "public")
+        , imap ClassModifier_Protected (keyword "protected")
+        , imap ClassModifier_Private (keyword "private")
+        , imap ClassModifier_Abstract (keyword "abstract")
+        , imap ClassModifier_Static (keyword "static")
+        , imap ClassModifier_Final (keyword "final")
+        , imap ClassModifier_StrictFp (keyword "strictfp")
         ]
 
 
 type TypeParameters
     = TypeParameters TypeParameterList
+    
 
 
 typeParameters : Parser TypeParameters
 typeParameters =
-    P.succeed TypeParameters
-        |. P.symbol "<"
-        |. P.spaces
-        |= typeParameterList
-        |. P.spaces
-        |. P.symbol ">"
+    iikiimap TypeParameters
+        (symbol "<")
+        spaces
+        typeParameterList
+        spaces
+        (symbol ">")
 
 
 type TypeParameterList
     = TypeParameterList (List TypeParameter)
+    
 
 
 typeParameterList : Parser TypeParameterList
 typeParameterList =
-    P.succeed TypeParameterList
-        |= nonEmptySep "," typeParameter
+    kmap TypeParameterList (nonEmptySep "," typeParameter)
 
 
 type Superclass
     = Superclass ClassType
+    
 
 
 superclass : Parser Superclass
 superclass =
-    P.succeed Superclass
-        |. P.keyword "extends"
-        |. P.spaces
-        |= classType
+    iikmap Superclass
+        (keyword "extends")
+        spaces
+        classType
 
 
 type Superinterfaces
     = Superinterfaces InterfaceTypeList
+    
 
 
 superinterfaces : Parser Superinterfaces
 superinterfaces =
-    P.succeed Superinterfaces
-        |. P.keyword "implements"
-        |. P.spaces
-        |= interfaceTypeList
+    iikmap Superinterfaces
+        (keyword "implements")
+        spaces
+        interfaceTypeList
 
 
 type InterfaceTypeList
     = InterfaceTypeList (List InterfaceType)
+    
 
 
 interfaceTypeList : Parser InterfaceTypeList
 interfaceTypeList =
-    P.succeed InterfaceTypeList
-        |= nonEmptySep "," interfaceType
+    kmap InterfaceTypeList
+        (nonEmptySep "," interfaceType)
 
 
 type ClassBody
     = ClassBody (List ClassBodyDeclaration)
+    
 
 
 classBody : Parser ClassBody
 classBody =
-    P.succeed ClassBody
-        |. P.symbol "{"
-        |. P.spaces
-        |= list classBodyDeclaration
-        |. P.spaces
-        |. P.symbol "}"
+    lazy (\_ ->
+        iikiimap ClassBody
+            (symbol "{")
+            spaces
+            (list classBodyDeclaration)
+            spaces
+            (symbol "}")
+    )
 
 
 type ClassBodyDeclaration
@@ -1126,19 +1141,20 @@ type ClassBodyDeclaration
     | ClassBodyDeclaration_InstanceInitializer InstanceInitializer
     | ClassBodyDeclaration_StaticInitializer StaticInitializer
     | ClassBodyDeclaration_ConstructorDeclaration ConstructorDeclaration
+    
 
 
 classBodyDeclaration : Parser ClassBodyDeclaration
 classBodyDeclaration =
-    P.oneOf
-        [ P.succeed ClassBodyDeclaration_ClassMemberDeclaration
-            |= classMemberDeclaration
-        , P.succeed ClassBodyDeclaration_InstanceInitializer
-            |= instanceInitializer
-        , P.succeed ClassBodyDeclaration_StaticInitializer
-            |= staticInitializer
-        , P.succeed ClassBodyDeclaration_ConstructorDeclaration
-            |= constructorDeclaration
+    oneOf
+        [ kmap ClassBodyDeclaration_ClassMemberDeclaration
+            classMemberDeclaration
+        , kmap ClassBodyDeclaration_InstanceInitializer
+            instanceInitializer
+        , kmap ClassBodyDeclaration_StaticInitializer
+            staticInitializer
+        , kmap ClassBodyDeclaration_ConstructorDeclaration
+            constructorDeclaration
         ]
 
 
@@ -1148,35 +1164,35 @@ type ClassMemberDeclaration
     | ClassMemberDeclaration_Class ClassDeclaration
     | ClassMemberDeclaration_Interface InterfaceDeclaration
     | ClassMemberDeclaration_Semi
+    
 
 
 classMemberDeclaration : Parser ClassMemberDeclaration
 classMemberDeclaration =
-    P.oneOf
-        [ P.succeed ClassMemberDeclaration_Field |= fieldDeclaration
-        , P.succeed ClassMemberDeclaration_Method |= methodDeclaration
-        , P.succeed ClassMemberDeclaration_Class
-            |= P.lazy
-                (\_ -> classDeclaration)
-        , P.succeed ClassMemberDeclaration_Interface |= interfaceDeclaration
-        , P.succeed ClassMemberDeclaration_Semi |. P.symbol ";"
+    oneOf
+        [ kmap ClassMemberDeclaration_Field fieldDeclaration
+        , kmap ClassMemberDeclaration_Method methodDeclaration
+        , kmap ClassMemberDeclaration_Class classDeclaration
+        , kmap ClassMemberDeclaration_Interface interfaceDeclaration
+        , imap ClassMemberDeclaration_Semi (symbol ";")
         ]
 
 
 type FieldDeclaration
     = FieldDeclaration (List FieldModifier) UnannType VariableDeclaratorList
+    
 
 
 fieldDeclaration : Parser FieldDeclaration
 fieldDeclaration =
-    P.succeed FieldDeclaration
-        |= list fieldModifier
-        |. P.spaces
-        |= unannType
-        |. P.spaces
-        |= variableDeclaratorList
-        |. P.spaces
-        |. P.symbol ";"
+    kikikiimap FieldDeclaration
+        (list fieldModifier)
+        spaces
+        unannType
+        spaces
+        variableDeclaratorList
+        spaces
+        (symbol ";")
 
 
 type FieldModifier
@@ -1188,103 +1204,107 @@ type FieldModifier
     | FieldModifier_Final
     | FieldModifier_Transient
     | FieldModifier_Volatile
+    
 
 
 fieldModifier : Parser FieldModifier
 fieldModifier =
-    P.oneOf
-        [ P.succeed FieldModifier_Annotation |= annotation
-        , P.succeed FieldModifier_Public |. P.keyword "public"
-        , P.succeed FieldModifier_Protected |. P.keyword "protected"
-        , P.succeed FieldModifier_Private |. P.keyword "private"
-        , P.succeed FieldModifier_Static |. P.keyword "static"
-        , P.succeed FieldModifier_Final |. P.keyword "final"
-        , P.succeed FieldModifier_Transient |. P.keyword "transient"
-        , P.succeed FieldModifier_Volatile |. P.keyword "volatile"
+    oneOf
+        [ kmap FieldModifier_Annotation annotation
+        , imap FieldModifier_Public (keyword "public")
+        , imap FieldModifier_Protected (keyword "protected")
+        , imap FieldModifier_Private (keyword "private")
+        , imap FieldModifier_Static (keyword "static")
+        , imap FieldModifier_Final (keyword "final")
+        , imap FieldModifier_Transient (keyword "transient")
+        , imap FieldModifier_Volatile (keyword "volatile")
         ]
 
 
 type VariableDeclaratorList
     = VariableDeclaratorList (List VariableDeclarator)
+    
 
 
 variableDeclaratorList : Parser VariableDeclaratorList
 variableDeclaratorList =
-    P.succeed VariableDeclaratorList
-        |= nonEmptySep "," variableDeclarator
+    kmap VariableDeclaratorList
+        (nonEmptySep "," variableDeclarator)
 
 
 type VariableDeclarator
     = VariableDeclarator VariableDeclaratorId (Maybe VariableInitializer)
+    
 
 
 variableDeclarator : Parser VariableDeclarator
 variableDeclarator =
-    P.succeed VariableDeclarator
-        |= variableDeclaratorId
-        |. P.spaces
-        |= optional
-            (P.succeed identity
-                |. P.symbol "="
-                |. P.spaces
-                |= variableInitializer
+    kikmap VariableDeclarator
+        variableDeclaratorId
+        spaces
+        ( optional
+            (iikmap identity
+                (symbol "=")
+                spaces
+                variableInitializer
             )
+        )
 
 
 type VariableDeclaratorId
     = VariableDeclaratorId Identifier (Maybe Dims)
+    
 
 
 variableDeclaratorId : Parser VariableDeclaratorId
 variableDeclaratorId =
-    P.succeed VariableDeclaratorId
-        |= identifier
-        |. P.spaces
-        |= optional dims
+    kikmap VariableDeclaratorId
+        identifier
+        spaces
+        (optional dims)
 
 
 type VariableInitializer
     = VariableInitializer_Expression Expression
     | VariableInitializer_ArrayInitializer ArrayInitializer
+    
 
 
 variableInitializer : Parser VariableInitializer
 variableInitializer =
-    P.oneOf
-        [ P.succeed VariableInitializer_Expression
-            |= expression
-        , P.succeed VariableInitializer_ArrayInitializer
-            |= arrayInitializer
-        ]
+    lazy (\_ ->
+        oneOf
+            [ kmap VariableInitializer_Expression expression
+            , kmap VariableInitializer_ArrayInitializer arrayInitializer
+            ]
+    )
 
 
 type UnannType
     = UnannType_Primitive UnannPrimitiveType
     | UnannType_Reference UnannReferenceType
+    
 
 
 unannType : Parser UnannType
 unannType =
-    P.oneOf
-        [ P.succeed UnannType_Primitive
-            |= unannPrimitiveType
-        , P.succeed UnannType_Reference
-            |= unannReferenceType
+    oneOf
+        [ kmap UnannType_Primitive unannPrimitiveType
+        , kmap UnannType_Reference unannReferenceType
         ]
 
 
 type UnannPrimitiveType
     = UnannPrimitiveType_Numeric NumericType
     | UnannPrimitiveType_Boolean
+    
 
 
 unannPrimitiveType : Parser UnannPrimitiveType
 unannPrimitiveType =
-    P.oneOf
-        [ P.succeed UnannPrimitiveType_Numeric
-            |= numericType
-        , P.succeed UnannPrimitiveType_Boolean
-            |. P.keyword "boolean"
+    oneOf
+        [ kmap UnannPrimitiveType_Numeric numericType
+        , imap UnannPrimitiveType_Boolean (keyword "boolean")
         ]
 
 
@@ -1292,32 +1312,29 @@ type UnannReferenceType
     = UnannReferenceType_Class UnannClassOrInterfaceType
     | UnannReferenceType_TypeVariable UnannTypeVariable
     | UnannReferenceType_Array UnannArrayType
+    
 
 
 unannReferenceType : Parser UnannReferenceType
 unannReferenceType =
-    P.oneOf
-        [ P.succeed UnannReferenceType_Class
-            |= unannClassOrInterfaceType
-        , P.succeed UnannReferenceType_TypeVariable
-            |= unannTypeVariable
-        , P.succeed UnannReferenceType_Array
-            |= unannArrayType
+    oneOf
+        [ kmap UnannReferenceType_Class unannClassOrInterfaceType
+        , kmap UnannReferenceType_TypeVariable unannTypeVariable
+        , kmap UnannReferenceType_Array unannArrayType
         ]
 
 
 type UnannClassOrInterfaceType
     = UnannClassOrInterfaceType_Class UnannClassType
     | UnannClassOrInterfaceType_Interface UnannInterfaceType
+    
 
 
 unannClassOrInterfaceType : Parser UnannClassOrInterfaceType
 unannClassOrInterfaceType =
-    P.oneOf
-        [ P.succeed UnannClassOrInterfaceType_Class
-            |= unannClassType
-        , P.succeed UnannClassOrInterfaceType_Interface
-            |= unannInterfaceType
+    oneOf
+        [ kmap UnannClassOrInterfaceType_Class unannClassType
+        , kmap UnannClassOrInterfaceType_Interface unannInterfaceType
         ]
 
 
@@ -1325,94 +1342,99 @@ type UnannClassType
     = UnannClassType_TypeIdentifer TypeIdentifier (Maybe TypeArguments)
     | UnannClassType_Package PackageName (List Annotation) TypeIdentifier (Maybe TypeArguments)
     | UnannClassType_Class UnannClassOrInterfaceType (List Annotation) TypeIdentifier (Maybe TypeArguments)
+    
 
 
 unannClassType : Parser UnannClassType
 unannClassType =
-    P.oneOf
-        [ P.succeed UnannClassType_TypeIdentifer
-            |= typeIdentifier
-            |. P.spaces
-            |= optional typeArguments
-        , P.succeed UnannClassType_Package
-            |= packageName
-            |. P.spaces
-            |. P.symbol "."
-            |. P.spaces
-            |= list annotation
-            |. P.spaces
-            |= typeIdentifier
-            |. P.spaces
-            |= optional typeArguments
-        , P.succeed UnannClassType_Class
-            |= P.lazy (\_ -> unannClassOrInterfaceType)
-            |. P.spaces
-            |. P.symbol "."
-            |. P.spaces
-            |= list annotation
-            |. P.spaces
-            |= typeIdentifier
-            |. P.spaces
-            |= optional typeArguments
-        ]
+    lazy (\_ ->
+        oneOf
+            [ kikmap UnannClassType_TypeIdentifer
+                typeIdentifier
+                spaces
+                (optional typeArguments)
+            , kiiikikikmap UnannClassType_Package
+                packageName
+                spaces
+                (symbol ".")
+                spaces
+                (list annotation)
+                spaces
+                typeIdentifier
+                spaces
+                (optional typeArguments)
+            --, succeed UnannClassType_Class TODO
+            --    |= unannClassOrInterfaceType
+            --    |. spaces
+            --    |. (symbol ".")
+            --    |. spaces
+            --    |= list annotation
+            --    |. spaces
+            --    |= typeIdentifier
+            --    |. spaces
+            --    |= optional typeArguments
+            ]
+    )
 
 
 type UnannInterfaceType
     = UnannInterfaceType UnannClassType
+    
 
 
 unannInterfaceType : Parser UnannInterfaceType
 unannInterfaceType =
-    P.succeed UnannInterfaceType
-        |= unannClassType
+    kmap UnannInterfaceType unannClassType
 
 
 type UnannTypeVariable
     = UnannTypeVariable TypeIdentifier
+    
 
 
 unannTypeVariable : Parser UnannTypeVariable
 unannTypeVariable =
-    P.succeed UnannTypeVariable
-        |= typeIdentifier
+    kmap UnannTypeVariable typeIdentifier
 
 
 type UnannArrayType
     = UnannArrayType_Primitive UnannPrimitiveType Dims
     | UnannArrayType_Class UnannClassOrInterfaceType Dims
     | UnannArrayType_TypeVariable UnannTypeVariable Dims
+    
 
 
 unannArrayType : Parser UnannArrayType
 unannArrayType =
-    P.oneOf
-        [ P.succeed UnannArrayType_Primitive
-            |= unannPrimitiveType
-            |. P.spaces
-            |= dims
-        , P.succeed UnannArrayType_Class
-            |= unannClassOrInterfaceType
-            |. P.spaces
-            |= dims
-        , P.succeed UnannArrayType_TypeVariable
-            |= unannTypeVariable
-            |. P.spaces
-            |= dims
+    oneOf
+        [ kikmap UnannArrayType_Primitive
+            unannPrimitiveType
+            spaces
+            dims
+        , kikmap UnannArrayType_Class
+            unannClassOrInterfaceType
+            spaces
+            dims
+        , kikmap UnannArrayType_TypeVariable
+            unannTypeVariable
+            spaces
+            dims
         ]
 
 
 type MethodDeclaration
     = MethodDeclaration (List MethodModifier) MethodHeader MethodBody
+    
 
 
 methodDeclaration : Parser MethodDeclaration
 methodDeclaration =
-    P.succeed MethodDeclaration
-        |= list methodModifier
-        |. P.spaces
-        |= methodHeader
-        |. P.spaces
-        |= methodBody
+    kikikmap MethodDeclaration
+        (list methodModifier)
+        spaces
+        methodHeader
+        spaces
+        methodBody
 
 
 type MethodModifier
@@ -1426,255 +1448,266 @@ type MethodModifier
     | MethodModifier_Synchronized
     | MethodModifier_Native
     | MethodModifier_Strictfp
+    
 
 
 methodModifier : Parser MethodModifier
 methodModifier =
-    P.oneOf
-        [ P.succeed MethodModifier_Annotation |= annotation
-        , P.succeed MethodModifier_Public |. P.keyword "public"
-        , P.succeed MethodModifier_Protected |. P.keyword "protected"
-        , P.succeed MethodModifier_Private |. P.keyword "private"
-        , P.succeed MethodModifier_Abstract |. P.keyword "abstract"
-        , P.succeed MethodModifier_Static |. P.keyword "static"
-        , P.succeed MethodModifier_Final |. P.keyword "final"
-        , P.succeed MethodModifier_Synchronized |. P.keyword "synchronized"
-        , P.succeed MethodModifier_Native |. P.keyword "native"
-        , P.succeed MethodModifier_Static |. P.keyword "strictfp"
+    oneOf
+        [ kmap MethodModifier_Annotation annotation
+        , imap MethodModifier_Public (keyword "public")
+        , imap MethodModifier_Protected (keyword "protected")
+        , imap MethodModifier_Private (keyword "private")
+        , imap MethodModifier_Abstract (keyword "abstract")
+        , imap MethodModifier_Static (keyword "static")
+        , imap MethodModifier_Final (keyword "final")
+        , imap MethodModifier_Synchronized (keyword "synchronized")
+        , imap MethodModifier_Native (keyword "native")
+        , imap MethodModifier_Static (keyword "strictfp")
         ]
 
 
 type MethodHeader
     = MethodHeader_Result Result MethodDeclarator (Maybe Throws)
     | MethodHeader_TypeParameters TypeParameters (List Annotation) Result MethodDeclarator (Maybe Throws)
+    
 
 
 methodHeader : Parser MethodHeader
 methodHeader =
-    P.oneOf
-        [ P.succeed MethodHeader_Result
-            |= result
-            |. P.spaces
-            |= methodDeclarator
-            |. P.spaces
-            |= optional throws
-        , P.succeed MethodHeader_TypeParameters
-            |= typeParameters
-            |. P.spaces
-            |= list annotation
-            |. P.spaces
-            |= result
-            |. P.spaces
-            |= methodDeclarator
-            |. P.spaces
-            |= optional throws
+    oneOf
+        [ kikikmap MethodHeader_Result
+            result
+            spaces
+            methodDeclarator
+            spaces
+            (optional throws)
+        , kikikikikmap MethodHeader_TypeParameters
+            typeParameters
+            spaces
+            (list annotation)
+            spaces
+            result
+            spaces
+            methodDeclarator
+            spaces
+            (optional throws)
         ]
 
 
 type Result
     = Result_UnannType UnannType
     | Result_Void
+    
 
 
 result : Parser Result
 result =
-    P.oneOf
-        [ P.succeed Result_UnannType
-            |= unannType
-        , P.succeed Result_Void
-            |. P.keyword "void"
+    oneOf
+        [ kmap Result_UnannType unannType
+        , imap Result_Void (keyword "void")
         ]
 
 
 type MethodDeclarator
     = MethodDeclarator Identifier (Maybe ReceiverParameter) (Maybe FormalParameterList) (Maybe Dims)
+    
 
 
 methodDeclarator : Parser MethodDeclarator
 methodDeclarator =
-    P.succeed MethodDeclarator
-        |= identifier
-        |. P.spaces
-        |. P.symbol "("
-        |= optional
-            (P.succeed identity
-                |= receiverParameter
-                |. P.symbol ","
+    kiikkiikmap MethodDeclarator
+        identifier
+        spaces
+        (symbol "(")
+        ( optional
+            (kimap identity
+                receiverParameter
+                (symbol ",")
             )
-        |= optional formalParameterList
-        |. P.symbol ")"
-        |. P.spaces
-        |= optional dims
+        )
+        (optional formalParameterList)
+        (symbol ")")
+        spaces
+        (optional dims)
 
 
 type ReceiverParameter
     = ReceiverParameter (List Annotation) UnannType (Maybe Identifier)
+    
 
 
 receiverParameter : Parser ReceiverParameter
 receiverParameter =
-    P.succeed ReceiverParameter
-        |= list annotation
-        |. P.spaces
-        |= unannType
-        |. P.spaces
-        |= optional
-            (P.succeed identity
-                |= identifier
-                |. P.symbol "."
-            )
-        |. P.spaces
-        |. P.keyword "this"
+    kikikiimap ReceiverParameter
+        (list annotation)
+        spaces
+        unannType
+        spaces
+        ( optional
+         ( kimap identity
+             identifier
+             (symbol ".")
+         )
+        )
+        spaces
+        (keyword "this")
 
 
 type FormalParameterList
     = FormalParameterList (List FormalParameter)
+    
 
 
 formalParameterList : Parser FormalParameterList
 formalParameterList =
-    P.succeed FormalParameterList
-        |= nonEmptySep "," formalParameter
+    kmap FormalParameterList
+        (nonEmptySep "," formalParameter)
 
 
 type FormalParameter
     = FormalParameter_Normal (List VariableModifier) UnannType VariableDeclaratorId
     | FormalParameter_Arity VariableArityParameter
+    
 
 
 formalParameter : Parser FormalParameter
 formalParameter =
-    P.oneOf
-        [ P.succeed FormalParameter_Normal
-            |= list variableModifier
-            |. P.spaces
-            |= unannType
-            |. P.spaces
-            |= variableDeclaratorId
-        , P.succeed FormalParameter_Arity
-            |= variableArityParameter
+    oneOf
+        [ kikikmap FormalParameter_Normal
+            (list variableModifier)
+            spaces
+            unannType
+            spaces
+            variableDeclaratorId
+        , kmap FormalParameter_Arity
+            variableArityParameter
         ]
 
 
 type VariableArityParameter
     = VariableArityParameter (List VariableModifier) UnannType (List Annotation) Identifier
+    
 
 
 variableArityParameter : Parser VariableArityParameter
 variableArityParameter =
-    P.succeed VariableArityParameter
-        |= list variableModifier
-        |. P.spaces
-        |= unannType
-        |. P.spaces
-        |= list annotation
-        |. P.spaces
-        |. P.keyword "..."
-        |. P.spaces
-        |= identifier
+    kikikiiikmap VariableArityParameter
+        (list variableModifier)
+        spaces
+        unannType
+        spaces
+        (list annotation)
+        spaces
+        (keyword "...")
+        spaces
+        identifier
 
 
 type VariableModifier
     = VariableModifier_Annotation Annotation
     | VariableModifier_Final
+    
 
 
 variableModifier : Parser VariableModifier
 variableModifier =
-    P.oneOf
-        [ P.succeed VariableModifier_Annotation |= annotation
-        , P.succeed VariableModifier_Final |. P.keyword "final"
+    oneOf
+        [ kmap VariableModifier_Annotation annotation
+        , imap VariableModifier_Final (keyword "final")
         ]
 
 
 type Throws
     = Throws ExceptionTypeList
+    
 
 
 throws : Parser Throws
 throws =
-    P.succeed Throws
-        |. P.keyword "throws"
-        |. P.spaces
-        |= exceptionTypeList
+    iikmap Throws
+        (keyword "throws")
+        spaces
+        exceptionTypeList
 
 
 type ExceptionTypeList
     = ExceptionTypeList (List ExceptionType)
+    
 
 
 exceptionTypeList : Parser ExceptionTypeList
 exceptionTypeList =
-    P.succeed ExceptionTypeList
-        |= nonEmptySep "," exceptionType
+    kmap ExceptionTypeList
+        (nonEmptySep "," exceptionType)
 
 
 type ExceptionType
     = ExceptionType_Class ClassType
     | ExceptionType_TypeVariable TypeVariable
+    
 
 
 exceptionType : Parser ExceptionType
 exceptionType =
-    P.oneOf
-        [ P.succeed ExceptionType_Class
-            |= classType
-        , P.succeed ExceptionType_TypeVariable
-            |= typeVariable
+    oneOf
+        [ kmap ExceptionType_Class classType
+        , kmap ExceptionType_TypeVariable typeVariable
         ]
 
 
 type MethodBody
     = MethodBody_Block Block
     | MethodBody_Semi
+    
 
 
 methodBody : Parser MethodBody
 methodBody =
-    P.oneOf
-        [ P.succeed MethodBody_Block
-            |= block
-        , P.succeed MethodBody_Semi
-            |. P.symbol ";"
+    oneOf
+        [ kmap MethodBody_Block block
+        , imap MethodBody_Semi (symbol ";")
         ]
 
 
 type InstanceInitializer
     = InstanceInitializer Block
+    
 
 
 instanceInitializer : Parser InstanceInitializer
 instanceInitializer =
-    P.succeed InstanceInitializer
-        |= block
+    kmap InstanceInitializer block
 
 
 type StaticInitializer
     = StaticInitializer Block
+    
 
 
 staticInitializer : Parser StaticInitializer
 staticInitializer =
-    P.succeed StaticInitializer
-        |. P.keyword "static"
-        |. P.spaces
-        |= block
+    iikmap StaticInitializer
+        (keyword "static")
+        spaces
+        block
 
 
 type ConstructorDeclaration
     = ConstructorDeclaration (List ConstructorModifier) ConstructorDeclarator (Maybe Throws) ConstructorBody
+    
 
 
 constructorDeclaration : Parser ConstructorDeclaration
 constructorDeclaration =
-    P.succeed ConstructorDeclaration
-        |= list constructorModifier
-        |. P.spaces
-        |= constructorDeclarator
-        |. P.spaces
-        |= optional throws
-        |. P.spaces
-        |= constructorBody
+    kikikikmap ConstructorDeclaration
+        (list constructorModifier)
+        spaces
+        constructorDeclarator
+        spaces
+        (optional throws)
+        spaces
+        constructorBody
 
 
 type ConstructorModifier
@@ -1682,71 +1715,71 @@ type ConstructorModifier
     | ConstructorModifier_Public
     | ConstructorModifier_Protected
     | ConstructorModifier_Private
+    
 
 
 constructorModifier : Parser ConstructorModifier
 constructorModifier =
-    P.oneOf
-        [ P.succeed ConstructorModifier_Annotation
-            |= annotation
-        , P.succeed ConstructorModifier_Public
-            |. P.keyword "public"
-        , P.succeed ConstructorModifier_Protected
-            |. P.keyword "protected"
-        , P.succeed ConstructorModifier_Private
-            |. P.keyword "private"
+    oneOf
+        [ kmap ConstructorModifier_Annotation annotation
+        , imap ConstructorModifier_Public (keyword "public")
+        , imap ConstructorModifier_Protected (keyword "protected")
+        , imap ConstructorModifier_Private (keyword "private")
         ]
 
 
 type ConstructorDeclarator
     = ConstructorDeclarator (Maybe TypeParameters) SimpleTypeName (Maybe ReceiverParameter) (Maybe FormalParameterList)
+    
 
 
 constructorDeclarator : Parser ConstructorDeclarator
 constructorDeclarator =
-    P.succeed ConstructorDeclarator
-        |= optional typeParameters
-        |. P.spaces
-        |= simpleTypeName
-        |. P.spaces
-        |. P.symbol "("
-        |. P.spaces
-        |= optional
-            (P.succeed identity
-                |= receiverParameter
-                |. P.spaces
-                |. P.symbol ","
-            )
-        |. P.spaces
-        |= optional formalParameterList
-        |. P.spaces
-        |. P.symbol ")"
+    kikiiikikiimap ConstructorDeclarator
+        (optional typeParameters)
+        spaces
+        simpleTypeName
+        spaces
+        (symbol "(")
+        spaces
+        (optional
+         (kiimap identity
+             receiverParameter
+             spaces
+             (symbol ",")
+         )
+        )
+        spaces
+        (optional formalParameterList)
+        spaces
+        (symbol ")")
 
 
 type SimpleTypeName
     = SimpleTypeName TypeIdentifier
+    
 
 
 simpleTypeName : Parser SimpleTypeName
 simpleTypeName =
-    P.succeed SimpleTypeName
-        |= typeIdentifier
+    kmap SimpleTypeName typeIdentifier
 
 
 type ConstructorBody
     = ConstructorBody (Maybe ExplicitConstructorInvocation) (Maybe BlockStatements)
+    
 
 
 constructorBody : Parser ConstructorBody
 constructorBody =
-    P.succeed ConstructorBody
-        |. P.symbol "{"
-        |. P.spaces
-        |= optional explicitConstructorInvocation
-        |. P.spaces
-        |= optional blockStatements
-        |. P.spaces
-        |. P.symbol "}"
+    iikikiimap ConstructorBody
+        (symbol "{")
+        spaces
+        (optional explicitConstructorInvocation)
+        spaces
+        (optional blockStatements)
+        spaces
+        (symbol "}")
 
 
 type ExplicitConstructorInvocation
@@ -1754,165 +1787,246 @@ type ExplicitConstructorInvocation
     | ExplicitConstructorInvocation_Super (Maybe TypeArguments) (Maybe ArgumentList)
     | ExplicitConstructorInvocation_ExpressionSuper ExpressionName (Maybe TypeArguments) (Maybe ArgumentList)
     | ExplicitConstructorInvocation_PrimarySuper Primary (Maybe TypeArguments) (Maybe ArgumentList)
+    
 
 
 explicitConstructorInvocation : Parser ExplicitConstructorInvocation
 explicitConstructorInvocation =
-    P.oneOf
-        [ P.succeed ExplicitConstructorInvocation_This
-            |= optional typeArguments
-            |. P.spaces
-            |. P.keyword "this"
-            |. P.spaces
-            |. P.symbol "("
-            |. P.spaces
-            |= optional argumentList
-            |. P.spaces
-            |. P.symbol ")"
-            |. P.spaces
-            |. P.symbol ";"
-        , P.succeed ExplicitConstructorInvocation_Super
-            |= optional typeArguments
-            |. P.spaces
-            |. P.keyword "super"
-            |. P.spaces
-            |. P.symbol "("
-            |. P.spaces
-            |= optional argumentList
-            |. P.spaces
-            |. P.symbol ")"
-            |. P.spaces
-            |. P.symbol ";"
-        , P.succeed ExplicitConstructorInvocation_ExpressionSuper
-            |= expressionName
-            |. P.spaces
-            |. P.keyword "."
-            |. P.spaces
-            |= optional typeArguments
-            |. P.spaces
-            |. P.keyword "super"
-            |. P.spaces
-            |. P.symbol "("
-            |. P.spaces
-            |= optional argumentList
-            |. P.spaces
-            |. P.symbol ")"
-            |. P.spaces
-            |. P.symbol ";"
-        , P.succeed ExplicitConstructorInvocation_PrimarySuper
-            |= primary
-            |. P.spaces
-            |. P.keyword "."
-            |. P.spaces
-            |= optional typeArguments
-            |. P.spaces
-            |. P.keyword "super"
-            |. P.spaces
-            |. P.symbol "("
-            |. P.spaces
-            |= optional argumentList
-            |. P.spaces
-            |. P.symbol ")"
-            |. P.spaces
-            |. P.symbol ";"
+    oneOf
+        [ ignorer (
+          ignorer (
+          ignorer (
+          ignorer (
+          keeper (
+          ignorer (
+          ignorer (
+          ignorer (
+          ignorer (
+          ignorer (
+          keeper (
+          succeed ExplicitConstructorInvocation_This ) <|
+          (optional typeArguments) ) <|
+          spaces ) <|
+          (keyword "this") ) <|
+          spaces ) <|
+          (symbol "(") ) <|
+          spaces ) <|
+          (optional argumentList) ) <|
+          spaces ) <|
+          (symbol ")") ) <|
+          spaces ) <|
+          (symbol ";")
+        , ignorer (
+          ignorer (
+          ignorer (
+          ignorer (
+          keeper (
+          ignorer (
+          ignorer (
+          ignorer (
+          ignorer (
+          ignorer (
+          keeper ( 
+          succeed ExplicitConstructorInvocation_Super ) <|
+          (optional typeArguments) ) <|
+          spaces ) <|
+          (keyword "super") ) <|
+          spaces ) <|
+          (symbol "(") ) <|
+          spaces ) <|
+          (optional argumentList) ) <|
+          spaces ) <|
+          (symbol ")") ) <|
+          spaces ) <|
+          (symbol ";")
+        , ignorer ( 
+          ignorer (
+          ignorer (
+          ignorer (
+          keeper (
+          ignorer (
+          ignorer (
+          ignorer (
+          ignorer (
+          ignorer (
+          keeper (
+          ignorer (
+          ignorer (
+          ignorer (
+          keeper (
+          succeed ExplicitConstructorInvocation_ExpressionSuper ) <|
+          expressionName ) <|
+          spaces ) <|
+          keyword "." ) <|
+          spaces ) <|
+          optional typeArguments ) <|
+          spaces ) <|
+          (keyword "super") ) <|
+          spaces ) <|
+          (symbol "(") ) <|
+          spaces ) <|
+          optional argumentList ) <|
+          spaces ) <|
+          (symbol ")") ) <|
+          spaces ) <|
+          (symbol ";")
+        , ignorer (
+          ignorer (
+          ignorer (
+          ignorer (
+          keeper (
+          ignorer (
+          ignorer (
+          ignorer (
+          ignorer (
+          ignorer (
+          keeper (
+          ignorer (
+          ignorer (
+          ignorer (
+          keeper (
+          succeed ExplicitConstructorInvocation_PrimarySuper ) <|
+          primary ) <|
+          spaces ) <|
+          keyword "." ) <|
+          spaces ) <|
+          optional typeArguments ) <|
+          spaces ) <|
+          (keyword "super") ) <|
+          spaces ) <|
+          (symbol "(") ) <|
+          spaces ) <|
+          optional argumentList ) <|
+          spaces ) <|
+          (symbol ")") ) <|
+          spaces ) <|
+          (symbol ";")
         ]
 
 
 type EnumDeclaration
     = EnumDeclaration (List ClassModifier) TypeIdentifier (Maybe Superinterfaces) EnumBody
+    
 
 
 enumDeclaration : Parser EnumDeclaration
 enumDeclaration =
-    P.succeed EnumDeclaration
-        |= list classModifier
-        |. P.spaces
-        |. P.keyword "enum"
-        |. P.spaces
-        |= typeIdentifier
-        |. P.spaces
-        |= optional superinterfaces
-        |. P.spaces
-        |= enumBody
+        keeper (
+        ignorer (
+        keeper (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        succeed EnumDeclaration ) <|
+        list classModifier ) <|
+        spaces ) <|
+        (keyword "enum") ) <|
+        spaces ) <|
+        typeIdentifier ) <|
+        spaces ) <|
+        optional superinterfaces ) <|
+        spaces ) <|
+        enumBody
 
 
 type EnumBody
     = EnumBody (Maybe EnumConstantList) (Maybe EnumBodyDeclarations)
+    
 
 
 enumBody : Parser EnumBody
 enumBody =
-    P.succeed EnumBody
-        |. P.symbol "{"
-        |. P.spaces
-        |= optional enumConstantList
-        |. P.spaces
-        |. P.symbol ","
-        |. P.spaces
-        |= optional enumBodyDeclarations
-        |. P.spaces
-        |. P.symbol "{"
+    lazy (\_ ->
+            ignorer (
+            ignorer (
+            keeper (
+            ignorer (
+            ignorer (
+            ignorer (
+            keeper (
+            ignorer (
+            ignorer (
+            succeed EnumBody ) <|
+            (symbol "{") ) <|
+            spaces ) <|
+            optional enumConstantList ) <|
+            spaces ) <|
+            (symbol ",") ) <|
+            spaces ) <|
+            optional enumBodyDeclarations ) <|
+            spaces ) <|
+            (symbol "{")
+    )
 
 
 type EnumConstantList
     = EnumConstantList EnumConstant (List EnumConstant)
+    
 
 
 enumConstantList : Parser EnumConstantList
 enumConstantList =
-    P.succeed EnumConstantList
-        |= enumConstant
-        |. P.spaces
-        |= list
-            (P.succeed identity
-                |. P.symbol ","
-                |. P.spaces
-                |= enumConstant
+    kikmap EnumConstantList
+        enumConstant
+        spaces
+        ( list
+            ( iikmap identity
+                (symbol ",")
+                spaces
+                enumConstant
             )
+        )
 
 
 type EnumConstant
     = EnumConstant (List EnumConstantModifier) Identifier (Maybe (Maybe ArgumentList)) (Maybe ClassBody)
+    
 
 
 enumConstant =
-    P.succeed EnumConstant
-        |= list enumConstantModifier
-        |. P.spaces
-        |= identifier
-        |. P.spaces
-        |= optional
-            (P.succeed identity
-                |. P.symbol "("
-                |. P.spaces
-                |= optional argumentList
-                |. P.spaces
-                |. P.symbol ")"
-            )
-        |. P.spaces
-        |= optional classBody
+    kikikikmap EnumConstant
+        (list enumConstantModifier)
+        spaces
+        identifier
+        spaces
+        (optional
+         (iikiimap identity
+             (symbol "(")
+             spaces
+             (optional argumentList)
+             spaces
+             (symbol ")")
+         )
+        )
+        spaces
+        (optional (classBody))
 
 
 type EnumConstantModifier
     = EnumConstantModifier Annotation
+    
 
 
 enumConstantModifier : Parser EnumConstantModifier
 enumConstantModifier =
-    P.succeed EnumConstantModifier
-        |= annotation
+    kmap EnumConstantModifier
+         annotation
 
 
 type EnumBodyDeclarations
     = EnumBodyDeclarations (List ClassBodyDeclaration)
+    
 
 
 enumBodyDeclarations : Parser EnumBodyDeclarations
 enumBodyDeclarations =
-    P.succeed EnumBodyDeclarations
-        |. P.symbol ";"
-        |. P.spaces
-        |= list classBodyDeclaration
+    iikmap EnumBodyDeclarations
+        (symbol ";")
+        spaces
+        (list classBodyDeclaration)
 
 
 
@@ -1923,36 +2037,47 @@ enumBodyDeclarations =
 type InterfaceDeclaration
     = InterfaceDeclaration_Normal NormalInterfaceDeclaration
     | InterfaceDeclaration_Annotation AnnotationTypeDeclaration
+    
 
 
 interfaceDeclaration : Parser InterfaceDeclaration
 interfaceDeclaration =
-    P.oneOf
-        [ P.succeed InterfaceDeclaration_Normal
-            |= normalInterfaceDeclaration
-        , P.succeed InterfaceDeclaration_Annotation
-            |= annotationTypeDeclaration
+    oneOf
+        [ kmap InterfaceDeclaration_Normal normalInterfaceDeclaration
+        , kmap InterfaceDeclaration_Annotation annotationTypeDeclaration
         ]
 
 
 type NormalInterfaceDeclaration
     = NormalInterfaceDeclaration (List InterfaceModifier) TypeIdentifier (Maybe TypeParameters) (Maybe ExtendsInterfaces) InterfaceBody
+    
 
 
 normalInterfaceDeclaration : Parser NormalInterfaceDeclaration
 normalInterfaceDeclaration =
-    P.succeed NormalInterfaceDeclaration
-        |= list interfaceModifier
-        |. P.spaces
-        |. P.keyword "interface"
-        |. P.spaces
-        |= typeIdentifier
-        |. P.spaces
-        |= optional typeParameters
-        |. P.spaces
-        |= optional extendsInterfaces
-        |. P.spaces
-        |= interfaceBody
+        keeper (
+        ignorer (
+        keeper (
+        ignorer (
+        keeper (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        succeed NormalInterfaceDeclaration ) <|
+        list interfaceModifier ) <|
+        spaces ) <|
+        (keyword "interface") ) <|
+        spaces ) <|
+        typeIdentifier ) <|
+        spaces ) <|
+        optional typeParameters ) <|
+        spaces ) <|
+        optional extendsInterfaces ) <|
+        spaces ) <|
+        interfaceBody
 
 
 type InterfaceModifier
@@ -1963,52 +2088,50 @@ type InterfaceModifier
     | InterfaceModifier_Abstract
     | InterfaceModifier_Static
     | InterfaceModifier_Strictfp
+    
 
 
 interfaceModifier : Parser InterfaceModifier
 interfaceModifier =
-    P.oneOf
-        [ P.succeed InterfaceModifier_Annotation
-            |= annotation
-        , P.succeed InterfaceModifier_Public
-            |. P.keyword "public"
-        , P.succeed InterfaceModifier_Protected
-            |. P.keyword "protected"
-        , P.succeed InterfaceModifier_Private
-            |. P.keyword "private"
-        , P.succeed InterfaceModifier_Abstract
-            |. P.keyword "abstract"
-        , P.succeed InterfaceModifier_Static
-            |. P.keyword "static"
-        , P.succeed InterfaceModifier_Strictfp
-            |. P.keyword "strictfp"
+    oneOf
+        [ kmap InterfaceModifier_Annotation annotation
+        , imap InterfaceModifier_Public (keyword "public")
+        , imap InterfaceModifier_Protected (keyword "protected")
+        , imap InterfaceModifier_Private (keyword "private")
+        , imap InterfaceModifier_Abstract (keyword "abstract")
+        , imap InterfaceModifier_Static (keyword "static")
+        , imap InterfaceModifier_Strictfp (keyword "strictfp")
         ]
 
 
 type ExtendsInterfaces
     = ExtendsInterfaces InterfaceTypeList
+    
 
 
 extendsInterfaces : Parser ExtendsInterfaces
 extendsInterfaces =
-    P.succeed ExtendsInterfaces
-        |. P.keyword "extends"
-        |. P.spaces
-        |= interfaceTypeList
+    iikmap ExtendsInterfaces
+        (keyword "extends")
+        spaces
+        interfaceTypeList
 
 
 type InterfaceBody
     = InterfaceBody (List InterfaceMemberDeclaration)
+    
 
 
 interfaceBody : Parser InterfaceBody
 interfaceBody =
-    P.succeed InterfaceBody
-        |. P.keyword "{"
-        |. P.spaces
-        |= list interfaceMemberDeclaration
-        |. P.spaces
-        |. P.keyword "}"
+    lazy (\_ -> 
+            iikiimap InterfaceBody
+                (keyword "{")
+                spaces
+                (list interfaceMemberDeclaration)
+                spaces
+                (keyword "}")
+    )
 
 
 type InterfaceMemberDeclaration
@@ -2017,38 +2140,35 @@ type InterfaceMemberDeclaration
     | InterfaceMemberDeclaration_Class ClassDeclaration
     | InterfaceMemberDeclaration_Interface InterfaceDeclaration
     | InterfaceMemberDeclaration_Semi
+    
 
 
 interfaceMemberDeclaration : Parser InterfaceMemberDeclaration
 interfaceMemberDeclaration =
-    P.oneOf
-        [ P.succeed InterfaceMemberDeclaration_Constant
-            |= constantDeclaration
-        , P.succeed InterfaceMemberDeclaration_Method
-            |= interfaceMethodDeclaration
-        , P.succeed InterfaceMemberDeclaration_Class
-            |= P.lazy (\_ -> classDeclaration)
-        , P.succeed InterfaceMemberDeclaration_Interface
-            |= P.lazy (\_ -> interfaceDeclaration)
-        , P.succeed InterfaceMemberDeclaration_Semi
-            |. P.symbol ","
+    oneOf
+        [ kmap InterfaceMemberDeclaration_Constant constantDeclaration
+        , kmap InterfaceMemberDeclaration_Method interfaceMethodDeclaration
+        , kmap InterfaceMemberDeclaration_Class classDeclaration
+        , kmap InterfaceMemberDeclaration_Interface interfaceDeclaration
+        , imap InterfaceMemberDeclaration_Semi (symbol ",")
         ]
 
 
 type ConstantDeclaration
     = ConstantDeclaration (List ConstantModifier) UnannType VariableDeclaratorList
+    
 
 
 constantDeclaration : Parser ConstantDeclaration
 constantDeclaration =
-    P.succeed ConstantDeclaration
-        |= list constantModifier
-        |. P.spaces
-        |= unannType
-        |. P.spaces
-        |= variableDeclaratorList
-        |. P.spaces
-        |. P.symbol ";"
+    kikikiimap ConstantDeclaration
+        (list constantModifier)
+        spaces
+        unannType
+        spaces
+        variableDeclaratorList
+        spaces
+        (symbol ";")
 
 
 type ConstantModifier
@@ -2056,34 +2176,32 @@ type ConstantModifier
     | ConstantModifier_Public
     | ConstantModifier_Static
     | ConstantModifier_Final
+    
 
 
 constantModifier : Parser ConstantModifier
 constantModifier =
-    P.oneOf
-        [ P.succeed ConstantModifier_Annotation
-            |= annotation
-        , P.succeed ConstantModifier_Public
-            |. P.keyword "public"
-        , P.succeed ConstantModifier_Static
-            |. P.keyword "static"
-        , P.succeed ConstantModifier_Final
-            |. P.keyword "final"
+    oneOf
+        [ kmap ConstantModifier_Annotation annotation
+        , imap ConstantModifier_Public (keyword "public")
+        , imap ConstantModifier_Static (keyword "static")
+        , imap ConstantModifier_Final (keyword "final")
         ]
 
 
 type InterfaceMethodDeclaration
     = InterfaceMethodDeclaration (List InterfaceMethodModifier) MethodHeader MethodBody
+    
 
 
 interfaceMethodDeclaration : Parser InterfaceMethodDeclaration
 interfaceMethodDeclaration =
-    P.succeed InterfaceMethodDeclaration
-        |= list interfaceMethodModifier
-        |. P.spaces
-        |= methodHeader
-        |. P.spaces
-        |= methodBody
+    kikikmap InterfaceMethodDeclaration
+        (list interfaceMethodModifier)
+        spaces
+        methodHeader
+        spaces
+        methodBody
 
 
 type InterfaceMethodModifier
@@ -2094,58 +2212,56 @@ type InterfaceMethodModifier
     | InterfaceMethodModifier_Default
     | InterfaceMethodModifier_Static
     | InterfaceMethodModifier_Strictfp
+    
 
 
 interfaceMethodModifier : Parser InterfaceMethodModifier
 interfaceMethodModifier =
-    P.oneOf
-        [ P.succeed InterfaceMethodModifier_Annotation
-            |= annotation
-        , P.succeed InterfaceMethodModifier_Public
-            |. P.keyword "public"
-        , P.succeed InterfaceMethodModifier_Private
-            |. P.keyword "private"
-        , P.succeed InterfaceMethodModifier_Abstract
-            |. P.keyword "abstract"
-        , P.succeed InterfaceMethodModifier_Default
-            |. P.keyword "default"
-        , P.succeed InterfaceMethodModifier_Static
-            |. P.keyword "static"
-        , P.succeed InterfaceMethodModifier_Strictfp
-            |. P.keyword "strictfp"
+    oneOf
+        [ kmap InterfaceMethodModifier_Annotation annotation
+        , imap InterfaceMethodModifier_Public (keyword "public")
+        , imap InterfaceMethodModifier_Private (keyword "private")
+        , imap InterfaceMethodModifier_Abstract (keyword "abstract")
+        , imap InterfaceMethodModifier_Default (keyword "default")
+        , imap InterfaceMethodModifier_Static (keyword "static")
+        , imap InterfaceMethodModifier_Strictfp (keyword "strictfp")
         ]
 
 
 type AnnotationTypeDeclaration
     = AnnotationTypeDeclaration (List InterfaceModifier) TypeIdentifier AnnotationTypeBody
+    
 
 
 annotationTypeDeclaration : Parser AnnotationTypeDeclaration
 annotationTypeDeclaration =
-    P.succeed AnnotationTypeDeclaration
-        |= list interfaceModifier
-        |. P.spaces
-        |. P.symbol "@"
-        |. P.spaces
-        |. P.keyword "interface"
-        |. P.spaces
-        |= typeIdentifier
-        |. P.spaces
-        |= annotationTypeBody
+    kiiiiikikmap AnnotationTypeDeclaration
+        (list interfaceModifier)
+        spaces
+        (symbol "@")
+        spaces
+        (keyword "interface")
+        spaces
+        typeIdentifier
+        spaces
+        annotationTypeBody
 
 
 type AnnotationTypeBody
     = AnnotationTypeBody (List AnnotationTypeMemberDeclaration)
+    
 
 
 annotationTypeBody : Parser AnnotationTypeBody
 annotationTypeBody =
-    P.succeed AnnotationTypeBody
-        |. P.symbol "{"
-        |. P.spaces
-        |= list annotationTypeMemberDeclaration
-        |. P.spaces
-        |. P.symbol "}"
+    lazy (\_ ->
+        iikiimap AnnotationTypeBody
+            (symbol "{")
+            spaces
+            (list annotationTypeMemberDeclaration)
+            spaces
+            (symbol "}")
+    )
 
 
 type AnnotationTypeMemberDeclaration
@@ -2154,223 +2270,274 @@ type AnnotationTypeMemberDeclaration
     | AnnotationTypeMemberDeclaration_Class ClassDeclaration
     | AnnotationTypeMemberDeclaration_Interface InterfaceDeclaration
     | AnnotationTypeMemberDeclaration_Semi
+    
 
 
 annotationTypeMemberDeclaration : Parser AnnotationTypeMemberDeclaration
 annotationTypeMemberDeclaration =
-    P.oneOf
-        [ P.succeed AnnotationTypeMemberDeclaration_Element
-            |= annotationTypeElementDeclaration
-        , P.succeed AnnotationTypeMemberDeclaration_Constant
-            |= constantDeclaration
-        , P.succeed AnnotationTypeMemberDeclaration_Class
-            |= P.lazy (\_ -> classDeclaration)
-        , P.succeed AnnotationTypeMemberDeclaration_Interface
-            |= P.lazy (\_ -> interfaceDeclaration)
-        , P.succeed AnnotationTypeMemberDeclaration_Semi
-            |. P.symbol ";"
+    oneOf
+        [ kmap AnnotationTypeMemberDeclaration_Element
+             annotationTypeElementDeclaration
+        , kmap AnnotationTypeMemberDeclaration_Constant
+             constantDeclaration
+        , kmap AnnotationTypeMemberDeclaration_Class
+             classDeclaration
+        , kmap AnnotationTypeMemberDeclaration_Interface
+             interfaceDeclaration
+        , imap AnnotationTypeMemberDeclaration_Semi
+             (symbol ";")
         ]
 
 
 type AnnotationTypeElementDeclaration
     = AnnotationTypeElementDeclaration (List AnnotationTypeElementModifier) UnannType Identifier (Maybe Dims) (Maybe DefaultValue)
+    
 
 
 annotationTypeElementDeclaration : Parser AnnotationTypeElementDeclaration
 annotationTypeElementDeclaration =
-    P.succeed AnnotationTypeElementDeclaration
-        |= list annotationTypeElementModifier
-        |. P.spaces
-        |= unannType
-        |. P.spaces
-        |= identifier
-        |. P.spaces
-        |. P.symbol "("
-        |. P.spaces
-        |. P.symbol ")"
-        |. P.spaces
-        |= optional dims
-        |. P.spaces
-        |= optional defaultValue
-        |. P.spaces
-        |. P.symbol ";"
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        keeper (
+        ignorer (
+        keeper (
+        succeed AnnotationTypeElementDeclaration ) <|
+        list annotationTypeElementModifier ) <|
+        spaces ) <|
+        unannType ) <|
+        spaces ) <|
+        identifier ) <|
+        spaces ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        (symbol ")") ) <|
+        spaces ) <|
+        optional dims ) <|
+        spaces ) <|
+        optional defaultValue ) <|
+        spaces ) <|
+        (symbol ";")
 
 
 type AnnotationTypeElementModifier
     = AnnotationTypeElementModifier_Annotation Annotation
     | AnnotationTypeElementModifier_Public
     | AnnotationTypeElementModifier_Abstract
+    
 
 
 annotationTypeElementModifier : Parser AnnotationTypeElementModifier
 annotationTypeElementModifier =
-    P.oneOf
-        [ P.succeed AnnotationTypeElementModifier_Annotation
-            |= annotation
-        , P.succeed AnnotationTypeElementModifier_Public
-            |. P.keyword "public"
-        , P.succeed AnnotationTypeElementModifier_Abstract
-            |. P.keyword "abstract"
+    oneOf
+        [ kmap AnnotationTypeElementModifier_Annotation annotation
+        , imap AnnotationTypeElementModifier_Public (keyword "public")
+        , imap AnnotationTypeElementModifier_Abstract (keyword "abstract")
         ]
 
 
 type DefaultValue
     = DefaultValue ElementValue
+    
 
 
 defaultValue : Parser DefaultValue
 defaultValue =
-    P.succeed DefaultValue
-        |. P.keyword "default"
-        |. P.spaces
-        |= elementValue
+    iikmap DefaultValue
+        (keyword "default")
+        spaces
+        elementValue
 
 
 type Annotation
     = Annotation_Normal NormalAnnotation
     | Annotation_Marker MarkerAnnotation
     | Annotation_SingleElement SingleElementAnnotation
+    
 
 
 annotation : Parser Annotation
 annotation =
-    P.oneOf
-        [ P.succeed Annotation_Normal
-            |= normalAnnotation
-        , P.succeed Annotation_Marker
-            |= markerAnnotation
-        , P.succeed Annotation_SingleElement
-            |= singleElementAnnotation
-        ]
+    lazy (\_ ->
+        oneOf
+            [ kmap Annotation_Normal normalAnnotation
+            , kmap Annotation_Marker markerAnnotation
+            , kmap Annotation_SingleElement singleElementAnnotation
+            ]
+    )
 
 
 type NormalAnnotation
     = NormalAnnotation TypeName (Maybe ElementValuePairList)
+    
 
 
 normalAnnotation : Parser NormalAnnotation
 normalAnnotation =
-    P.succeed NormalAnnotation
-        |. P.symbol "@"
-        |. P.spaces
-        |= typeName
-        |. P.spaces
-        |. P.symbol "("
-        |. P.spaces
-        |= optional elementValuePairList
-        |. P.spaces
-        |. P.symbol ")"
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        succeed NormalAnnotation ) <|
+        (symbol "@") ) <|
+        spaces ) <|
+        typeName ) <|
+        spaces ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        (optional elementValuePairList) ) <|
+        spaces ) <|
+        (symbol ")")
 
 
 type ElementValuePairList
     = ElementValuePairList ElementValuePair (List ElementValuePair)
+    
 
 
 elementValuePairList : Parser ElementValuePairList
 elementValuePairList =
-    P.succeed ElementValuePairList
-        |= elementValuePair
-        |. P.spaces
-        |= list
-            (P.succeed identity
-                |. P.symbol ","
-                |. P.spaces
-                |= elementValuePair
+    kikmap ElementValuePairList
+        elementValuePair
+        spaces
+        (list
+            (iikmap identity
+                (symbol ",")
+                spaces
+                elementValuePair
             )
+        )
 
 
 type ElementValuePair
     = ElementValuePair Identifier ElementValue
+    
 
 
 elementValuePair : Parser ElementValuePair
 elementValuePair =
-    P.succeed ElementValuePair
-        |= identifier
-        |. P.spaces
-        |. P.symbol "="
-        |. P.spaces
-        |= elementValue
+    kiiikmap ElementValuePair
+        identifier
+        spaces
+        (symbol "=")
+        spaces
+        elementValue
 
 
 type ElementValue
     = ElementValue_Conditional ConditionalExpression
     | ElementValue_ArrayInitializer ElementValueArrayInitializer
     | ElementValue_Annotation Annotation
+    
 
 
 elementValue : Parser ElementValue
 elementValue =
-    P.oneOf
-        [ P.succeed ElementValue_Conditional
-            |= conditionalExpression
-        , P.succeed ElementValue_ArrayInitializer
-            |= elementValueArrayInitializer
-        , P.succeed ElementValue_Annotation
-            |= P.lazy (\_ -> annotation)
-        ]
+    lazy (\_ ->
+        oneOf
+            --[ succeed ElementValue_Conditional
+            --    |= conditionalExpression
+            [ kmap ElementValue_ArrayInitializer elementValueArrayInitializer
+            , kmap ElementValue_Annotation annotation
+            ]
+    )
 
 
 type ElementValueArrayInitializer
     = ElementValueArrayInitializer (Maybe ElementValueList)
+    
 
 
 elementValueArrayInitializer : Parser ElementValueArrayInitializer
 elementValueArrayInitializer =
-    P.succeed ElementValueArrayInitializer
-        |. P.symbol "{"
-        |. P.spaces
-        |= optional (P.lazy (\_ -> elementValueList))
-        |. P.spaces
-        |. optional (P.symbol ",")
-        |. P.spaces
-        |. P.symbol "}"
+        ignorer (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        succeed ElementValueArrayInitializer ) <|
+        (symbol "{") ) <|
+        spaces ) <|
+        (optional (elementValueList)) ) <|
+        spaces ) <|
+        (optional (symbol ",")) ) <|
+        spaces ) <|
+        (symbol "}")
 
 
 type ElementValueList
     = ElementValueList ElementValue (List ElementValue)
+    
 
 
 elementValueList : Parser ElementValueList
 elementValueList =
-    P.succeed ElementValueList
-        |= elementValue
-        |. P.spaces
-        |= list
-            (P.succeed identity
-                |. P.symbol ","
-                |. P.spaces
-                |= elementValue
+    kikmap ElementValueList
+        elementValue
+        spaces
+        (list
+            (iikmap identity
+                (symbol ",")
+                spaces
+                elementValue
             )
+        )
 
 
 type MarkerAnnotation
     = MarkerAnnotation TypeName
+    
 
 
 markerAnnotation : Parser MarkerAnnotation
 markerAnnotation =
-    P.succeed MarkerAnnotation
-        |. P.symbol "@"
-        |= typeName
+    ikmap MarkerAnnotation
+        (symbol "@")
+        typeName
 
 
 type SingleElementAnnotation
     = SingleElementAnnotation TypeName ElementValue
+    
 
 
 singleElementAnnotation : Parser SingleElementAnnotation
 singleElementAnnotation =
-    P.succeed SingleElementAnnotation
-        |. P.symbol "@"
-        |. P.spaces
-        |= typeName
-        |. P.spaces
-        |. P.symbol "("
-        |. P.spaces
-        |= P.lazy (\_ -> elementValue)
-        |. P.spaces
-        |. P.symbol ")"
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        succeed SingleElementAnnotation ) <|
+        (symbol "@") ) <|
+        spaces ) <|
+        typeName ) <|
+        spaces ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        elementValue ) <|
+        spaces ) <|
+        (symbol ")")
 
 
 
@@ -2380,33 +2547,41 @@ singleElementAnnotation =
 
 type ArrayInitializer
     = ArrayInitializer (Maybe VariableInitializerList)
+    
 
 
 arrayInitializer : Parser ArrayInitializer
 arrayInitializer =
-    P.succeed ArrayInitializer
-        |. P.symbol "{"
-        |= optional (P.lazy (\_ -> variableInitializerList))
-        |. P.spaces
-        |. optional (P.symbol ",")
-        |. P.symbol "}"
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        succeed ArrayInitializer ) <|
+        (symbol "{") ) <|
+        optional (variableInitializerList) ) <|
+        spaces ) <|
+        optional (symbol ",") ) <|
+        (symbol "}")
 
 
 type VariableInitializerList
     = VariableInitializerList VariableInitializer (List VariableInitializer)
+    
 
 
 variableInitializerList : Parser VariableInitializerList
 variableInitializerList =
-    P.succeed VariableInitializerList
-        |= variableInitializer
-        |. P.spaces
-        |= list
-            (P.succeed identity
-                |. P.symbol ","
-                |. P.spaces
-                |= variableInitializer
+    kikmap VariableInitializerList
+        variableInitializer
+        spaces
+        (list
+            (iikmap identity
+                (symbol ",")
+                spaces
+                variableInitializer
             )
+        )
 
 
 
@@ -2416,85 +2591,85 @@ variableInitializerList =
 
 type Block
     = Block (Maybe BlockStatements)
+    
 
 
 block : Parser Block
 block =
-    P.succeed Block
-        |. P.symbol "{"
-        |= optional blockStatements
-        |. P.symbol "}"
+    ikimap Block
+        (symbol "{")
+        (optional blockStatements)
+        (symbol "}")
 
 
 type BlockStatements
     = BlockStatements BlockStatement (List BlockStatement)
+    
 
 
 blockStatements : Parser BlockStatements
 blockStatements =
-    P.succeed BlockStatements
-        |= blockStatement
-        |. P.spaces
-        |= list blockStatement
-        |. P.spaces
+    kikmap BlockStatements
+        blockStatement
+        spaces
+        (list blockStatement)
 
 
 type BlockStatement
     = BlockStatement_LocalVariable LocalVariableDeclarationStatement
     | BlockStatement_Class ClassDeclaration
     | BlockStatement_Statement Statement
+    
 
 
 blockStatement : Parser BlockStatement
 blockStatement =
-    P.oneOf
-        [ P.succeed BlockStatement_LocalVariable
-            |= localVariableDeclarationStatement
-        , P.succeed BlockStatement_Class
-            |= P.lazy (\_ -> classDeclaration)
-        , P.succeed BlockStatement_Statement
-            |= statement
+    oneOf
+        [ kmap BlockStatement_LocalVariable localVariableDeclarationStatement
+        , kmap BlockStatement_Class (lazy (\_ -> classDeclaration))
+        , kmap BlockStatement_Statement statement
         ]
 
 
 type LocalVariableDeclarationStatement
     = LocalVariableDeclarationStatement LocalVariableDeclaration
+    
 
 
 localVariableDeclarationStatement : Parser LocalVariableDeclarationStatement
 localVariableDeclarationStatement =
-    P.succeed LocalVariableDeclarationStatement
-        |= localVariableDeclaration
-        |. P.spaces
-        |. P.symbol ";"
+    kiimap LocalVariableDeclarationStatement
+        localVariableDeclaration
+        spaces
+        (symbol ";")
 
 
 type LocalVariableDeclaration
     = LocalVariableDeclaration (List VariableModifier) LocalVariableType VariableDeclaratorList
+    
 
 
 localVariableDeclaration : Parser LocalVariableDeclaration
 localVariableDeclaration =
-    P.succeed LocalVariableDeclaration
-        |= list variableModifier
-        |. P.spaces
-        |= localVariableType
-        |. P.spaces
-        |= variableDeclaratorList
+    kikikmap LocalVariableDeclaration
+        (list variableModifier)
+        spaces
+        localVariableType
+        spaces
+        variableDeclaratorList
 
 
 type LocalVariableType
     = LocalVariableType_UnannType UnannType
     | LocalVariableType_Var
+    
 
 
 localVariableType : Parser LocalVariableType
 localVariableType =
-    P.oneOf
-        [ P.succeed LocalVariableType_UnannType
-            |= unannType
-        , P.succeed LocalVariableType_Var
-            |. P.keyword "var"
+    oneOf
+        [ kmap LocalVariableType_UnannType unannType
+        , imap LocalVariableType_Var (keyword "var")
         ]
 
 
@@ -2505,23 +2680,18 @@ type Statement
     | Statement_IfThenElse IfThenElseStatement
     | Statement_While WhileStatement
     | Statement_For ForStatement
+    
 
 
 statement : Parser Statement
 statement =
-    P.oneOf
-        [ P.succeed Statement_Statement
-            |= statementWithoutTrailingSubstatement
-        , P.succeed Statement_Labeled
-            |= labeledStatement
-        , P.succeed Statement_If
-            |= ifThenStatement
-        , P.succeed Statement_IfThenElse
-            |= ifThenElseStatement
-        , P.succeed Statement_While
-            |= whileStatement
-        , P.succeed Statement_For
-            |= forStatement
+    oneOf
+        [ kmap Statement_Statement statementWithoutTrailingSubstatement
+        , kmap Statement_Labeled labeledStatement
+        , kmap Statement_If ifThenStatement
+        , kmap Statement_IfThenElse ifThenElseStatement
+        , kmap Statement_While whileStatement
+        , kmap Statement_For forStatement
         ]
 
 
@@ -2531,21 +2701,17 @@ type StatementNoShortIf
     | StatementNoShortIf_IfThenElse IfThenElseStatementNoShortIf
     | StatementNoShortIf_While WhileStatementNoShortIf
     | StatementNoShortIf_For ForStatementNoShortIf
+    
 
 
 statementNoShortIf : Parser StatementNoShortIf
 statementNoShortIf =
-    P.oneOf
-        [ P.succeed StatementNoShortIf_NoTrailing
-            |= statementWithoutTrailingSubstatement
-        , P.succeed StatementNoShortIf_Labeled
-            |= labeledStatementNoShortIf
-        , P.succeed StatementNoShortIf_IfThenElse
-            |= ifThenElseStatementNoShortIf
-        , P.succeed StatementNoShortIf_While
-            |= whileStatementNoShortIf
-        , P.succeed StatementNoShortIf_For
-            |= forStatementNoShortIf
+    oneOf
+        [ kmap StatementNoShortIf_NoTrailing statementWithoutTrailingSubstatement
+        , kmap StatementNoShortIf_Labeled labeledStatementNoShortIf
+        , kmap StatementNoShortIf_IfThenElse ifThenElseStatementNoShortIf
+        , kmap StatementNoShortIf_While whileStatementNoShortIf
+        , kmap StatementNoShortIf_For forStatementNoShortIf
         ]
 
 
@@ -2563,88 +2729,92 @@ type StatementWithoutTrailingSubstatement
     | StatementWithoutTrailingSubstatement_Throw ThrowStatement
     | StatementWithoutTrailingSubstatement_Try TryStatement
     | StatementWithoutTrailingSubstatement_Yield YieldStatement
+    
 
 
 statementWithoutTrailingSubstatement : Parser StatementWithoutTrailingSubstatement
 statementWithoutTrailingSubstatement =
-    P.oneOf
-        [ P.succeed StatementWithoutTrailingSubstatement_Block
-            |= P.lazy (\_ -> block)
-        , P.succeed StatementWithoutTrailingSubstatement_Empty
-            |= emptyStatement
-        , P.succeed StatementWithoutTrailingSubstatement_Expression
-            |= expressionStatement
-        , P.succeed StatementWithoutTrailingSubstatement_Assert
-            |= assertStatement
-        , P.succeed StatementWithoutTrailingSubstatement_Switch
-            |= switchStatement
-        , P.succeed StatementWithoutTrailingSubstatement_Do
-            |= doStatement
-        , P.succeed StatementWithoutTrailingSubstatement_Break
-            |= breakStatement
-        , P.succeed StatementWithoutTrailingSubstatement_Continue
-            |= continueStatement
-        , P.succeed StatementWithoutTrailingSubstatement_Return
-            |= returnStatement
-        , P.succeed StatementWithoutTrailingSubstatement_Synchronized
-            |= synchronizedStatement
-        , P.succeed StatementWithoutTrailingSubstatement_Throw
-            |= throwStatement
-        , P.succeed StatementWithoutTrailingSubstatement_Try
-            |= tryStatement
-        , P.succeed StatementWithoutTrailingSubstatement_Yield
-            |= yieldStatement
+    oneOf
+        [ kmap StatementWithoutTrailingSubstatement_Block
+             (lazy (\_ -> block))
+        , kmap StatementWithoutTrailingSubstatement_Empty
+             emptyStatement
+        , kmap StatementWithoutTrailingSubstatement_Expression
+             expressionStatement
+        , kmap StatementWithoutTrailingSubstatement_Assert
+             assertStatement
+        , kmap StatementWithoutTrailingSubstatement_Switch
+             switchStatement
+        , kmap StatementWithoutTrailingSubstatement_Do
+             doStatement
+        , kmap StatementWithoutTrailingSubstatement_Break
+             breakStatement
+        , kmap StatementWithoutTrailingSubstatement_Continue
+             continueStatement
+        , kmap StatementWithoutTrailingSubstatement_Return
+             returnStatement
+        , kmap StatementWithoutTrailingSubstatement_Synchronized
+             synchronizedStatement
+        , kmap StatementWithoutTrailingSubstatement_Throw
+             throwStatement
+        , kmap StatementWithoutTrailingSubstatement_Try
+             tryStatement
+        , kmap StatementWithoutTrailingSubstatement_Yield
+             yieldStatement
         ]
 
 
 type EmptyStatement
     = EmptyStatement
+    
 
 
 emptyStatement : Parser EmptyStatement
 emptyStatement =
-    P.succeed EmptyStatement
-        |. P.symbol ";"
+    imap EmptyStatement (symbol ";")
 
 
 type LabeledStatement
     = LabeledStatement Identifier Statement
+    
 
 
 labeledStatement : Parser LabeledStatement
 labeledStatement =
-    P.succeed LabeledStatement
-        |= identifier
-        |. P.spaces
-        |. P.symbol ":"
-        |. P.spaces
-        |= P.lazy (\_ -> statement)
+    kiiikmap LabeledStatement
+        identifier
+        spaces
+        (symbol ":")
+        spaces
+        (lazy (\_ -> statement))
 
 
 type LabeledStatementNoShortIf
     = LabeledStatementNoShortIf Identifier StatementNoShortIf
+    
 
 
 labeledStatementNoShortIf : Parser LabeledStatementNoShortIf
 labeledStatementNoShortIf =
-    P.succeed LabeledStatementNoShortIf
-        |= identifier
-        |. P.spaces
-        |. P.symbol ":"
-        |. P.spaces
-        |= P.lazy (\_ -> statementNoShortIf)
+    kiiikmap LabeledStatementNoShortIf
+        identifier
+        spaces
+        (symbol ":")
+        spaces
+        (lazy (\_ -> statementNoShortIf))
 
 
 type ExpressionStatement
     = ExpressionStatement StatementExpression
+    
 
 
 expressionStatement : Parser ExpressionStatement
 expressionStatement =
-    P.succeed ExpressionStatement
-        |= statementExpression
-        |. P.spaces
-        |. P.symbol ";"
+    kiimap ExpressionStatement
+        statementExpression
+        spaces
+        (symbol ";")
 
 
 type StatementExpression
@@ -2655,763 +2825,962 @@ type StatementExpression
     | StatementExpression_PostDecrement PostDecrementExpression
     | StatementExpression_MethodInvocation MethodInvocation
     | StatementExpression_ClassCreation ClassInstanceCreationExpression
+    
 
 
 statementExpression : Parser StatementExpression
 statementExpression =
-    P.oneOf
-        [ P.succeed StatementExpression_Assignment
-            |= assignment
-        , P.succeed StatementExpression_PreIncrement
-            |= preIncrementExpression
-        , P.succeed StatementExpression_PreDecrement
-            |= preDecrementExpression
-        , P.succeed StatementExpression_PostIncrement
-            |= postIncrementExpression
-        , P.succeed StatementExpression_PostDecrement
-            |= postDecrementExpression
-        , P.succeed StatementExpression_MethodInvocation
-            |= methodInvocation
-        , P.succeed StatementExpression_ClassCreation
-            |= classInstanceCreationExpression
+    oneOf
+        [ kmap StatementExpression_Assignment
+             assignment
+        , kmap StatementExpression_PreIncrement
+             preIncrementExpression
+        , kmap StatementExpression_PreDecrement
+             preDecrementExpression
+        , kmap StatementExpression_PostIncrement
+             postIncrementExpression
+        , kmap StatementExpression_PostDecrement
+             postDecrementExpression
+        , kmap StatementExpression_MethodInvocation
+             methodInvocation
+        , kmap StatementExpression_ClassCreation
+             classInstanceCreationExpression
         ]
 
 
 type IfThenStatement
     = IfThenStatement Expression Statement
+    
 
 
 ifThenStatement : Parser IfThenStatement
 ifThenStatement =
-    P.succeed IfThenStatement
-        |. P.keyword "if"
-        |. P.spaces
-        |. P.symbol "("
-        |. P.spaces
-        |= expression
-        |. P.spaces
-        |. P.symbol ")"
-        |. P.spaces
-        |= P.lazy (\_ -> statement)
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        ignorer (
+        succeed IfThenStatement ) <|
+        (keyword "if") ) <|
+        spaces ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        expression ) <|
+        spaces ) <|
+        (symbol ")") ) <|
+        spaces ) <|
+        (lazy (\_ -> statement))
 
 
 type IfThenElseStatement
     = IfThenElseStatement Expression StatementNoShortIf Statement
+    
 
 
 ifThenElseStatement : Parser IfThenElseStatement
 ifThenElseStatement =
-    P.succeed IfThenElseStatement
-        |. P.keyword "if"
-        |. P.spaces
-        |. P.symbol "("
-        |. P.spaces
-        |= expression
-        |. P.spaces
-        |. P.symbol ")"
-        |. P.spaces
-        |= statementNoShortIf
-        |. P.spaces
-        |. P.keyword "else"
-        |. P.spaces
-        |= P.lazy (\_ -> statement)
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        ignorer (
+        succeed IfThenElseStatement ) <|
+        (keyword "if") ) <|
+        spaces ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        expression ) <|
+        spaces ) <|
+        (symbol ")") ) <|
+        spaces ) <|
+        statementNoShortIf ) <|
+        spaces ) <|
+        (keyword "else") ) <|
+        spaces ) <|
+        lazy (\_ -> statement)
 
 
 type IfThenElseStatementNoShortIf
     = IfThenElseStatementNoShortIf Expression StatementNoShortIf StatementNoShortIf
+    
 
 
 ifThenElseStatementNoShortIf : Parser IfThenElseStatementNoShortIf
 ifThenElseStatementNoShortIf =
-    P.succeed IfThenElseStatementNoShortIf
-        |. P.keyword "if"
-        |. P.spaces
-        |. P.symbol "("
-        |. P.spaces
-        |= expression
-        |. P.spaces
-        |. P.symbol ")"
-        |. P.spaces
-        |= P.lazy (\_ -> statementNoShortIf)
-        |. P.spaces
-        |. P.keyword "else"
-        |. P.spaces
-        |= P.lazy (\_ -> statementNoShortIf)
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        ignorer (
+        succeed IfThenElseStatementNoShortIf ) <|
+        (keyword "if") ) <|
+        spaces ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        expression ) <|
+        spaces ) <|
+        (symbol ")") ) <|
+        spaces ) <|
+        lazy (\_ -> statementNoShortIf) ) <|
+        spaces ) <|
+        (keyword "else") ) <|
+        spaces ) <|
+        lazy (\_ -> statementNoShortIf)
 
 
 type AssertStatement
     = AssertStatement_Expression Expression
     | AssertStatement_WithError Expression Expression
+    
 
 
 assertStatement : Parser AssertStatement
 assertStatement =
-    P.oneOf
-        [ P.succeed AssertStatement_Expression
-            |. P.keyword "assert"
-            |. P.spaces
-            |= expression
-            |. P.spaces
-            |. P.symbol ";"
-        , P.succeed AssertStatement_WithError
-            |. P.keyword "assert"
-            |. P.spaces
-            |= expression
-            |. P.spaces
-            |. P.symbol ":"
-            |. P.spaces
-            |= expression
-            |. P.spaces
-            |. P.symbol ";"
+    oneOf
+        [ iikiimap AssertStatement_Expression
+            (keyword "assert")
+            spaces
+            expression
+            spaces
+            (symbol ";")
+        , ignorer (
+          ignorer (
+          keeper (
+          ignorer (
+          ignorer (
+          ignorer (
+          keeper (
+          ignorer (
+          ignorer (
+          succeed AssertStatement_WithError) <|
+          (keyword "assert")) <|
+          spaces) <|
+          expression) <|
+          spaces) <|
+          (symbol ":")) <|
+          spaces) <|
+          expression) <|
+          spaces) <|
+          (symbol ";")
         ]
 
 
 type SwitchStatement
     = SwitchStatement Expression SwitchBlock
+    
 
 
 switchStatement : Parser SwitchStatement
 switchStatement =
-    P.succeed SwitchStatement
-        |. P.keyword "switch"
-        |. P.spaces
-        |. P.symbol "("
-        |. P.spaces
-        |= expression
-        |. P.spaces
-        |. P.symbol ")"
-        |. P.spaces
-        |= switchBlock
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        ignorer (
+        succeed SwitchStatement ) <|
+        (keyword "switch") ) <|
+        spaces ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        expression ) <|
+        spaces ) <|
+        (symbol ")") ) <|
+        spaces ) <|
+        switchBlock
 
 
 type SwitchBlock
     = SwitchBlock_Rule SwitchRule (List SwitchRule)
     | SwitchBlock_Group (List SwitchBlockStatementGroup) (List SwitchLabel)
+    
 
 
 switchBlock : Parser SwitchBlock
 switchBlock =
-    P.succeed identity
-        |. P.symbol "{"
-        |. P.spaces
-        |= P.oneOf
-            [ P.succeed SwitchBlock_Rule
-                |= switchRule
-                |. P.spaces
-                |= list switchRule
-            , P.succeed SwitchBlock_Group
-                |= list switchBlockStatementGroup
-                |. P.spaces
-                |= list
-                    (P.succeed identity
-                        |= switchLabel
-                        |. P.spaces
-                        |. P.symbol ":"
+    iikiimap identity
+        (symbol "{")
+        spaces
+        ( oneOf
+            [ kikmap SwitchBlock_Rule
+                switchRule
+                spaces
+                (list switchRule)
+            , kikmap SwitchBlock_Group
+                (list switchBlockStatementGroup)
+                spaces
+                (list
+                    (kiimap identity
+                        switchLabel
+                        spaces
+                        (symbol ":")
                     )
+                )
             ]
-        |. P.spaces
-        |. P.symbol "}"
+        )
+        spaces
+        (symbol "}")
 
 
 type SwitchRule
     = SwitchRule_Expression SwitchLabel Expression
     | SwitchRule_Block SwitchLabel Block
     | SwitchRule_Throw SwitchLabel ThrowStatement
+    
 
 
 switchRule : Parser SwitchRule
 switchRule =
-    P.oneOf
-        [ P.succeed SwitchRule_Expression
-            |= switchLabel
-            |. P.spaces
-            |. P.symbol "->"
-            |. P.spaces
-            |= expression
-            |. P.spaces
-            |. P.symbol ";"
-        , P.succeed SwitchRule_Block
-            |= switchLabel
-            |. P.spaces
-            |. P.symbol "->"
-            |. P.spaces
-            |= P.lazy (\_ -> block)
-            |. P.spaces
-            |. P.symbol ";"
-        , P.succeed SwitchRule_Throw
-            |= switchLabel
-            |. P.spaces
-            |. P.symbol "->"
-            |. P.spaces
-            |= throwStatement
-            |. P.spaces
-            |. P.symbol ";"
+    oneOf
+        [ kiiikiimap SwitchRule_Expression
+            switchLabel
+            spaces
+            (symbol "->")
+            spaces
+            expression
+            spaces
+            (symbol ";")
+        , kiiikiimap SwitchRule_Block
+            switchLabel
+            spaces
+            (symbol "->")
+            spaces
+            (lazy (\_ -> block))
+            spaces
+            (symbol ";")
+        , kiiikiimap SwitchRule_Throw
+            switchLabel
+            spaces
+            (symbol "->")
+            spaces
+            throwStatement
+            spaces
+            (symbol ";")
         ]
 
 
 type SwitchBlockStatementGroup
     = SwitchBlockStatementGroup SwitchLabel (List SwitchLabel) BlockStatements
+    
 
 
 switchBlockStatementGroup : Parser SwitchBlockStatementGroup
 switchBlockStatementGroup =
-    P.succeed SwitchBlockStatementGroup
-        |= switchLabel
-        |. P.spaces
-        |. P.symbol ":"
-        |. P.spaces
-        |= list
-            (P.succeed identity
-                |= switchLabel
-                |. P.spaces
-                |. P.keyword ":"
+    kiiikikmap SwitchBlockStatementGroup
+        switchLabel
+        spaces
+        (symbol ":")
+        spaces
+        (list
+            (kiimap identity
+                switchLabel
+                spaces
+                (keyword ":")
             )
-        |. P.spaces
-        |= P.lazy (\_ -> blockStatements)
+        )
+        spaces
+        (lazy (\_ -> blockStatements))
 
 
 type SwitchLabel
     = SwitchLabel_Case CaseConstant (List CaseConstant)
     | SwitchLabel_Default
+    
 
 
 switchLabel : Parser SwitchLabel
 switchLabel =
-    P.oneOf
-        [ P.succeed SwitchLabel_Case
-            |. P.keyword "case"
-            |. P.spaces
-            |= caseConstant
-            |= list
-                (P.succeed identity
-                    |. P.symbol ","
-                    |. P.spaces
-                    |= caseConstant
+    oneOf
+        [ iikkmap SwitchLabel_Case
+            (keyword "case")
+            spaces
+            caseConstant
+            (list
+                (iikmap identity
+                    (symbol ",")
+                    spaces
+                    caseConstant
                 )
-        , P.succeed SwitchLabel_Default
-            |. P.keyword "default"
+            )
+        , imap SwitchLabel_Default
+            (keyword "default")
         ]
 
 
 type CaseConstant
     = CaseConstant ConditionalExpression
+    
 
 
 caseConstant : Parser CaseConstant
 caseConstant =
-    P.succeed CaseConstant
-        |= conditionalExpression
+    kmap CaseConstant (lazy (\_ -> conditionalExpression))
 
 
 type WhileStatement
     = WhileStatement Expression Statement
+    
 
 
 whileStatement : Parser WhileStatement
 whileStatement =
-    P.succeed WhileStatement
-        |. P.keyword "while"
-        |. P.spaces
-        |. P.symbol "("
-        |. P.spaces
-        |= expression
-        |. P.spaces
-        |. P.symbol ")"
-        |. P.spaces
-        |= P.lazy (\_ -> statement)
+    iiiikiiikmap WhileStatement
+        (keyword "while")
+        spaces
+        (symbol "(")
+        spaces
+        expression
+        spaces
+        (symbol ")")
+        spaces
+        (lazy (\_ -> statement))
 
 
 type WhileStatementNoShortIf
     = WhileStatementNoShortIf Expression StatementNoShortIf
+    
 
 
 whileStatementNoShortIf : Parser WhileStatementNoShortIf
 whileStatementNoShortIf =
-    P.succeed WhileStatementNoShortIf
-        |. P.keyword "while"
-        |. P.spaces
-        |. P.symbol "("
-        |. P.spaces
-        |= expression
-        |. P.spaces
-        |. P.symbol ")"
-        |. P.spaces
-        |= P.lazy (\_ -> statementNoShortIf)
+    iiiikiiikmap WhileStatementNoShortIf
+        (keyword "while")
+        spaces
+        (symbol "(")
+        spaces
+        expression
+        spaces
+        (symbol ")")
+        spaces
+        (lazy (\_ -> statementNoShortIf))
 
 
 type DoStatement
     = DoStatement Statement Expression
+    
 
 
 doStatement : Parser DoStatement
 doStatement =
-    P.succeed DoStatement
-        |. P.keyword "do"
-        |. P.spaces
-        |= P.lazy (\_ -> statement)
-        |. P.spaces
-        |. P.keyword "while"
-        |. P.spaces
-        |. P.symbol "("
-        |. P.spaces
-        |= expression
-        |. P.spaces
-        |. P.symbol ")"
-        |. P.spaces
-        |. P.symbol ";"
+        ignorer (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        succeed DoStatement ) <|
+        (keyword "do") ) <|
+        spaces ) <|
+        lazy (\_ -> statement) ) <|
+        spaces ) <|
+        (keyword "while") ) <|
+        spaces ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        expression ) <|
+        spaces ) <|
+        (symbol ")") ) <|
+        spaces ) <|
+        (symbol ";")
 
 
 type ForStatement
     = ForStatement_Basic BasicForStatement
     | ForStatement_Enhanced EnhancedForStatement
+    
 
 
 forStatement : Parser ForStatement
 forStatement =
-    P.oneOf
-        [ P.succeed ForStatement_Basic
-            |= basicForStatement
-        , P.succeed ForStatement_Enhanced
-            |= enhancedForStatement
+    oneOf
+        [ kmap ForStatement_Basic basicForStatement
+        , kmap ForStatement_Enhanced enhancedForStatement
         ]
 
 
 type ForStatementNoShortIf
     = ForStatementNoShortIf_Basic BasicForStatementNoShortIf
     | ForStatementNoShortIf_Enhanced EnhancedForStatementNoShortIf
+    
 
 
 forStatementNoShortIf : Parser ForStatementNoShortIf
 forStatementNoShortIf =
-    P.oneOf
-        [ P.succeed ForStatementNoShortIf_Basic
-            |= basicForStatementNoShortIf
-        , P.succeed ForStatementNoShortIf_Enhanced
-            |= enhancedForStatementNoShortIf
+    oneOf
+        [ kmap ForStatementNoShortIf_Basic
+            basicForStatementNoShortIf
+        , kmap ForStatementNoShortIf_Enhanced
+            enhancedForStatementNoShortIf
         ]
 
 
 type BasicForStatement
     = BasicForStatement (Maybe ForInit) (Maybe Expression) (Maybe ForUpdate) Statement
+    
 
 
 basicForStatement : Parser BasicForStatement
 basicForStatement =
-    P.succeed BasicForStatement
-        |. P.keyword "for"
-        |. P.spaces
-        |. P.symbol "("
-        |. P.spaces
-        |= optional forInit
-        |. P.spaces
-        |. P.symbol ";"
-        |. P.spaces
-        |= optional expression
-        |. P.spaces
-        |. P.symbol ";"
-        |. P.spaces
-        |= optional forUpdate
-        |. P.spaces
-        |. P.symbol ")"
-        |. P.spaces
-        |= P.lazy (\_ -> statement)
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        ignorer (
+        succeed BasicForStatement ) <|
+        (keyword "for") ) <|
+        spaces ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        optional forInit ) <|
+        spaces ) <|
+        (symbol ";") ) <|
+        spaces ) <|
+        optional expression ) <|
+        spaces ) <|
+        (symbol ";") ) <|
+        spaces ) <|
+        optional forUpdate ) <|
+        spaces ) <|
+        (symbol ")") ) <|
+        spaces ) <|
+        lazy (\_ -> statement)
 
 
 type BasicForStatementNoShortIf
     = BasicForStatementNoShortIf (Maybe ForInit) (Maybe Expression) (Maybe ForUpdate) StatementNoShortIf
+    
 
 
 basicForStatementNoShortIf : Parser BasicForStatementNoShortIf
 basicForStatementNoShortIf =
-    P.succeed BasicForStatementNoShortIf
-        |. P.keyword "for"
-        |. P.spaces
-        |. P.symbol "("
-        |. P.spaces
-        |= optional forInit
-        |. P.spaces
-        |. P.symbol ";"
-        |. P.spaces
-        |= optional expression
-        |. P.spaces
-        |. P.symbol ";"
-        |. P.spaces
-        |= optional forUpdate
-        |. P.spaces
-        |. P.symbol ")"
-        |. P.spaces
-        |= P.lazy (\_ -> statementNoShortIf)
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        ignorer (
+        succeed BasicForStatementNoShortIf ) <|
+        (keyword "for") ) <|
+        spaces ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        optional forInit ) <|
+        spaces ) <|
+        (symbol ";") ) <|
+        spaces ) <|
+        optional expression ) <|
+        spaces ) <|
+        (symbol ";") ) <|
+        spaces ) <|
+        optional forUpdate ) <|
+        spaces ) <|
+        (symbol ")") ) <|
+        spaces ) <|
+        lazy (\_ -> statementNoShortIf)
 
 
 type ForInit
     = ForInit_StatementList StatementExpressionList
     | ForInit_Variable LocalVariableDeclaration
+    
 
 
 forInit : Parser ForInit
 forInit =
-    P.oneOf
-        [ P.succeed ForInit_StatementList
-            |= statementExpressionList
-        , P.succeed ForInit_Variable
-            |= localVariableDeclaration
+    oneOf
+        [ kmap ForInit_StatementList
+            statementExpressionList
+        , kmap ForInit_Variable
+            localVariableDeclaration
         ]
 
 
 type ForUpdate
     = ForUpdate StatementExpressionList
+    
 
 
 forUpdate : Parser ForUpdate
-forUpdate =
-    P.succeed ForUpdate
-        |= statementExpressionList
+forUpdate = kmap ForUpdate statementExpressionList
 
 
 type StatementExpressionList
     = StatementExpressionList StatementExpression (List StatementExpression)
+    
 
 
 statementExpressionList : Parser StatementExpressionList
 statementExpressionList =
-    P.succeed StatementExpressionList
-        |= statementExpression
-        |. P.spaces
-        |= list
-            (P.succeed identity
-                |. P.symbol ","
-                |. P.spaces
-                |= statementExpression
+    kikmap StatementExpressionList
+        statementExpression
+        spaces
+        (list
+            (iikmap identity
+                (symbol ",")
+                spaces
+                statementExpression
             )
+        )
 
 
 type EnhancedForStatement
     = EnhancedForStatement (List VariableModifier) LocalVariableType VariableDeclaratorId Expression Statement
+    
 
 
 enhancedForStatement : Parser EnhancedForStatement
 enhancedForStatement =
-    P.succeed EnhancedForStatement
-        |. P.keyword "for"
-        |. P.spaces
-        |. P.symbol "("
-        |. P.spaces
-        |= list variableModifier
-        |. P.spaces
-        |= localVariableType
-        |. P.spaces
-        |= variableDeclaratorId
-        |. P.spaces
-        |. P.symbol ":"
-        |. P.spaces
-        |= expression
-        |. P.spaces
-        |. P.symbol ")"
-        |. P.spaces
-        |= P.lazy (\_ -> statement)
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        keeper (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        ignorer (
+        succeed EnhancedForStatement ) <|
+        (keyword "for") ) <|
+        spaces ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        list variableModifier ) <|
+        spaces ) <|
+        localVariableType ) <|
+        spaces ) <|
+        variableDeclaratorId ) <|
+        spaces ) <|
+        (symbol ":") ) <|
+        spaces ) <|
+        expression ) <|
+        spaces ) <|
+        (symbol ")") ) <|
+        spaces ) <|
+        lazy (\_ -> statement)
 
 
 type EnhancedForStatementNoShortIf
     = EnhancedForStatementNoShortIf (List VariableModifier) LocalVariableType VariableDeclaratorId Expression StatementNoShortIf
+    
 
 
 enhancedForStatementNoShortIf : Parser EnhancedForStatementNoShortIf
 enhancedForStatementNoShortIf =
-    P.succeed EnhancedForStatementNoShortIf
-        |. P.keyword "for"
-        |. P.spaces
-        |. P.symbol "("
-        |. P.spaces
-        |= list variableModifier
-        |. P.spaces
-        |= localVariableType
-        |. P.spaces
-        |= variableDeclaratorId
-        |. P.spaces
-        |. P.symbol ":"
-        |. P.spaces
-        |= expression
-        |. P.spaces
-        |. P.symbol ")"
-        |. P.spaces
-        |= P.lazy (\_ -> statementNoShortIf)
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        keeper (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        ignorer (
+        succeed EnhancedForStatementNoShortIf ) <|
+        (keyword "for") ) <|
+        spaces ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        list variableModifier ) <|
+        spaces ) <|
+        localVariableType ) <|
+        spaces ) <|
+        variableDeclaratorId ) <|
+        spaces ) <|
+        (symbol ":") ) <|
+        spaces ) <|
+        expression ) <|
+        spaces ) <|
+        (symbol ")") ) <|
+        spaces ) <|
+        lazy (\_ -> statementNoShortIf)
 
 
 type BreakStatement
     = BreakStatement (Maybe Identifier)
+    
 
 
 breakStatement : Parser BreakStatement
 breakStatement =
-    P.succeed BreakStatement
-        |. P.keyword "break"
-        |. P.spaces
-        |= optional identifier
-        |. P.spaces
-        |. P.symbol ";"
+    iikiimap BreakStatement
+        (keyword "break")
+        spaces
+        (optional identifier)
+        spaces
+        (symbol ";")
 
 
 type YieldStatement
     = YieldStatement Expression
+    
 
 
 yieldStatement : Parser YieldStatement
 yieldStatement =
-    P.succeed YieldStatement
-        |. P.keyword "yield"
-        |. P.spaces
-        |= expression
-        |. P.spaces
-        |. P.symbol ";"
+    iikiimap YieldStatement
+        (keyword "yield")
+        spaces
+        expression
+        spaces
+        (symbol ";")
 
 
 type ContinueStatement
     = ContinueStatement (Maybe Identifier)
+    
 
 
 continueStatement : Parser ContinueStatement
-continueStatement =
-    P.succeed ContinueStatement
-        |. P.keyword "continue"
-        |. P.spaces
-        |= optional identifier
-        |. P.spaces
-        |. P.symbol ";"
-
+continueStatement = 
+    iikiimap ContinueStatement
+        (keyword "continue")
+        spaces
+        (optional identifier)
+        spaces
+        (symbol ";")
 
 type ReturnStatement
     = ReturnStatement (Maybe Expression)
+    
 
 
 returnStatement : Parser ReturnStatement
 returnStatement =
-    P.succeed ReturnStatement
-        |. P.keyword "return"
-        |. P.spaces
-        |= optional expression
-        |. P.spaces
-        |. P.symbol ";"
-
+    iikiimap ReturnStatement
+        (keyword "return")
+        spaces
+        (optional expression)
+        spaces
+        (symbol ";")
 
 type ThrowStatement
     = ThrowStatement Expression
+    
 
 
 throwStatement : Parser ThrowStatement
 throwStatement =
-    P.succeed ThrowStatement
-        |. P.keyword "throw"
-        |. P.spaces
-        |= expression
-        |. P.spaces
-        |. P.symbol ";"
+    iikiimap ThrowStatement
+        (keyword "throw")
+        spaces
+        expression
+        spaces
+        (symbol ";")
 
 
 type SynchronizedStatement
     = SynchronizedStatement Expression Block
+    
 
 
 synchronizedStatement : Parser SynchronizedStatement
 synchronizedStatement =
-    P.succeed SynchronizedStatement
-        |. P.keyword "synchronized"
-        |. P.spaces
-        |. P.symbol "("
-        |. P.spaces
-        |= expression
-        |. P.spaces
-        |. P.symbol "("
-        |. P.spaces
-        |= P.lazy (\_ -> block)
+    iiiikiiikmap SynchronizedStatement
+        (keyword "synchronized")
+        spaces
+        (symbol "(")
+        spaces
+        expression
+        spaces
+        (symbol "(")
+        spaces
+        (lazy (\_ -> block))
 
 
 type TryStatement
     = TryStatement_Normal Block Catches
     | TryStatement_Finally Block (Maybe Catches) Finally
     | TryStatement_With TryWithResourcesStatement
+    
 
 
 tryStatement : Parser TryStatement
 tryStatement =
-    P.oneOf
-        [ P.succeed TryStatement_Normal
-            |. P.keyword "try"
-            |. P.spaces
-            |= P.lazy (\_ -> block)
-            |. P.spaces
-            |= catches
-        , P.succeed TryStatement_Finally
-            |. P.keyword "try"
-            |. P.spaces
-            |= P.lazy (\_ -> block)
-            |. P.spaces
-            |= optional catches
-            |. P.spaces
-            |= finally
-        , P.succeed TryStatement_With
-            |= tryWithResourcesStatement
+    oneOf
+        [ iikikmap TryStatement_Normal
+            (keyword "try")
+            spaces
+            (lazy (\_ -> block))
+            spaces
+            catches
+        , iikikikmap TryStatement_Finally
+            (keyword "try")
+            spaces
+            (lazy (\_ -> block))
+            spaces
+            (optional catches)
+            spaces
+            finally
+        , kmap TryStatement_With
+            tryWithResourcesStatement
         ]
 
 
 type Catches
     = Catches CatchClause (List CatchClause)
+    
 
 
 catches : Parser Catches
 catches =
-    P.succeed Catches
-        |= catchClause
-        |. P.spaces
-        |= list catchClause
+    kikmap Catches
+        catchClause
+        spaces
+        (list catchClause)
 
 
 type CatchClause
     = CatchClause CatchFormalParameter Block
+    
 
 
 catchClause : Parser CatchClause
 catchClause =
-    P.succeed CatchClause
-        |. P.keyword "catch"
-        |. P.spaces
-        |. P.symbol "("
-        |. P.spaces
-        |= catchFormalParameter
-        |. P.spaces
-        |. P.symbol ")"
-        |. P.spaces
-        |= P.lazy (\_ -> block)
+    iiiikiiikmap CatchClause
+        (keyword "catch")
+        spaces
+        (symbol "(")
+        spaces
+        catchFormalParameter
+        spaces
+        (symbol ")")
+        spaces
+        (lazy (\_ -> block))
 
 
 type CatchFormalParameter
     = CatchFormalParameter (List VariableModifier) CatchType VariableDeclaratorId
+    
 
 
 catchFormalParameter : Parser CatchFormalParameter
 catchFormalParameter =
-    P.succeed CatchFormalParameter
-        |= list variableModifier
-        |. P.spaces
-        |= catchType
-        |. P.spaces
-        |= variableDeclaratorId
+    kikikmap CatchFormalParameter
+        (list variableModifier)
+        spaces
+        catchType
+        spaces
+        variableDeclaratorId
 
 
 type CatchType
     = CatchType UnannClassType (List ClassType)
+    
 
 
 catchType : Parser CatchType
 catchType =
-    P.succeed CatchType
-        |= unannClassType
-        |. P.spaces
-        |= list
-            (P.succeed identity
-                |. P.symbol "|"
-                |. P.spaces
-                |= classType
+    kikmap CatchType
+           unannClassType
+           spaces
+           (list
+            (iikmap identity
+                (symbol "|")
+                spaces
+                classType
             )
+           )
 
 
 type Finally
     = Finally Block
+    
 
 
 finally : Parser Finally
 finally =
-    P.succeed Finally
-        |. P.succeed "finally"
-        |. P.spaces
-        |= P.lazy (\_ -> block)
+    iikmap Finally
+        (succeed "finally")
+        spaces
+        (lazy (\_ -> block))
 
 
 type TryWithResourcesStatement
     = TryWithResourcesStatement ResourceSpecification Block (Maybe Catches) (Maybe Finally)
+    
 
 
 tryWithResourcesStatement : Parser TryWithResourcesStatement
 tryWithResourcesStatement =
-    P.succeed TryWithResourcesStatement
-        |. P.keyword "try"
-        |. P.spaces
-        |= resourceSpecification
-        |. P.spaces
-        |= P.lazy (\_ -> block)
-        |. P.spaces
-        |= optional catches
-        |. P.spaces
-        |= optional finally
+        keeper (
+        ignorer (
+        keeper (
+        ignorer (
+        keeper (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        succeed TryWithResourcesStatement ) <|
+        (keyword "try") ) <|
+        spaces ) <|
+        resourceSpecification ) <|
+        spaces ) <|
+        (lazy (\_ -> block)) ) <|
+        spaces ) <|
+        (optional catches) ) <|
+        spaces ) <|
+        (optional finally)
 
 
 type ResourceSpecification
     = ResourceSpecification ResourceList
+    
 
 
 resourceSpecification : Parser ResourceSpecification
 resourceSpecification =
-    P.succeed ResourceSpecification
-        |. P.symbol "("
-        |. P.spaces
-        |= resourceList
-        |. P.spaces
-        |. optional (P.symbol ";")
-        |. P.spaces
-        |. P.symbol ")"
+        ignorer (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        succeed ResourceSpecification ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        resourceList ) <|
+        spaces ) <|
+        (optional (symbol ";")) ) <|
+        spaces ) <|
+        (symbol ")")
 
 
 type ResourceList
     = ResourceList Resource (List Resource)
+    
 
 
 resourceList : Parser ResourceList
 resourceList =
-    P.succeed ResourceList
-        |= resource
-        |. P.spaces
-        |= list
-            (P.succeed identity
-                |. P.symbol ";"
-                |. P.spaces
-                |= resource
+    kikmap ResourceList
+        resource
+        spaces
+        (list
+            (iikmap identity
+                (symbol ";")
+                spaces
+                resource
             )
+        )
 
 
 type Resource
     = Resource_Declaration (List VariableModifier) LocalVariableType Identifier Expression
     | Resource_VariableAccess VariableAccess
+    
 
 
 resource : Parser Resource
 resource =
-    P.oneOf
-        [ P.succeed Resource_Declaration
-            |= list variableModifier
-            |. P.spaces
-            |= localVariableType
-            |. P.spaces
-            |= identifier
-            |. P.spaces
-            |. P.symbol "="
-            |. P.spaces
-            |= expression
-        , P.succeed Resource_VariableAccess
-            |= variableAccess
+    oneOf
+        [ keeper (
+          ignorer (
+          ignorer (
+          ignorer (
+          keeper (
+          ignorer (
+          keeper (
+          ignorer (
+          keeper (
+          succeed Resource_Declaration ) <|
+          list variableModifier ) <|
+          spaces ) <|
+          localVariableType ) <|
+          spaces ) <|
+          identifier ) <|
+          spaces ) <|
+          (symbol "=") ) <|
+          spaces ) <|
+          expression
+        , kmap Resource_VariableAccess
+            variableAccess
         ]
 
 
 type VariableAccess
     = VariableAccess_Expression ExpressionName
     | VariableAccess_Field FieldAccess
+    
 
 
 variableAccess : Parser VariableAccess
 variableAccess =
-    P.oneOf
-        [ P.succeed VariableAccess_Expression
-            |= expressionName
-        , P.succeed VariableAccess_Field
-            |= fieldAccess
+    oneOf
+        [ kmap VariableAccess_Expression
+            expressionName
+        , kmap VariableAccess_Field
+            fieldAccess
         ]
 
 
@@ -3423,15 +3792,16 @@ variableAccess =
 type Primary
     = Primary_NoNewArray PrimaryNoNewArray
     | Primary_Creation ArrayCreationExpression
+    
 
 
 primary : Parser Primary
 primary =
-    P.oneOf
-        [ P.succeed Primary_NoNewArray
-            |= primaryNoNewArray
-        , P.succeed Primary_Creation
-            |= arrayCreationExpression
+    oneOf
+        [ kmap Primary_NoNewArray
+            primaryNoNewArray
+        , kmap Primary_Creation
+            arrayCreationExpression
         ]
 
 
@@ -3446,39 +3816,40 @@ type PrimaryNoNewArray
     | PrimaryNoNewArray_ArrayAccess ArrayAccess
     | PrimaryNoNewArray_MethodInvocation MethodInvocation
     | PrimaryNoNewArray_MethodReference MethodReference
+    
 
 
 primaryNoNewArray : Parser PrimaryNoNewArray
 primaryNoNewArray =
-    P.oneOf
-        [ P.succeed PrimaryNoNewArray_Literal
-            |= literal
-        , P.succeed PrimaryNoNewArray_ClassLiteral
-            |= classLiteral
-        , P.succeed PrimaryNoNewArray_This
-            |. P.keyword "this"
-        , P.succeed PrimaryNoNewArray_TypeThis
-            |= typeName
-            |. P.spaces
-            |. P.symbol "."
-            |. P.spaces
-            |. P.keyword "this"
-        , P.succeed PrimaryNoNewArray_BracketsExpression
-            |. P.symbol "("
-            |. P.spaces
-            |= expression
-            |. P.spaces
-            |. P.symbol ")"
-        , P.succeed PrimaryNoNewArray_ClassCreation
-            |= P.lazy (\_ -> classInstanceCreationExpression)
-        , P.succeed PrimaryNoNewArray_FieldAccess
-            |= fieldAccess
-        , P.succeed PrimaryNoNewArray_ArrayAccess
-            |= arrayAccess
-        , P.succeed PrimaryNoNewArray_MethodInvocation
-            |= methodInvocation
-        , P.succeed PrimaryNoNewArray_MethodReference
-            |= methodReference
+    oneOf
+        [ kmap PrimaryNoNewArray_Literal
+            literal
+        , kmap PrimaryNoNewArray_ClassLiteral
+            classLiteral
+        , imap PrimaryNoNewArray_This
+            (keyword "this")
+        , kiiiimap PrimaryNoNewArray_TypeThis
+            typeName
+            spaces
+            (symbol ".")
+            spaces
+            (keyword "this")
+        , iikiimap PrimaryNoNewArray_BracketsExpression
+            (symbol "(")
+            spaces
+            expression
+            spaces
+            (symbol ")")
+        , kmap PrimaryNoNewArray_ClassCreation
+             classInstanceCreationExpression
+        , kmap PrimaryNoNewArray_FieldAccess
+             fieldAccess
+        , kmap PrimaryNoNewArray_ArrayAccess
+             (lazy (\_ -> arrayAccess)) -- ?
+        , kmap PrimaryNoNewArray_MethodInvocation
+             methodInvocation
+        , kmap PrimaryNoNewArray_MethodReference
+             methodReference
         ]
 
 
@@ -3487,41 +3858,68 @@ type ClassLiteral
     | ClassLiteral_Numeric NumericType Int
     | ClassLiteral_Boolean Int
     | ClassLiteral_Void
+    
 
 
 classLiteral : Parser ClassLiteral
 classLiteral =
-    P.oneOf
-        [ P.succeed ClassLiteral_TypeName
-            |= typeName
-            |. P.spaces
-            |= brackets
-            |. P.spaces
-            |. P.symbol "."
-            |. P.spaces
-            |. P.keyword "class"
-        , P.succeed ClassLiteral_Numeric
-            |= numericType
-            |. P.spaces
-            |= brackets
-            |. P.spaces
-            |. P.symbol "."
-            |. P.spaces
-            |. P.keyword "class"
-        , P.succeed ClassLiteral_Boolean
-            |. P.keyword "boolean"
-            |. P.spaces
-            |= brackets
-            |. P.spaces
-            |. P.symbol "."
-            |. P.spaces
-            |. P.keyword "class"
-        , P.succeed ClassLiteral_Void
-            |. P.keyword "void"
-            |. P.spaces
-            |. P.symbol "."
-            |. P.spaces
-            |. P.keyword "class"
+    oneOf
+        [ ignorer (
+          ignorer (
+          ignorer (
+          ignorer (
+          keeper (
+          ignorer (
+          keeper (
+          succeed ClassLiteral_TypeName ) <|
+          typeName ) <|
+          spaces ) <|
+          brackets ) <|
+          spaces ) <|
+          (symbol ".") ) <|
+          spaces ) <|
+          (keyword "class")
+        , ignorer (
+          ignorer (
+          ignorer (
+          ignorer (
+          keeper (
+          ignorer (
+          keeper (
+          succeed ClassLiteral_Numeric ) <|
+          numericType ) <|
+          spaces ) <|
+          brackets ) <|
+          spaces ) <|
+          (symbol ".") ) <|
+          spaces ) <|
+          (keyword "class")
+        , ignorer (
+          ignorer (
+          ignorer (
+          ignorer (
+          keeper (
+          ignorer (
+          ignorer (
+          succeed ClassLiteral_Boolean ) <|
+          (keyword "boolean") ) <|
+          spaces ) <|
+          brackets ) <|
+          spaces ) <|
+          (symbol ".") ) <|
+          spaces ) <|
+          (keyword "class")
+        , ignorer (
+          ignorer (
+          ignorer (
+          ignorer (
+          ignorer (
+          succeed ClassLiteral_Void ) <|
+          (keyword "void") ) <|
+          spaces ) <|
+          (symbol ".") ) <|
+          spaces ) <|
+          (keyword "class")
         ]
 
 
@@ -3529,85 +3927,104 @@ type ClassInstanceCreationExpression
     = ClassInstanceCreationExpression_Normal UnqualifiedClassInstanceCreationExpression
     | ClassInstanceCreationExpression_Expression ExpressionName UnqualifiedClassInstanceCreationExpression
     | ClassInstanceCreationExpression_Primary Primary UnqualifiedClassInstanceCreationExpression
+    
 
 
 classInstanceCreationExpression : Parser ClassInstanceCreationExpression
 classInstanceCreationExpression =
-    P.oneOf
-        [ P.succeed ClassInstanceCreationExpression_Normal
-            |= unqualifiedClassInstanceCreationExpression
-        , P.succeed ClassInstanceCreationExpression_Expression
-            |= expressionName
-            |. P.spaces
-            |. P.symbol "."
-            |. P.spaces
-            |= unqualifiedClassInstanceCreationExpression
-        , P.succeed ClassInstanceCreationExpression_Primary
-            |= P.lazy (\_ -> primary)
-            |. P.spaces
-            |. P.symbol "."
-            |. P.spaces
-            |= unqualifiedClassInstanceCreationExpression
+    oneOf
+        [ kmap ClassInstanceCreationExpression_Normal
+            unqualifiedClassInstanceCreationExpression
+        , kiiikmap ClassInstanceCreationExpression_Expression
+            expressionName
+            spaces
+            (symbol ".")
+            spaces
+            unqualifiedClassInstanceCreationExpression
+        , kiiikmap ClassInstanceCreationExpression_Primary
+            (lazy (\_ -> primary))
+            spaces
+            (symbol ".")
+            spaces
+            unqualifiedClassInstanceCreationExpression
         ]
 
 
 type UnqualifiedClassInstanceCreationExpression
     = UnqualifiedClassInstanceCreationExpression (Maybe TypeArguments) ClassOrInterfaceTypeToInstantiate (Maybe ArgumentList) (Maybe ClassBody)
+    
 
 
 unqualifiedClassInstanceCreationExpression : Parser UnqualifiedClassInstanceCreationExpression
 unqualifiedClassInstanceCreationExpression =
-    P.succeed UnqualifiedClassInstanceCreationExpression
-        |. P.keyword "new"
-        |. P.spaces
-        |= optional typeArguments
-        |. P.spaces
-        |= classOrInterfaceTypeToInstantiate
-        |. P.spaces
-        |. P.symbol "("
-        |. P.spaces
-        |= optional argumentList
-        |. P.spaces
-        |. P.symbol ")"
-        |. P.spaces
-        |= optional (P.lazy (\_ -> classBody))
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        ignorer (
+        keeper (
+        ignorer (
+        keeper (
+        ignorer (
+        ignorer (
+        succeed UnqualifiedClassInstanceCreationExpression ) <|
+        (keyword "new") ) <|
+        spaces ) <|
+        optional typeArguments ) <|
+        spaces ) <|
+        classOrInterfaceTypeToInstantiate ) <|
+        spaces ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        optional argumentList ) <|
+        spaces ) <|
+        (symbol ")") ) <|
+        spaces ) <|
+        optional (lazy (\_ -> classBody))
 
 
 type ClassOrInterfaceTypeToInstantiate
-    = ClassOrInterfaceTypeToInstantiate (List Annotation) Identifier (List ( List Annotation, Identifier )) (Maybe TypeArgumentsOrDiamond)
+    = ClassOrInterfaceTypeToInstantiate (List Annotation) Identifier (List(
+        (List Annotation), Identifier )) (Maybe TypeArgumentsOrDiamond)
+    
 
 
 classOrInterfaceTypeToInstantiate : Parser ClassOrInterfaceTypeToInstantiate
 classOrInterfaceTypeToInstantiate =
-    P.succeed ClassOrInterfaceTypeToInstantiate
-        |= list annotation
-        |. P.spaces
-        |= identifier
-        |. P.spaces
-        |= list
-            (P.succeed Tuple.pair
-                |. P.symbol "."
-                |. P.spaces
-                |= list annotation
-                |. P.spaces
-                |= identifier
+    kikikikmap ClassOrInterfaceTypeToInstantiate
+        (list annotation)
+        spaces
+        identifier
+        spaces
+        (list
+            (iikikmap Tuple.pair
+                (symbol ".")
+                spaces
+                (list annotation)
+                spaces
+                identifier
             )
-        |. P.spaces
-        |= optional typeArgumentsOrDiamond
+        )
+        spaces
+        (optional typeArgumentsOrDiamond)
 
 
 type TypeArgumentsOrDiamond
     = TypeArguments_TypeArguments TypeArguments
     | TypeArguments_Diamond
+    
 
 
 typeArgumentsOrDiamond : Parser TypeArgumentsOrDiamond
 typeArgumentsOrDiamond =
-    P.oneOf
-        [ P.succeed TypeArguments_TypeArguments
-            |= typeArguments
-        , P.succeed TypeArguments_Diamond
-            |. P.symbol "<>"
+    oneOf
+        [ kmap TypeArguments_TypeArguments
+            typeArguments
+        , imap TypeArguments_Diamond
+            (symbol "<>")
         ]
 
 
@@ -3615,60 +4032,71 @@ type FieldAccess
     = FieldAccess_Primary Primary Identifier
     | FieldAccess_Super Identifier
     | FieldAccess_TypeNameSuper TypeName Identifier
+    
 
 
 fieldAccess : Parser FieldAccess
 fieldAccess =
-    P.oneOf
-        [ P.succeed FieldAccess_Primary
-            |= P.lazy (\_ -> primary)
-            |. P.spaces
-            |. P.symbol "."
-            |. P.spaces
-            |= identifier
-        , P.succeed FieldAccess_Super
-            |. P.keyword "super"
-            |. P.spaces
-            |. P.symbol "."
-            |. P.spaces
-            |= identifier
-        , P.succeed FieldAccess_TypeNameSuper
-            |= typeName
-            |. P.spaces
-            |. P.symbol "."
-            |. P.spaces
-            |. P.keyword "super"
-            |. P.spaces
-            |. P.symbol "."
-            |. P.spaces
-            |= identifier
+    oneOf
+        [ kiiikmap FieldAccess_Primary
+            (lazy (\_ -> primary))
+            spaces
+            (symbol ".")
+            spaces
+            identifier
+        , iiiikmap FieldAccess_Super
+            (keyword "super")
+            spaces
+            (symbol ".")
+            spaces
+            identifier
+        , keeper (
+          ignorer (
+          ignorer (
+          ignorer (
+          ignorer (
+          ignorer (
+          ignorer (
+          ignorer (
+          keeper (
+          succeed FieldAccess_TypeNameSuper ) <|
+          typeName ) <|
+          spaces ) <|
+          (symbol ".") ) <|
+          spaces ) <|
+          (keyword "super") ) <|
+          spaces ) <|
+          (symbol ".") ) <|
+          spaces ) <|
+          identifier
         ]
 
 
 type ArrayAccess
     = ArrayAccess_Expression ExpressionName Expression
     | ArrayAccess_Primary PrimaryNoNewArray Expression
+    
 
 
 arrayAccess : Parser ArrayAccess
 arrayAccess =
-    P.oneOf
-        [ P.succeed ArrayAccess_Expression
-            |= expressionName
-            |. P.spaces
-            |. P.symbol "["
-            |. P.spaces
-            |= P.lazy (\_ -> expression)
-            |. P.spaces
-            |. P.symbol "]"
-        , P.succeed ArrayAccess_Primary
-            |= P.lazy (\_ -> Debug.todo "primaryNoNewArray")
-            |. P.spaces
-            |. P.symbol "["
-            |. P.spaces
-            |= P.lazy (\_ -> expression)
-            |. P.spaces
-            |. P.symbol "]"
+    oneOf
+        [ kiiikiimap ArrayAccess_Expression
+            expressionName
+            spaces
+            (symbol "[")
+            spaces
+            expression
+            spaces
+            (symbol "]")
+        , kiiikiimap ArrayAccess_Primary
+            primaryNoNewArray
+            spaces
+            (symbol "[")
+            spaces
+            expression
+            spaces
+            (symbol "]")
         ]
 
 
@@ -3679,110 +4107,196 @@ type MethodInvocation
     | MethodInvocation_Primary Primary (Maybe TypeArguments) Identifier (Maybe ArgumentList)
     | MethodInvocation_Super (Maybe TypeArguments) Identifier (Maybe ArgumentList)
     | MethodInvocation_TypeSuper TypeName (Maybe TypeArguments) Identifier (Maybe ArgumentList)
+    
 
 
 methodInvocation : Parser MethodInvocation
 methodInvocation =
-    P.oneOf
-        [ P.succeed MethodInvocation_Name
-            |= methodName
-            |. P.spaces
-            |. P.symbol "("
-            |. P.spaces
-            |= optional argumentList
-            |. P.spaces
-            |. P.symbol ")"
-        , P.succeed MethodInvocation_Type
-            |= typeName
-            |. P.spaces
-            |. P.symbol "."
-            |. P.spaces
-            |= optional typeArguments
-            |. P.spaces
-            |= identifier
-            |. P.spaces
-            |. P.symbol "("
-            |. P.spaces
-            |= optional argumentList
-            |. P.spaces
-            |. P.symbol ")"
-        , P.succeed MethodInvocation_Expression
-            |= expressionName
-            |. P.spaces
-            |. P.symbol "."
-            |. P.spaces
-            |= optional typeArguments
-            |. P.spaces
-            |= identifier
-            |. P.spaces
-            |. P.symbol "("
-            |. P.spaces
-            |= optional argumentList
-            |. P.spaces
-            |. P.symbol ")"
-        , P.succeed MethodInvocation_Primary
-            |= P.lazy (\_ -> primary)
-            |. P.spaces
-            |. P.symbol "."
-            |. P.spaces
-            |= optional typeArguments
-            |. P.spaces
-            |= identifier
-            |. P.spaces
-            |. P.symbol "("
-            |. P.spaces
-            |= optional argumentList
-            |. P.spaces
-            |. P.symbol ")"
-        , P.succeed MethodInvocation_Super
-            |. P.symbol "super"
-            |. P.spaces
-            |. P.symbol "."
-            |. P.spaces
-            |= optional typeArguments
-            |. P.spaces
-            |= identifier
-            |. P.spaces
-            |. P.symbol "("
-            |. P.spaces
-            |= optional argumentList
-            |. P.spaces
-            |. P.symbol ")"
-        , P.succeed MethodInvocation_TypeSuper
-            |= typeName
-            |. P.spaces
-            |. P.symbol "."
-            |. P.spaces
-            |. P.keyword "super"
-            |. P.spaces
-            |. P.symbol "."
-            |. P.spaces
-            |= optional typeArguments
-            |. P.spaces
-            |= identifier
-            |. P.spaces
-            |. P.symbol "("
-            |. P.spaces
-            |= optional argumentList
-            |. P.spaces
-            |. P.symbol ")"
+    oneOf
+        [
+            ignorer (
+            ignorer (
+            keeper (
+            ignorer (
+            ignorer (
+            ignorer (
+            keeper (
+            succeed MethodInvocation_Name ) <|
+            methodName ) <|
+            spaces ) <|
+            (symbol "(") ) <|
+            spaces ) <|
+            optional argumentList ) <|
+            spaces ) <|
+            (symbol ")")
+        ,
+            ignorer (
+            ignorer (
+            keeper (
+            ignorer (
+            ignorer (
+            ignorer (
+            keeper (
+            ignorer (
+            keeper (
+            ignorer (
+            ignorer (
+            ignorer (
+            keeper (
+            succeed MethodInvocation_Type ) <|
+            typeName ) <|
+            spaces ) <|
+            (symbol ".") ) <|
+            spaces ) <|
+            optional typeArguments ) <|
+            spaces ) <|
+            identifier ) <|
+            spaces ) <|
+            (symbol "(") ) <|
+            spaces ) <|
+            optional argumentList ) <|
+            spaces ) <|
+            (symbol ")")
+        ,   
+            ignorer (
+            ignorer (
+            keeper (
+            ignorer (
+            ignorer (
+            ignorer (
+            keeper (
+            ignorer (
+            keeper (
+            ignorer (
+            ignorer (
+            ignorer (
+            keeper (
+            succeed MethodInvocation_Expression ) <|
+            expressionName ) <|
+            spaces ) <|
+            (symbol ".") ) <|
+            spaces ) <|
+            optional typeArguments ) <|
+            spaces ) <|
+            identifier ) <|
+            spaces ) <|
+            (symbol "(") ) <|
+            spaces ) <|
+            optional argumentList ) <|
+            spaces ) <|
+            (symbol ")")
+        ,   
+            ignorer (
+            ignorer (
+            keeper (
+            ignorer (
+            ignorer (
+            ignorer (
+            keeper (
+            ignorer (
+            keeper (
+            ignorer (
+            ignorer (
+            ignorer (
+            keeper (
+            succeed MethodInvocation_Primary ) <|
+            lazy (\_ -> primary) ) <|
+            spaces ) <|
+            (symbol ".") ) <|
+            spaces ) <|
+            optional typeArguments ) <|
+            spaces ) <|
+            identifier ) <|
+            spaces ) <|
+            (symbol "(") ) <|
+            spaces ) <|
+            optional argumentList ) <|
+            spaces ) <|
+            (symbol ")")
+        ,   
+            ignorer (
+            ignorer (
+            keeper (
+            ignorer (
+            ignorer (
+            ignorer (
+            keeper (
+            ignorer (
+            keeper (
+            ignorer (
+            ignorer (
+            ignorer (
+            ignorer (
+            succeed MethodInvocation_Super ) <|
+            symbol "super" ) <|
+            spaces ) <|
+            (symbol ".") ) <|
+            spaces ) <|
+            optional typeArguments ) <|
+            spaces ) <|
+            identifier ) <|
+            spaces ) <|
+            (symbol "(") ) <|
+            spaces ) <|
+            optional argumentList ) <|
+            spaces ) <|
+            (symbol ")")
+        , 
+            ignorer (
+            ignorer (
+            keeper (
+            ignorer (
+            ignorer (
+            ignorer (
+            keeper (
+            ignorer (
+            keeper (
+            ignorer (
+            ignorer (
+            ignorer (
+            ignorer (
+            ignorer (
+            ignorer (
+            ignorer (
+            keeper (
+            succeed MethodInvocation_TypeSuper ) <|
+            typeName ) <|
+            spaces ) <|
+            (symbol ".") ) <|
+            spaces ) <|
+            (keyword "super") ) <|
+            spaces ) <|
+            (symbol ".") ) <|
+            spaces ) <|
+            optional typeArguments ) <|
+            spaces ) <|
+            identifier ) <|
+            spaces ) <|
+            (symbol "(") ) <|
+            spaces ) <|
+            optional argumentList ) <|
+            spaces ) <|
+            (symbol ")")
         ]
 
 
 type ArgumentList
     = ArgumentList Expression (List Expression)
+    
 
 
 argumentList : Parser ArgumentList
 argumentList =
-    P.succeed ArgumentList
-        |= expression
-        |= list
-            (P.succeed identity
-                |. P.symbol ","
-                |. P.spaces
-                |= expression
+    kikmap ArgumentList
+           expression
+           spaces
+           (list
+            (iikmap identity
+                (symbol ",")
+                spaces
+                expression
             )
+           )
 
 
 type MethodReference
@@ -3793,70 +4307,128 @@ type MethodReference
     | MethodReference_TypeSuper TypeName (Maybe TypeArguments) Identifier
     | MethodReference_ClassNew ClassType (Maybe TypeArguments)
     | MethodReference_ArrayNew ArrayType
+    
 
 
 methodReference : Parser MethodReference
 methodReference =
-    P.oneOf
-        [ P.succeed MethodReference_Expression
-            |= expressionName
-            |. P.spaces
-            |. P.symbol "::"
-            |. P.spaces
-            |= optional typeArguments
-            |. P.spaces
-            |= identifier
-        , P.succeed MethodReference_Primary
-            |= P.lazy (\_ -> primary)
-            |. P.spaces
-            |. P.symbol "::"
-            |. P.spaces
-            |= optional typeArguments
-            |. P.spaces
-            |= identifier
-        , P.succeed MethodReference_Reference
-            |= referenceType
-            |. P.spaces
-            |. P.symbol "::"
-            |. P.spaces
-            |= optional typeArguments
-            |. P.spaces
-            |= identifier
-        , P.succeed MethodReference_Super
-            |. P.keyword "super"
-            |. P.spaces
-            |. P.symbol "::"
-            |. P.spaces
-            |= optional typeArguments
-            |. P.spaces
-            |= identifier
-        , P.succeed MethodReference_TypeSuper
-            |. P.spaces
-            |= typeName
-            |. P.spaces
-            |. P.symbol "."
-            |. P.spaces
-            |. P.keyword "super"
-            |. P.spaces
-            |. P.symbol "::"
-            |. P.spaces
-            |= optional typeArguments
-            |. P.spaces
-            |= identifier
-        , P.succeed MethodReference_ClassNew
-            |= classType
-            |. P.spaces
-            |. P.symbol "::"
-            |. P.spaces
-            |= optional typeArguments
-            |. P.spaces
-            |. P.keyword "new"
-        , P.succeed MethodReference_ArrayNew
-            |= arrayType
-            |. P.spaces
-            |. P.symbol "::"
-            |. P.spaces
-            |. P.keyword "new"
+    oneOf
+        [ keeper (
+          ignorer (
+          keeper (
+          ignorer (
+          ignorer (
+          ignorer (
+          keeper (
+          succeed MethodReference_Expression ) <|
+          expressionName ) <|
+          spaces ) <|
+          symbol ":" ) <|
+          spaces ) <|
+          optional typeArguments ) <|
+          spaces ) <|
+          identifier
+        , keeper (
+          ignorer (
+          keeper (
+          ignorer (
+          ignorer (
+          ignorer (
+          keeper (
+          succeed MethodReference_Primary ) <|
+          lazy (\_ -> primary) ) <|
+          spaces ) <|
+          symbol ":" ) <|
+          spaces ) <|
+          optional typeArguments ) <|
+          spaces ) <|
+          identifier
+        , 
+            keeper (
+            ignorer (
+            keeper (
+            ignorer (
+            ignorer (
+            ignorer (
+            keeper (
+          succeed MethodReference_Reference ) <|
+             referenceType ) <|
+             spaces ) <|
+             symbol ":" ) <|
+             spaces ) <|
+             optional typeArguments ) <|
+             spaces ) <|
+             identifier
+        , 
+            keeper (
+            ignorer (
+            keeper (
+            ignorer (
+            ignorer (
+            ignorer (
+            ignorer (
+          succeed MethodReference_Super ) <|
+             (keyword "super") ) <|
+             spaces ) <|
+             symbol ":" ) <|
+             spaces ) <|
+             optional typeArguments ) <|
+             spaces ) <|
+             identifier
+        , 
+            keeper (
+            ignorer (
+            keeper (
+            ignorer (
+            ignorer (
+            ignorer (
+            ignorer (
+            ignorer (
+            ignorer (
+            ignorer (
+            keeper (
+            ignorer (
+          succeed MethodReference_TypeSuper ) <|
+             spaces ) <|
+             typeName ) <|
+             spaces ) <|
+             (symbol ".") ) <|
+             spaces ) <|
+             (keyword "super") ) <|
+             spaces ) <|
+             symbol ":" ) <|
+             spaces ) <|
+             optional typeArguments ) <|
+             spaces ) <|
+             identifier
+        , 
+            ignorer (
+            ignorer (
+            keeper (
+            ignorer (
+            ignorer (
+            ignorer (
+            keeper (
+          succeed MethodReference_ClassNew ) <|
+             classType ) <|
+             spaces ) <|
+             symbol ":" ) <|
+             spaces ) <|
+             optional typeArguments ) <|
+             spaces ) <|
+             (keyword "new")
+        , 
+            ignorer (
+            ignorer (
+            ignorer (
+            ignorer (
+            keeper (
+          succeed MethodReference_ArrayNew ) <|
+             arrayType ) <|
+             spaces ) <|
+             symbol ":" ) <|
+             spaces ) <|
+             (keyword "new")
         ]
 
 
@@ -3865,244 +4437,288 @@ type ArrayCreationExpression
     | ArrayCreationExpression_Class ClassOrInterfaceType DimExprs (Maybe Dims)
     | ArrayCreationExpression_PrimitiveArrayInit PrimitiveType Dims ArrayInitializer
     | ArrayCreationExpression_ClassArrayInit ClassOrInterfaceType Dims ArrayInitializer
+    
 
 
 arrayCreationExpression : Parser ArrayCreationExpression
 arrayCreationExpression =
-    P.oneOf
-        [ P.succeed ArrayCreationExpression_Primitive
-            |. P.keyword "new"
-            |. P.spaces
-            |= primitiveType
-            |. P.spaces
-            |= dimExprs
-            |. P.spaces
-            |= optional dims
-        , P.succeed ArrayCreationExpression_Class
-            |. P.keyword "new"
-            |. P.spaces
-            |= classOrInterfaceType
-            |. P.spaces
-            |= dimExprs
-            |. P.spaces
-            |= optional dims
-        , P.succeed ArrayCreationExpression_PrimitiveArrayInit
-            |. P.keyword "new"
-            |. P.spaces
-            |= primitiveType
-            |. P.spaces
-            |= dims
-            |. P.spaces
-            |= arrayInitializer
-        , P.succeed ArrayCreationExpression_ClassArrayInit
-            |. P.keyword "new"
-            |. P.spaces
-            |= classOrInterfaceType
-            |. P.spaces
-            |= dims
-            |. P.spaces
-            |= arrayInitializer
+    oneOf
+        [
+            keeper (
+            ignorer (
+            keeper (
+            ignorer (
+            keeper (
+            ignorer (
+            ignorer (
+            succeed ArrayCreationExpression_Primitive ) <|
+            (keyword "new") ) <|
+            spaces ) <|
+            primitiveType ) <|
+            spaces ) <|
+            dimExprs ) <|
+            spaces ) <|
+            optional dims
+        ,
+            keeper (
+            ignorer (
+            keeper (
+            ignorer (
+            keeper (
+            ignorer (
+            ignorer (
+            succeed ArrayCreationExpression_Class ) <|
+            (keyword "new") ) <|
+            spaces ) <|
+            classOrInterfaceType ) <|
+            spaces ) <|
+            dimExprs ) <|
+            spaces ) <|
+            optional dims
+        ,
+            keeper (
+            ignorer (
+            keeper (
+            ignorer (
+            keeper (
+            ignorer (
+            ignorer (
+            succeed ArrayCreationExpression_PrimitiveArrayInit ) <|
+            (keyword "new") ) <|
+            spaces ) <|
+            primitiveType ) <|
+            spaces ) <|
+            dims ) <|
+            spaces ) <|
+            arrayInitializer
+        ,
+            keeper (
+            ignorer (
+            keeper (
+            ignorer (
+            keeper (
+            ignorer (
+            ignorer (
+            succeed ArrayCreationExpression_ClassArrayInit ) <|
+            (keyword "new") ) <|
+            spaces ) <|
+            classOrInterfaceType ) <|
+            spaces ) <|
+            dims ) <|
+            spaces ) <|
+            arrayInitializer
         ]
 
 
 type DimExprs
     = DimExprs DimExpr (List DimExpr)
+    
 
 
 dimExprs : Parser DimExprs
 dimExprs =
-    P.succeed DimExprs
-        |= dimExpr
-        |. P.spaces
-        |= list dimExpr
+    kikmap DimExprs
+        dimExpr
+        spaces
+        (list dimExpr)
 
 
 type DimExpr
     = DimExpr (List Annotation) Expression
+    
 
 
 dimExpr : Parser DimExpr
 dimExpr =
-    P.succeed DimExpr
-        |= list annotation
-        |. P.spaces
-        |. P.symbol "["
-        |. P.spaces
-        |= expression
-        |. P.spaces
-        |. P.symbol "]"
+    kiiikiimap DimExpr
+        (list annotation)
+        spaces
+        (symbol "[")
+        spaces
+        expression
+        spaces
+        (symbol "]")
 
 
 type Expression
     = Expression_Lambda LambdaExpression
     | Expression_Assignment AssignmentExpression
+    
 
 
 expression : Parser Expression
 expression =
-    P.oneOf
-        [ P.succeed Expression_Lambda
-            |= lambdaExpression
-        , P.succeed Expression_Assignment
-            |= assignmentExpression
+    oneOf
+        [ kmap Expression_Lambda
+            lambdaExpression
+        , kmap Expression_Assignment
+            assignmentExpression
         ]
 
 
 type LambdaExpression
     = LambdaExpression LambdaParameters LambdaBody
+    
 
 
 lambdaExpression : Parser LambdaExpression
 lambdaExpression =
-    P.succeed LambdaExpression
-        |= lambdaParameters
-        |. P.spaces
-        |. P.symbol "->"
-        |. P.spaces
-        |= lambdaBody
+    kiiikmap LambdaExpression
+        lambdaParameters
+        spaces
+        (symbol "->")
+        spaces
+        (lazy (\_ -> lambdaBody))
 
 
 type LambdaParameters
     = LambdaParameters_List (Maybe LambdaParameterList)
     | LambdaParameters_Identifier Identifier
+    
 
 
 lambdaParameters : Parser LambdaParameters
 lambdaParameters =
-    P.oneOf
-        [ P.succeed LambdaParameters_List
-            |. P.symbol "("
-            |. P.spaces
-            |= optional lambdaParameterList
-            |. P.spaces
-            |. P.symbol ")"
-        , P.succeed LambdaParameters_Identifier
-            |= identifier
+    oneOf
+        [ iikiimap LambdaParameters_List
+            (symbol "(")
+            spaces
+            (optional lambdaParameterList)
+            spaces
+            (symbol ")")
+        , kmap LambdaParameters_Identifier
+            identifier
         ]
 
 
 type LambdaParameterList
     = LambdaParameterList_Parameters LambdaParameter (List LambdaParameter)
     | LambdaParameterList_Identifiers Identifier (List Identifier)
+    
 
 
 lambdaParameterList : Parser LambdaParameterList
 lambdaParameterList =
-    P.oneOf
-        [ P.succeed LambdaParameterList_Parameters
-            |= lambdaParameter
-            |. P.spaces
-            |= list
-                (P.succeed identity
-                    |. P.symbol ","
-                    |. P.spaces
-                    |= lambdaParameter
+    oneOf
+        [ kikmap LambdaParameterList_Parameters
+            lambdaParameter
+            spaces
+            (list
+                (iikmap identity
+                    (symbol ",")
+                    spaces
+                    lambdaParameter
                 )
-        , P.succeed LambdaParameterList_Identifiers
-            |= identifier
-            |. P.spaces
-            |= list
-                (P.succeed identity
-                    |. P.symbol ","
-                    |. P.spaces
-                    |= identifier
+               )
+        , kikmap LambdaParameterList_Identifiers
+            identifier
+            spaces
+            (list
+                (iikmap identity
+                    (symbol ",")
+                    spaces
+                    identifier
                 )
+               )
         ]
 
 
 type LambdaParameter
     = LambdaParameter_Normal (List VariableModifier) LambdaParameterType VariableDeclaratorId
     | LambdaParameter_Arity VariableArityParameter
+    
 
 
 lambdaParameter : Parser LambdaParameter
 lambdaParameter =
-    P.oneOf
-        [ P.succeed LambdaParameter_Normal
-            |= list variableModifier
-            |. P.spaces
-            |= lambdaParameterType
-            |. P.spaces
-            |= variableDeclaratorId
-        , P.succeed LambdaParameter_Arity
-            |= variableArityParameter
+    oneOf
+        [ kikikmap LambdaParameter_Normal
+            (list variableModifier)
+            spaces
+            lambdaParameterType
+            spaces
+            variableDeclaratorId
+        , kmap LambdaParameter_Arity
+            variableArityParameter
         ]
 
 
 type LambdaParameterType
     = LambdaParameterType_Unann UnannType
     | LambdaParameterType_Var
+    
 
 
 lambdaParameterType : Parser LambdaParameterType
 lambdaParameterType =
-    P.oneOf
-        [ P.succeed LambdaParameterType_Unann
-            |= P.lazy (\_ -> unannType)
-        , P.succeed LambdaParameterType_Var
-            |. P.keyword "var"
+    oneOf
+        [ kmap LambdaParameterType_Unann
+            unannType
+        , imap LambdaParameterType_Var
+            (keyword "var")
         ]
 
 
 type LambdaBody
     = LambdaBody_Expression Expression
     | LambdaBody_Block Block
+    
 
 
 lambdaBody : Parser LambdaBody
 lambdaBody =
-    P.oneOf
-        [ P.succeed LambdaBody_Expression
-            |= P.lazy (\_ -> expression)
-        , P.succeed LambdaBody_Block
-            |= P.lazy (\_ -> Debug.todo "block")
+    oneOf
+        [ kmap LambdaBody_Expression
+            expression
+        , kmap LambdaBody_Block
+            block
         ]
 
 
 type AssignmentExpression
     = AssignmentExpression_Conditional ConditionalExpression
     | AssignmentExpression_Assignment Assignment
+    
 
 
 assignmentExpression : Parser AssignmentExpression
 assignmentExpression =
-    P.oneOf
-        [ P.succeed AssignmentExpression_Conditional
-            |= conditionalExpression
-        , P.succeed AssignmentExpression_Assignment
-            |= assignment
+    oneOf
+        [ kmap AssignmentExpression_Conditional
+            conditionalExpression
+        , kmap AssignmentExpression_Assignment
+            assignment
         ]
 
 
 type Assignment
     = Assignment LeftHandSide AssignmentOperator Expression
+    
 
 
 assignment : Parser Assignment
 assignment =
-    P.succeed Assignment
-        |= leftHandSide
-        |. P.spaces
-        |= assignmentOperator
-        |. P.spaces
-        |= P.lazy (\_ -> expression)
+    kikikmap Assignment
+        leftHandSide
+        spaces
+        assignmentOperator
+        spaces
+        (lazy (\_ -> expression))
 
 
 type LeftHandSide
     = LeftHandSide_Expression ExpressionName
     | LeftHandSide_Field FieldAccess
     | LeftHandSide_Array ArrayAccess
+    
 
 
 leftHandSide : Parser LeftHandSide
 leftHandSide =
-    P.oneOf
-        [ P.succeed LeftHandSide_Expression
-            |= expressionName
-        , P.succeed LeftHandSide_Field
-            |= fieldAccess
-        , P.succeed LeftHandSide_Array
-            |= arrayAccess
+    oneOf
+        [ kmap LeftHandSide_Expression expressionName
+        , kmap LeftHandSide_Field fieldAccess
+        , kmap LeftHandSide_Array (lazy (\_ -> arrayAccess))
         ]
 
 
@@ -4119,35 +4735,36 @@ type AssignmentOperator
     | AssignmentOperator_And
     | AssignmentOperator_Xor
     | AssignmentOperator_Or
+    
 
 
 assignmentOperator : Parser AssignmentOperator
 assignmentOperator =
-    P.oneOf
-        [ P.succeed AssignmentOperator_Normal
-            |. P.symbol "="
-        , P.succeed AssignmentOperator_Multiply
-            |. P.symbol "*="
-        , P.succeed AssignmentOperator_Divide
-            |. P.symbol "/="
-        , P.succeed AssignmentOperator_Modulus
-            |. P.symbol "%="
-        , P.succeed AssignmentOperator_Add
-            |. P.symbol "+="
-        , P.succeed AssignmentOperator_Subtract
-            |. P.symbol "-="
-        , P.succeed AssignmentOperator_LeftShift
-            |. P.symbol "<<="
-        , P.succeed AssignmentOperator_RightShift3
-            |. P.symbol ">>>="
-        , P.succeed AssignmentOperator_RightShift
-            |. P.symbol ">>="
-        , P.succeed AssignmentOperator_And
-            |. P.symbol "&="
-        , P.succeed AssignmentOperator_Xor
-            |. P.symbol "^="
-        , P.succeed AssignmentOperator_Or
-            |. P.symbol "|="
+    oneOf
+        [ imap AssignmentOperator_Normal
+            (symbol "=")
+        , imap AssignmentOperator_Multiply
+            (symbol "*=")
+        , imap AssignmentOperator_Divide
+            (symbol "/=")
+        , imap AssignmentOperator_Modulus
+            (symbol "%=")
+        , imap AssignmentOperator_Add
+            (symbol "+=")
+        , imap AssignmentOperator_Subtract
+            (symbol "-=")
+        , imap AssignmentOperator_LeftShift
+            (symbol "<<=")
+        , imap AssignmentOperator_RightShift3
+            (symbol ">>>=")
+        , imap AssignmentOperator_RightShift
+            (symbol ">>=")
+        , imap AssignmentOperator_And
+            (symbol "&=")
+        , imap AssignmentOperator_Xor
+            (symbol "^=")
+        , imap AssignmentOperator_Or
+            (symbol "|=")
         ]
 
 
@@ -4155,295 +4772,292 @@ type ConditionalExpression
     = ConditionalExpression_Or ConditionalOrExpression
     | ConditionalExpression_TernaryConditional ConditionalOrExpression Expression ConditionalExpression
     | ConditionalExpression_TernaryLambda ConditionalOrExpression Expression LambdaExpression
+    
 
 
 conditionalExpression : Parser ConditionalExpression
 conditionalExpression =
-    P.oneOf
-        [ P.succeed ConditionalExpression_Or
-            |= conditionalOrExpression
-        , P.succeed ConditionalExpression_TernaryConditional
-            |= conditionalOrExpression
-            |. P.spaces
-            |. P.symbol "?"
-            |. P.spaces
-            |= P.lazy (\_ -> expression)
-            |. P.spaces
-            |. P.symbol ":"
-            |. P.spaces
-            |= P.lazy (\_ -> conditionalExpression)
-        , P.succeed ConditionalExpression_TernaryLambda
-            |= conditionalOrExpression
-            |. P.spaces
-            |. P.symbol "?"
-            |. P.spaces
-            |= P.lazy (\_ -> expression)
-            |. P.spaces
-            |. P.symbol ":"
-            |. P.spaces
-            |= P.lazy (\_ -> lambdaExpression)
+    oneOf
+        [ kmap ConditionalExpression_Or
+            conditionalOrExpression
+        , kiiikiiikmap ConditionalExpression_TernaryConditional
+            conditionalOrExpression
+            spaces
+            (symbol "?")
+            spaces
+            (lazy (\_ -> expression))
+            spaces
+            (symbol ":")
+            spaces
+            (lazy (\_ -> conditionalExpression))
+        , kiiikiiikmap ConditionalExpression_TernaryLambda
+            conditionalOrExpression
+            spaces
+            (symbol "?")
+            spaces
+            (lazy (\_ -> expression))
+            spaces
+            (symbol ":")
+            spaces
+            lambdaExpression
         ]
+
+
+--------------------------- FROM HERE
+
+zeta : String -> (a -> c) -> (b -> a -> c)
+              -> Parser a -> (() -> Parser b) -> Parser c
+zeta op tca tcb aparser bparser =
+  kikmap (\a mb -> case mb of
+                        Just b -> tcb b a
+                        Nothing -> tca a)
+  aparser
+  spaces
+  (optional
+      ( iikmap identity
+           (symbol op)
+           spaces
+           (lazy bparser)
+      )
+  )
 
 
 type ConditionalOrExpression
-    = ConditionalOrExpression_And ConditionalAndExpression
-    | ConditionalOrExpression_Or ConditionalOrExpression ConditionalAndExpression
-
+  = ConditionalOrExpression_And ConditionalAndExpression
+  | ConditionalOrExpression_Or ConditionalOrExpression ConditionalAndExpression
+    
 
 conditionalOrExpression : Parser ConditionalOrExpression
 conditionalOrExpression =
-    P.oneOf
-        [ P.succeed ConditionalOrExpression_And
-            |= conditionalAndExpression
-        , P.succeed ConditionalOrExpression_Or
-            |= P.lazy (\_ -> conditionalOrExpression)
-            |. P.spaces
-            |. P.symbol "||"
-            |. P.spaces
-            |= conditionalAndExpression
-        ]
+  zeta
+  "||"
+  ConditionalOrExpression_And
+  ConditionalOrExpression_Or
+  conditionalAndExpression
+  (\_ -> conditionalOrExpression)
 
 
 type ConditionalAndExpression
-    = ConditionalAndExpression_Or InclusiveOrExpression
-    | ConditionalAndExpression_And ConditionalAndExpression InclusiveOrExpression
-
+  = ConditionalAndExpression_Or InclusiveOrExpression
+  | ConditionalAndExpression_And ConditionalAndExpression InclusiveOrExpression
+    
 
 conditionalAndExpression : Parser ConditionalAndExpression
 conditionalAndExpression =
-    P.oneOf
-        [ P.succeed ConditionalAndExpression_Or
-            |= inclusiveOrExpression
-        , P.succeed ConditionalAndExpression_And
-            |= P.lazy (\_ -> conditionalAndExpression)
-            |. P.spaces
-            |. P.symbol "&&"
-            |. P.spaces
-            |= inclusiveOrExpression
-        ]
-
+  zeta
+  "&&"
+  ConditionalAndExpression_Or
+  ConditionalAndExpression_And
+  inclusiveOrExpression
+  (\_ -> conditionalAndExpression)
 
 type InclusiveOrExpression
-    = InclusiveOrExpression_Xor ExclusiveOrExpression
-    | InclusiveOrExpression_Or InclusiveOrExpression ExclusiveOrExpression
-
+  = InclusiveOrExpression_Xor ExclusiveOrExpression
+  | InclusiveOrExpression_Or InclusiveOrExpression ExclusiveOrExpression
+    
 
 inclusiveOrExpression : Parser InclusiveOrExpression
 inclusiveOrExpression =
-    P.oneOf
-        [ P.succeed InclusiveOrExpression_Xor
-            |= exclusiveOrExpression
-        , P.succeed InclusiveOrExpression_Or
-            |= P.lazy (\_ -> inclusiveOrExpression)
-            |. P.spaces
-            |. P.symbol "|"
-            |. P.spaces
-            |= exclusiveOrExpression
-        ]
+  zeta
+  "|"
+  InclusiveOrExpression_Xor
+  InclusiveOrExpression_Or
+  exclusiveOrExpression
+  (\_ -> inclusiveOrExpression)
 
 
 type ExclusiveOrExpression
-    = ExclusiveOrExpression_And AndExpression
-    | ExclusiveOrExpression_Xor ExclusiveOrExpression AndExpression
-
+  = ExclusiveOrExpression_And AndExpression
+  | ExclusiveOrExpression_Xor ExclusiveOrExpression AndExpression
+    
 
 exclusiveOrExpression : Parser ExclusiveOrExpression
 exclusiveOrExpression =
-    P.oneOf
-        [ P.succeed ExclusiveOrExpression_And
-            |= andExpression
-        , P.succeed ExclusiveOrExpression_Xor
-            |= P.lazy (\_ -> exclusiveOrExpression)
-            |. P.spaces
-            |. P.symbol "^"
-            |. P.spaces
-            |= andExpression
-        ]
+  zeta
+  "^"
+  ExclusiveOrExpression_And
+  ExclusiveOrExpression_Xor
+  andExpression
+  (\_ -> exclusiveOrExpression)
 
 
 type AndExpression
-    = AndExpression_Equality EqualityExpression
-    | AndExpression_And AndExpression EqualityExpression
-
+  = AndExpression_Equality EqualityExpression
+  | AndExpression_And AndExpression EqualityExpression
+    
 
 andExpression : Parser AndExpression
 andExpression =
-    P.oneOf
-        [ P.succeed AndExpression_Equality
-            |= equalityExpression
-        , P.succeed AndExpression_And
-            |= P.lazy (\_ -> Debug.todo "andExpression")
-            |. P.spaces
-            |. P.symbol "&"
-            |. P.spaces
-            |= equalityExpression
-        ]
+  zeta
+  "&"
+  AndExpression_Equality
+  AndExpression_And
+  equalityExpression
+  (\_ -> andExpression)
 
 
 type EqualityExpression
-    = EqualityExpression_Relational RelationalExpression
-    | EqualityExpression_Equals EqualityExpression RelationalExpression
-    | EqualityExpression_NotEquals EqualityExpression RelationalExpression
-
+  = EqualityExpression_Relational RelationalExpression
+  | EqualityExpression_Equals EqualityExpression RelationalExpression
+  | EqualityExpression_NotEquals EqualityExpression RelationalExpression
+    
 
 equalityExpression : Parser EqualityExpression
 equalityExpression =
-    P.oneOf
-        [ P.succeed EqualityExpression_Relational
-            |= P.lazy (\_ -> Debug.todo "relationalExpression")
-        , P.succeed EqualityExpression_Equals
-            |= P.lazy (\_ -> equalityExpression)
-            |. P.spaces
-            |. P.symbol "=="
-            |. P.spaces
-            |= P.lazy (\_ -> Debug.todo "relationalExpression")
-        , P.succeed EqualityExpression_NotEquals
-            |= P.lazy (\_ -> equalityExpression)
-            |. P.spaces
-            |. P.symbol "!="
-            |. P.spaces
-            |= P.lazy (\_ -> Debug.todo "relationalExpression")
-        ]
+  kikmap (\re mf ->
+                 case mf of
+                   Just f -> f re
+                   Nothing -> EqualityExpression_Relational re
+            )
+     (lazy (\_ -> relationalExpression))
+     spaces
+     (optional 
+       ( kikmap (\f ee -> f ee)
+            (oneOf
+            [ imap EqualityExpression_Equals (symbol "==")
+            , imap EqualityExpression_NotEquals (symbol "!=")
+            ]
+            )
+            spaces
+            (lazy (\_ -> equalityExpression))
+       )
+     )
 
 
 type RelationalExpression
-    = RelationalExpression_Shift ShiftExpression
-    | RelationalExpression_Less RelationalExpression ShiftExpression
-    | RelationalExpression_Greater RelationalExpression ShiftExpression
-    | RelationalExpression_LessEqual RelationalExpression ShiftExpression
-    | RelationalExpression_GreaterEqual RelationalExpression ShiftExpression
-    | RelationalExpression_Instanceof RelationalExpression ReferenceType
-
+  = RelationalExpression_Shift ShiftExpression
+  | RelationalExpression_Less RelationalExpression ShiftExpression
+  | RelationalExpression_Greater RelationalExpression ShiftExpression
+  | RelationalExpression_LessEqual RelationalExpression ShiftExpression
+  | RelationalExpression_GreaterEqual RelationalExpression ShiftExpression
+  | RelationalExpression_Instanceof RelationalExpression ReferenceType
+    
 
 relationalExpression : Parser RelationalExpression
 relationalExpression =
-    P.oneOf
-        [ P.succeed RelationalExpression_Shift
-            |= shiftExpression
-        , P.succeed RelationalExpression_Less
-            |= P.lazy (\_ -> relationalExpression)
-            |. P.spaces
-            |. P.symbol "<"
-            |. P.spaces
-            |= shiftExpression
-        , P.succeed RelationalExpression_Greater
-            |= P.lazy (\_ -> relationalExpression)
-            |. P.spaces
-            |. P.symbol ">"
-            |. P.spaces
-            |= shiftExpression
-        , P.succeed RelationalExpression_LessEqual
-            |= P.lazy (\_ -> relationalExpression)
-            |. P.spaces
-            |. P.symbol "<="
-            |. P.spaces
-            |= shiftExpression
-        , P.succeed RelationalExpression_GreaterEqual
-            |= P.lazy (\_ -> relationalExpression)
-            |. P.spaces
-            |. P.symbol ">="
-            |. P.spaces
-            |= shiftExpression
-        , P.succeed RelationalExpression_Instanceof
-            |= P.lazy (\_ -> relationalExpression)
-            |. P.spaces
-            |. P.keyword "instanceof"
-            |. P.spaces
-            |= referenceType
-        ]
+  kikmap (\a mf ->
+               case mf of 
+                   Just f -> f a
+                   Nothing -> RelationalExpression_Shift a)
+     (lazy (\_ -> shiftExpression))
+     spaces
+     (optional
+      ( kikmap (\f a -> f a)
+         (oneOf 
+             [ imap RelationalExpression_LessEqual
+                  (symbol "<=")
+             , imap RelationalExpression_GreaterEqual
+                  (symbol ">=")
+             , imap RelationalExpression_Less
+                  (symbol "<")
+             , imap RelationalExpression_Greater
+                  (symbol ">")
+             ]
+          )
+          spaces
+          (lazy (\_ -> relationalExpression))
+       )
+      )
+       {- TODO
+    , succeed RelationalExpression_Instanceof
+      |= this
+      |. spaces
+      |. (keyword "instanceof")
+      |. spaces
+      |= lazy (\_ -> referenceType)
+    ]
+       -}
 
 
 type ShiftExpression
-    = ShiftExpression_Additive AdditiveExpression
-    | ShiftExpression_Left ShiftExpression AdditiveExpression
-    | ShiftExpression_Right ShiftExpression AdditiveExpression
-    | ShiftExpression_Right2 ShiftExpression AdditiveExpression
-
+  = ShiftExpression_Additive AdditiveExpression
+  | ShiftExpression_Left ShiftExpression AdditiveExpression
+  | ShiftExpression_Right ShiftExpression AdditiveExpression
+  | ShiftExpression_Right2 ShiftExpression AdditiveExpression
+    
 
 shiftExpression : Parser ShiftExpression
 shiftExpression =
-    P.oneOf
-        [ P.succeed ShiftExpression_Additive
-            |= additiveExpression
-        , P.succeed ShiftExpression_Left
-            |= P.lazy (\_ -> shiftExpression)
-            |. P.spaces
-            |. P.symbol "<<"
-            |. P.spaces
-            |= additiveExpression
-        , P.succeed ShiftExpression_Right
-            |= P.lazy (\_ -> shiftExpression)
-            |. P.spaces
-            |. P.symbol ">>"
-            |. P.spaces
-            |= additiveExpression
-        , P.succeed ShiftExpression_Right2
-            |= P.lazy (\_ -> shiftExpression)
-            |. P.spaces
-            |. P.symbol ">>>"
-            |. P.spaces
-            |= additiveExpression
-        ]
+  kikmap (\a mf ->
+               case mf of 
+                   Just f -> f a
+                   Nothing -> ShiftExpression_Additive a)
+     (lazy (\_ -> additiveExpression))
+     spaces
+     (optional
+      ( kikmap (\f a -> f a)
+          (oneOf 
+             [ imap ShiftExpression_Left (symbol "<<")
+             , imap ShiftExpression_Right2 (symbol ">>>")
+             , imap ShiftExpression_Right (symbol ">>")
+             ]
+          )
+          spaces
+          (lazy (\_ -> shiftExpression))
+      )
+     )
 
 
 type AdditiveExpression
-    = AdditiveExpression_Multiplicative MultiplicativeExpression
-    | AdditiveExpression_Plus AdditiveExpression MultiplicativeExpression
-    | AdditiveExpression_Minus AdditiveExpression MultiplicativeExpression
-
+  = AdditiveExpression_Multiplicative MultiplicativeExpression
+  | AdditiveExpression_Plus AdditiveExpression MultiplicativeExpression
+  | AdditiveExpression_Minus AdditiveExpression MultiplicativeExpression
+    
 
 additiveExpression : Parser AdditiveExpression
 additiveExpression =
-    P.oneOf
-        [ P.succeed AdditiveExpression_Multiplicative
-            |= multiplicativeExpression
-        , P.succeed AdditiveExpression_Plus
-            |= P.lazy (\_ -> additiveExpression)
-            |. P.spaces
-            |. P.symbol "+"
-            |. P.spaces
-            |= multiplicativeExpression
-        , P.succeed AdditiveExpression_Minus
-            |= P.lazy (\_ -> additiveExpression)
-            |. P.spaces
-            |. P.symbol "-"
-            |. P.spaces
-            |= multiplicativeExpression
-        ]
-
+  kikmap (\a mf ->
+               case mf of 
+                   Just f -> f a
+                   Nothing ->  AdditiveExpression_Multiplicative a)
+     (lazy (\_ -> multiplicativeExpression))
+     spaces
+     (optional
+      ( kikmap (\f a -> f a)
+         (oneOf 
+            [ imap AdditiveExpression_Plus
+                 (symbol "+")
+            , imap AdditiveExpression_Minus
+                 (symbol "-")
+            ]
+          )
+          spaces
+          (lazy (\_ -> additiveExpression))
+      )
+     )
 
 type MultiplicativeExpression
-    = MultiplicativeExpression_Unary UnaryExpression
-    | MultiplicativeExpression_Multiply MultiplicativeExpression UnaryExpression
-    | MultiplicativeExpression_Divide MultiplicativeExpression UnaryExpression
-    | MultiplicativeExpression_Mod MultiplicativeExpression UnaryExpression
-
+  = MultiplicativeExpression_Unary UnaryExpression
+  | MultiplicativeExpression_Multiply MultiplicativeExpression UnaryExpression
+  | MultiplicativeExpression_Divide MultiplicativeExpression UnaryExpression
+  | MultiplicativeExpression_Mod MultiplicativeExpression UnaryExpression
+    
 
 multiplicativeExpression : Parser MultiplicativeExpression
 multiplicativeExpression =
-    P.oneOf
-        [ P.succeed MultiplicativeExpression_Unary
-            |= unaryExpression
-        , P.succeed MultiplicativeExpression_Multiply
-            |= P.lazy (\_ -> multiplicativeExpression)
-            |. P.spaces
-            |. P.symbol "*"
-            |. P.spaces
-            |= unaryExpression
-        , P.succeed MultiplicativeExpression_Divide
-            |= P.lazy (\_ -> multiplicativeExpression)
-            |. P.spaces
-            |. P.symbol "/"
-            |. P.spaces
-            |= unaryExpression
-        , P.succeed MultiplicativeExpression_Mod
-            |= P.lazy (\_ -> multiplicativeExpression)
-            |. P.spaces
-            |. P.symbol "%"
-            |. P.spaces
-            |= unaryExpression
-        ]
-
+  kikmap (\a mf ->
+               case mf of 
+                   Just f -> f a
+                   Nothing -> MultiplicativeExpression_Unary a)
+     (lazy (\_ -> unaryExpression))
+     spaces
+     (optional
+      (kikmap (\f a -> f a)
+          (oneOf
+           [ imap MultiplicativeExpression_Multiply
+                (symbol "*")
+           , imap MultiplicativeExpression_Divide
+                (symbol "/")
+           , imap MultiplicativeExpression_Mod
+                (symbol "%")
+           ]
+          )
+          spaces
+          (lazy (\_ -> multiplicativeExpression))
+      )
+     )
+ 
+--------------------------- TO HERE
 
 type UnaryExpression
     = UnaryExpression_PreIncrement PreIncrementExpression
@@ -4451,50 +5065,53 @@ type UnaryExpression
     | UnaryExpression_Plus UnaryExpression
     | UnaryExpression_Minus UnaryExpression
     | UnaryExpression_NotPlusMinus UnaryExpressionNotPlusMinus
+    
 
 
 unaryExpression : Parser UnaryExpression
 unaryExpression =
-    P.oneOf
-        [ P.succeed UnaryExpression_PreIncrement
-            |= preIncrementExpression
-        , P.succeed UnaryExpression_PreDecrement
-            |= preDecrementExpression
-        , P.succeed UnaryExpression_Plus
-            |. P.symbol "+"
-            |. P.spaces
-            |= P.lazy (\_ -> unaryExpression)
-        , P.succeed UnaryExpression_Minus
-            |. P.symbol "-"
-            |. P.spaces
-            |= P.lazy (\_ -> unaryExpression)
-        , P.succeed UnaryExpression_NotPlusMinus
-            |= unaryExpressionNotPlusMinus
+    oneOf
+        [ kmap UnaryExpression_PreIncrement
+            preIncrementExpression
+        , kmap UnaryExpression_PreDecrement
+            preDecrementExpression
+        , iikmap UnaryExpression_Plus
+            (symbol "+")
+            spaces
+            (lazy (\_ -> unaryExpression))
+        , iikmap UnaryExpression_Minus
+            (symbol "-")
+            spaces
+            (lazy (\_ -> unaryExpression))
+        , kmap UnaryExpression_NotPlusMinus
+            unaryExpressionNotPlusMinus
         ]
 
 
 type PreIncrementExpression
     = PreIncrementExpression UnaryExpression
+    
 
 
 preIncrementExpression : Parser PreIncrementExpression
 preIncrementExpression =
-    P.succeed PreIncrementExpression
-        |. P.symbol "++"
-        |. P.spaces
-        |= P.lazy (\_ -> unaryExpression)
+    iikmap PreIncrementExpression
+        (symbol "++")
+        spaces
+        (lazy (\_ -> unaryExpression))
 
 
 type PreDecrementExpression
     = PreDecrementExpression UnaryExpression
+    
 
 
 preDecrementExpression : Parser PreDecrementExpression
 preDecrementExpression =
-    P.succeed PreDecrementExpression
-        |. P.symbol "--"
-        |. P.spaces
-        |= P.lazy (\_ -> unaryExpression)
+    iikmap PreDecrementExpression
+        (symbol "--")
+        spaces
+        (lazy (\_ -> unaryExpression))
 
 
 type UnaryExpressionNotPlusMinus
@@ -4503,25 +5120,26 @@ type UnaryExpressionNotPlusMinus
     | UnaryExpressionNotPlusMinus_LogicalNot UnaryExpression
     | UnaryExpressionNotPlusMinus_Cast CastExpression
     | UnaryExpressionNotPlusMinus_Switch SwitchExpression
+    
 
 
 unaryExpressionNotPlusMinus : Parser UnaryExpressionNotPlusMinus
 unaryExpressionNotPlusMinus =
-    P.oneOf
-        [ P.succeed UnaryExpressionNotPlusMinus_Postfix
-            |= postfixExpression
-        , P.succeed UnaryExpressionNotPlusMinus_BitwiseNot
-            |. P.symbol "~"
-            |. P.spaces
-            |= P.lazy (\_ -> unaryExpression)
-        , P.succeed UnaryExpressionNotPlusMinus_LogicalNot
-            |. P.symbol "!"
-            |. P.spaces
-            |= P.lazy (\_ -> unaryExpression)
-        , P.succeed UnaryExpressionNotPlusMinus_Cast
-            |= P.lazy (\_ -> castExpression)
-        , P.succeed UnaryExpressionNotPlusMinus_Switch
-            |= P.lazy (\_ -> switchExpression)
+    oneOf
+        [ kmap UnaryExpressionNotPlusMinus_Postfix
+            postfixExpression
+        , iikmap UnaryExpressionNotPlusMinus_BitwiseNot
+            (symbol "~")
+            spaces
+            (lazy (\_ -> unaryExpression))
+        , iikmap UnaryExpressionNotPlusMinus_LogicalNot
+            (symbol "!")
+            spaces
+            (lazy (\_ -> unaryExpression))
+        , kmap UnaryExpressionNotPlusMinus_Cast
+            (lazy (\_ -> castExpression))
+        , kmap UnaryExpressionNotPlusMinus_Switch
+            switchExpression
         ]
 
 
@@ -4530,112 +5148,155 @@ type PostfixExpression
     | PostfixExpression_Name ExpressionName
     | PostfixExpression_Increment PostIncrementExpression
     | PostfixExpression_Decrement PostDecrementExpression
+    
 
 
 postfixExpression : Parser PostfixExpression
 postfixExpression =
-    P.oneOf
-        [ P.succeed PostfixExpression_Primary
-            |= P.lazy (\_ -> primary)
-        , P.succeed PostfixExpression_Name
-            |= expressionName
-        , P.succeed PostfixExpression_Increment
-            |= postIncrementExpression
-        , P.succeed PostfixExpression_Decrement
-            |= postDecrementExpression
+    oneOf
+        [ kmap PostfixExpression_Primary
+            primary
+        , kmap PostfixExpression_Name
+            expressionName
+        , kmap PostfixExpression_Increment
+            postIncrementExpression
+        , kmap PostfixExpression_Decrement
+            postDecrementExpression
         ]
 
 
 type PostIncrementExpression
     = PostIncrementExpression PostfixExpression
+    
 
 
 postIncrementExpression : Parser PostIncrementExpression
 postIncrementExpression =
-    P.succeed PostIncrementExpression
-        |= P.lazy (\_ -> postfixExpression)
-        |. P.spaces
-        |. P.symbol "++"
+    kiimap PostIncrementExpression
+        (lazy (\_ -> postfixExpression))
+        spaces
+        (symbol "++")
 
 
 type PostDecrementExpression
     = PostDecrementExpression PostfixExpression
+    
 
 
 postDecrementExpression : Parser PostDecrementExpression
 postDecrementExpression =
-    P.succeed PostDecrementExpression
-        |= P.lazy (\_ -> postfixExpression)
-        |. P.spaces
-        |. P.symbol "--"
+    kiimap PostDecrementExpression
+        (lazy (\_ -> postfixExpression))
+        spaces
+        (symbol "--")
 
 
 type CastExpression
     = CastExpression_Unary PrimitiveType UnaryExpression
     | CastExpression_UnaryAdditional ReferenceType (List AdditionalBound) UnaryExpressionNotPlusMinus
     | CastExpression_Lambda ReferenceType (List AdditionalBound) LambdaExpression
+    
 
 
 castExpression : Parser CastExpression
 castExpression =
-    P.oneOf
-        [ P.succeed CastExpression_Unary
-            |. P.symbol "("
-            |. P.spaces
-            |= primitiveType
-            |. P.spaces
-            |. P.symbol ")"
-            |. P.spaces
-            |= P.lazy (\_ -> unaryExpression)
-        , P.succeed CastExpression_UnaryAdditional
-            |. P.symbol "("
-            |. P.spaces
-            |= referenceType
-            |. P.spaces
-            |= list additionalBound
-            |. P.spaces
-            |. P.symbol ")"
-            |. P.spaces
-            |= P.lazy (\_ -> unaryExpressionNotPlusMinus)
-        , P.succeed CastExpression_Lambda
-            |. P.symbol "("
-            |. P.spaces
-            |= referenceType
-            |. P.spaces
-            |= list additionalBound
-            |. P.spaces
-            |. P.symbol ")"
-            |. P.spaces
-            |= lambdaExpression
+    oneOf
+        [
+            keeper (
+            ignorer (
+            ignorer (
+            ignorer (
+            keeper (
+            ignorer (
+            ignorer (
+            succeed CastExpression_Unary ) <|
+            (symbol "(") ) <|
+            spaces ) <|
+            primitiveType ) <|
+            spaces ) <|
+            (symbol ")") ) <|
+            spaces ) <|
+            unaryExpression
+        ,
+            keeper (
+            ignorer (
+            ignorer (
+            ignorer (
+            keeper (
+            ignorer (
+            keeper (
+            ignorer (
+            ignorer (
+            succeed CastExpression_UnaryAdditional ) <|
+            (symbol "(") ) <|
+            spaces ) <|
+            referenceType ) <|
+            spaces ) <|
+            list additionalBound ) <|
+            spaces ) <|
+            (symbol ")") ) <|
+            spaces ) <|
+            unaryExpressionNotPlusMinus
+        ,
+            keeper (
+            ignorer (
+            ignorer (
+            ignorer (
+            keeper (
+            ignorer (
+            keeper (
+            ignorer (
+            ignorer (
+            succeed CastExpression_Lambda ) <|
+            (symbol "(") ) <|
+            spaces ) <|
+            referenceType ) <|
+            spaces ) <|
+            list additionalBound ) <|
+            spaces ) <|
+            (symbol ")") ) <|
+            spaces ) <|
+            lambdaExpression
         ]
 
 
 type SwitchExpression
     = SwitchExpression Expression SwitchBlock
+    
 
 
 switchExpression : Parser SwitchExpression
 switchExpression =
-    P.succeed SwitchExpression
-        |. P.keyword "switch"
-        |. P.spaces
-        |. P.symbol "("
-        |. P.spaces
-        |= expression
-        |. P.spaces
-        |. P.symbol ")"
-        |. P.spaces
-        |= switchBlock
+    keeper (
+    ignorer (
+    ignorer (
+    ignorer (
+    keeper (
+    ignorer (
+    ignorer (
+    ignorer (
+    ignorer (
+    succeed SwitchExpression ) <|
+    (keyword "switch") ) <|
+    spaces ) <|
+    (symbol "(") ) <|
+    spaces ) <|
+    expression ) <|
+    spaces ) <|
+    (symbol ")") ) <|
+    spaces ) <|
+    switchBlock
 
 
 type ConstantExpression
     = ConstantExpression Expression
+    
 
 
 constantExpression : Parser ConstantExpression
 constantExpression =
-    P.succeed ConstantExpression
-        |= expression
+    kmap ConstantExpression
+        expression
 
 
 
