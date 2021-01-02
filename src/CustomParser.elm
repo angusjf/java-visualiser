@@ -1,63 +1,32 @@
-module Fast15 where
-
-import qualified Data.Char as Char
-import qualified Data.List as List
+module CustomParser exposing (..)
 
 --{{{ custom parser
-type Parser a = String -> Either String (a, String)
 
---a |. b = ignorer a b
---a |= b = keeper a b
+type Either a b = Left a | Right b
 
-data BrackNum = BN Identifier deriving (Show)
+type alias Parser a = String -> Either String (a, String)
 
---num0 :: Parser BrackNum
---num0 =
---    succeed BN
---    |. (symbol "<")
---    |. spaces
---    |= identifier
---    |. spaces
---    |. (symbol ">")
+type BrackNum = BN Identifier 
 
-num1 :: Parser BrackNum
+num1 : Parser BrackNum
 num1 =
     ignorer (
     ignorer (
     keeper (
     ignorer (
     ignorer (
-    succeed BN ) $
-    (symbol "<") ) $
-    spaces ) $
-    identifier ) $
-    spaces ) $
+    succeed BN ) <|
+    (symbol "<") ) <|
+    spaces ) <|
+    identifier ) <|
+    spaces ) <|
     (symbol ">")
-   
-num2 :: Parser BrackNum
-num2 =
-  ( ignorer
-    ( ignorer
-      ( keeper
-        ( ignorer
-          ( ignorer
-              (succeed BN)
-              (symbol "<")
-          )
-          (spaces)
-        )
-        (identifier)
-      )
-      (spaces)
-    )
-    (symbol ">")
-  )
 
-succeed :: a -> Parser a
+succeed : a -> Parser a
 succeed x =
     \str -> Right (x, str)
 
-ignorer :: Parser keep -> Parser ignore -> Parser keep
+ignorer : Parser keep -> Parser ignore -> Parser keep
 ignorer keep ignore =
     \str ->
         case keep str of
@@ -68,7 +37,7 @@ ignorer keep ignore =
             Left e ->
                 Left e
 
-keeper :: Parser (a -> b) -> Parser a -> Parser b
+keeper : Parser (a -> b) -> Parser a -> Parser b
 keeper parserFunc parserArg =
     \str ->
         case parserFunc str of
@@ -100,136 +69,215 @@ kiikmap f a b c d = keeper (ignorer (ignorer (keeper (succeed f) a) b) c) d
 kikikmap f a b c d e =
     keeper (ignorer (keeper (ignorer (keeper (succeed f) a) b) c) d) e
 
-kikikiimap = (((((((((((i.).i).).k).).i).).k).).i).).k.succeed
-    where i = ignorer
-          k = keeper
+kikikiimap func a b c d e f g =
+    let
+        i = ignorer
+        k = keeper
+    in
+        i (i (k (i (k (i (k (succeed func) a) b) c) d) e) f) g
 
-iikiimap f a b c d e = i ( i ( k (i ( i (succeed f) a) b) c) d) e
-    where i = ignorer
-          k = keeper
+iikiimap f a b c d e =
+    let
+        i = ignorer
+        k = keeper
+    in
+        i ( i ( k ( i ( i (succeed f) a) b) c) d) e
 
 kiiikiimap func a b c d e f g = 
-    i (i (k (i (i (i (k (succeed func) a) b) c) d) e) f) g
-    where i = ignorer
-          k = keeper
+    let
+        i = ignorer
+        k = keeper
+    in
+        i (i (k (i (i (i (k (succeed func) a) b) c) d) e) f) g
 
 iikiiiiimap func a b c d e f g h =
-    i (i (i (i (i (k (i (i (succeed func) a) b) c) d) e) f) g) h
-    where i = ignorer
-          k = keeper
+    let
+        i = ignorer
+        k = keeper
+    in
+        i (i (i (i (i (k (i (i (succeed func) a) b) c) d) e) f) g) h
 
 iiiikiiiiiimap func a b c d e f g h j l m =
-    i (i (i (i (i (i (k (i (i (i (i (succeed func) a) b) c) d) e) f) g) h) j) l) m
-    where i = ignorer
-          k = keeper
+    let
+        i = ignorer
+        k = keeper
+    in
+        i (i (i (i (i (i (k (i (i (i (i (succeed func) a) b) c) d) e) f) g) h) j) l) m
           
-iiiikiiikiimap =
-  (((((((((((((((((((i.).i).).k).).i).).i).).i).).k).).i).).i).).i).).i.succeed
-  where i = ignorer
+iiiikiiikiimap func a b c d e f g h j l m =
+    let
+        i = ignorer
         k = keeper
+    in
+        i (i (k (i (i (i (k (i (i (i (i (succeed func) a) b) c) d) e) f) g) h) j) l) m
 
-kikiiikiiikiimap = 
-  (((((((((((((((((((((((i.).i).).k).).i).).i).).i).).k).).i).).i).).i).).k).).i).).k.succeed
-  where i = ignorer
+kikiiikiiikiimap func a b c d e f g h j l m n o =
+    let
+        i = ignorer
         k = keeper
+    in
+        i (i (k (i (i (i (k (i (i (i (k (i (k (succeed func) a) b) c) d) e) f) g) h) j) l) m) n) o
 
-iikiiikiimap =
-  (((((((((((((((i.).i).).k).).i).).i).).i).).k).).i).).i.succeed
-  where i = ignorer
+iikiiikiimap func a b c d e f g h j =
+    let
+        i = ignorer
         k = keeper
+    in
+        i (i (k (i (i (i (k (i (i (succeed func) a) b) c) d) e) f) g) h) j
 
-iikikiimap =
-  (((((((((((i.).i).).k).).i).).k).).i).).i.succeed
-  where i = ignorer
+iikikiimap func a b c d e f g =
+    let
+        i = ignorer
         k = keeper
+    in
+        i (i (k (i (k (i (i (succeed func) a) b) c) d) e) f) g
 
-kiiikikikmap = (((((((((((((((k.).i).).k).).i).).k).).i).).i).).i).).k.succeed
-  where i = ignorer
+kiiikikikmap func a b c d e f g h j =
+    let
+        i = ignorer
         k = keeper
+    in
+        k (i (k (i (k (i (i (i (k (succeed func) a) b) c) d) e) f) g) h) j
 
-kikikikikmap = (((((((((((((((k.).i).).k).).i).).k).).i).).k).).i).).k.succeed
-  where i = ignorer
+kikikikikmap func a b c d e f g h j =
+    let
+        i = ignorer
         k = keeper
+    in
+        k (i (k (i (k (i (k (i (k (succeed func) a) b) c) d) e) f) g) h) j
 
-kiikkiikmap = (((((((((((((k.).i).).i).).k).).k).).i).).i).).k.succeed
-  where i = ignorer
+kiikkiikmap func a b c d e f g h =
+    let
+        i = ignorer
         k = keeper
+    in
+        k (i (i (k (k (i (i (k (succeed func) a) b) c) d) e) f) g) h
 
-kikikiiikmap = (((((((((((((((k.).i).).i).).i).).k).).i).).k).).i).).k.succeed
-  where i = ignorer
+kikikiiikmap func a b c d e f g h j =
+    let
+        i = ignorer
         k = keeper
+    in
+        k (i (i (i (k (i (k (i (k (succeed func) a) b) c) d) e) f) g) h) j
 
-kikikikmap = (((((((((((k.).i).).k).).i).).k).).i).).k.succeed
-  where i = ignorer
+kikikikmap func a b c d e f g =
+    let
+        i = ignorer
         k = keeper
+    in
+        k (i (k (i (k (i (k (succeed func) a) b) c) d) e) f) g
 
-kiimap = (((i.).i).).k.succeed
-  where i = ignorer
+kiimap func a b c =
+    let
+        i = ignorer
         k = keeper
+    in
+        i (i (k (succeed func) a) b) c
 
-kikiiikikiimap =
-  (((((((((((((((((((i.).i).).k).).i).).k).).i).).i).).i).).k).).i).).k.succeed
-  where i = ignorer
+kikiiikikiimap func a b c d e f g h j l m =
+    let
+        i = ignorer
         k = keeper
+    in
+        i (i (k (i (k (i (i (i (k (i (k (succeed func) a) b) c) d) e) f) g) h) j) l) m
 
-kiiiiikikmap = ((((((((((((((((k).).i).).k).).i).).i).).i).).i).).i).).k.succeed
-  where i = ignorer
+kiiiiikikmap func a b c d e f g h j =
+    let
+        i = ignorer
         k = keeper
+    in
+        k (i (k (i (i (i (i (i (k (succeed func) a) b) c) d) e) f) g) h) j
 
-kiiikmap = (((((((k.).i).).i).).i).).k.succeed
-  where i = ignorer
+kiiikmap func a b c d e =
+    let
+        i = ignorer
         k = keeper
+    in
+        k (i (i (i (k (succeed func) a) b) c) d) e
 
-iiikiiikmap = (((((((((((k.).i).).i).).i).).k).).i).).i.succeed
-  where i = ignorer
+iiikiiikmap func a b c d e f g h =
+    let
+        i = ignorer
         k = keeper
+    in
+        k (i (i (i (k (i (i (i (succeed func) a) b) c) d) e) f) g) h
 
-iiiikiiikmap = (((((((((((((((k.).i).).i).).i).).k).).i).).i).).i).).i.succeed
-  where i = ignorer
+iiiikiiikmap func a b c d e f g h j =
+    let
+        i = ignorer
         k = keeper
+    in
+        k (i (i (i (k (i (i (i (i (succeed func) a) b) c) d) e) f) g) h) j
 
-kiikikmap = (((((((((k.).i).).k).).i).).i).).k.succeed
-  where i = ignorer
+kiikikmap func a b c d e f =
+    let
+        i = ignorer
         k = keeper
+    in
+        k (i (k (i (i (k (succeed func) a) b) c) d) e) f
 
-ikkmap = (((k.).k).).i.succeed
-  where i = ignorer
+ikkmap func a b c = 
+    let
+        i = ignorer
         k = keeper
+    in
+        k (k (i (succeed func) a) b) c
 
-iikkmap = (((((k.).k).).i).).i.succeed
-  where i = ignorer
+iikkmap func a b c d =
+    let
+        i = ignorer
         k = keeper
+    in
+        k (k (i (i (succeed func) a) b) c) d
 
-kiiikikmap = (((((((((((k.).i).).k).).i).).i).).i).).k.succeed
-  where i = ignorer
+kiiikikmap func a b c d e f g =
+    let
+        i = ignorer
         k = keeper
+    in
+        k (i (k (i (i (i (k (succeed func) a) b) c) d) e) f) g
 
-iikikikmap = (((((((((((k.).i).).k).).i).).k).).i).).i.succeed
-  where i = ignorer
+iikikikmap func a b c d e f g =
+    let
+        i = ignorer
         k = keeper
+    in
+        k (i (k (i (k (i (i (succeed func) a) b) c) d) e) f) g
 
-iikikmap = (((((((k.).i).).k).).i).).i.succeed
-  where i = ignorer
+iikikmap func a b c d e =
+    let
+        i = ignorer
         k = keeper
+    in
+        k (i (k (i (i (succeed func) a) b) c) d) e
 
-kiiiimap = (((((((i.).i).).i).).i).).k.succeed
-  where i = ignorer
+kiiiimap func a b c d e =
+    let
+        i = ignorer
         k = keeper
+    in
+        i (i (i (i (k (succeed func) a) b) c) d) e
 
-iiiikmap = (((((((k.).i).).i).).i).).i.succeed
-  where i = ignorer
+iiiikmap func a b c d e =
+    let
+        i = ignorer
         k = keeper
+    in
+        k (i (i (i (i (succeed func) a) b) c) d) e
 
-kiiikiiikmap = (((((((((((((((k.).i).).i).).i).).k).).i).).i).).i).).k.succeed
-  where i = ignorer
+kiiikiiikmap func a b c d e f g h j =
+    let
+        i = ignorer
         k = keeper
+    in
+        k (i (i (i (k (i (i (i (k (succeed func) a) b) c) d) e) f) g) h) j
 
 -- HELP
 
-oneOf :: [Parser a] -> Parser a
+oneOf : List (Parser a) -> Parser a
 oneOf parsers =
     case parsers of
-        p:ps ->
+        p::ps ->
             \str ->
                 case p str of
                     Right (x, more) ->
@@ -239,38 +287,34 @@ oneOf parsers =
         [] ->
             \str -> Left str
 
-identity = id
-
-startsWith = List.isPrefixOf
-
-keyword :: String -> Parser ()
+keyword : String -> Parser ()
 keyword kwd =
     \str ->
-        if startsWith kwd str then
-            Right ((), drop (length kwd) str)
+        if String.startsWith kwd str then
+            Right ((), String.dropLeft (String.length kwd) str)
         else
             Left str
 
-lazy :: (() -> Parser a) -> Parser a
-lazy x = x ()
+lazy : (() -> Parser a) -> Parser a
+lazy x = \str -> (x ()) str
 
 
-symbol :: String -> Parser ()
+symbol : String -> Parser ()
 symbol kwd = keyword kwd
 
-spaces :: Parser ()
+spaces : Parser ()
 spaces =
     \str ->
-        Right ((), dropWhile (== ' ') str)
+        Right ((), String.trimLeft str)
 
 
-fail :: Parser a
+fail : Parser a
 fail = \str -> Left str
 
 --}}}
 -- {{{ helpers
 
-optional :: Parser a -> Parser (Maybe a)
+optional : Parser a -> Parser (Maybe a)
 optional p =
     oneOf
         [ kmap Just p
@@ -278,9 +322,9 @@ optional p =
         ]
 
 
-nonEmptySep :: String -> Parser a -> Parser [a]
+nonEmptySep : String -> Parser a -> Parser (List a)
 nonEmptySep sep p =
-    kikmap (:)
+    kikmap (::)
         p
         spaces
         (list
@@ -292,36 +336,37 @@ nonEmptySep sep p =
         )
 
 
-list :: Parser a -> Parser [a]
+list : Parser a -> Parser (List a)
 list p =
     \str ->
         case (ignorer p spaces) str of
             Right (x, more) ->
                 case (list p) more of
-                    Right (xs, end) -> Right (x : xs, end)
+                    Right (xs, end) -> Right (x :: xs, end)
+                    Left _ -> Debug.todo "list can't fail?"
             Left _ -> 
                 Right ([], str)
 
 
-dotted :: Parser a -> Parser [a]
+dotted : Parser a -> Parser (List a)
 dotted =
     nonEmptySep "."
 
 
-brackets :: Parser Int
+brackets : Parser Int
 brackets =
     let
       bs = list b
       b = 
         ignorer (
         ignorer (
-        (symbol "[") ) $
-        spaces ) $
+        (symbol "[") ) <|
+        spaces ) <|
         (symbol "]")
     in
       \str ->
         case bs str of
-          Right (x, rest) -> Right (length x, rest)
+          Right (x, rest) -> Right (List.length x, rest)
           Left x -> Left x
 
 
@@ -330,7 +375,7 @@ brackets =
 -- {{{ Productions from §3 (Lexical Structure)
 
 
-keywords :: [ String ]
+keywords : List String
 keywords =
         [ "abstract"
         , "continue"
@@ -386,53 +431,63 @@ keywords =
         ]
 
 
-data Identifier
+type Identifier
     = Identifier String
-    deriving (Show)
+    
+takeWhile : (Char -> Bool) -> String -> String
+takeWhile f str =
+    let
+        helper l =
+            case l of
+                x::xs -> if f x then x :: helper xs else []
+                [] -> []
+    in
+      String.fromList <| helper <| String.toList str
 
-identifier :: Parser Identifier
+
+identifier : Parser Identifier
 identifier =
   \str ->
     let
       ident = takeWhile javaLetter str
     in
-      if length ident > 0 then
-         Right (Identifier ident, drop (length ident) str)
+      if String.length ident > 0 then
+         Right (Identifier ident, String.dropLeft (String.length ident) str)
       else
          Left str
 
 
-javaLetter :: Char -> Bool
+javaLetter : Char -> Bool
 javaLetter c =
     Char.isAlpha c || c == '_' || c == '$'
 
 
-javaLetterOrDigit :: Char -> Bool
+javaLetterOrDigit : Char -> Bool
 javaLetterOrDigit c =
     javaLetter c || Char.isDigit c
 
 
-data TypeIdentifier
+type TypeIdentifier
     = TypeIdentifier Identifier
-    deriving (Show)
+    
 
 
-typeIdentifier :: Parser TypeIdentifier
+typeIdentifier : Parser TypeIdentifier
 typeIdentifier =
     kmap TypeIdentifier identifier
 
 
-data UnqualifiedMethodIdentifier
+type UnqualifiedMethodIdentifier
     = UnqualifiedMethodIdentifier Identifier
-    deriving (Show)
+    
 
 
-unqualifiedMethodIdentifier :: Parser UnqualifiedMethodIdentifier
+unqualifiedMethodIdentifier : Parser UnqualifiedMethodIdentifier
 unqualifiedMethodIdentifier =
     kmap UnqualifiedMethodIdentifier identifier
 
 
-data Literal
+type Literal
     = Literal_IntegerLiteral Int
     | Literal_FloatingPointLiteral Float
     | Literal_BooleanLiteral Bool
@@ -440,10 +495,10 @@ data Literal
     | Literal_StringLiteral String
     | Literal_TextBlock String
     | Literal_NullLiteral
-    deriving (Show)
+    
 
 
-literal :: Parser Literal
+literal : Parser Literal
 literal =
     oneOf
         [ imap Literal_NullLiteral nullLiteral
@@ -456,12 +511,12 @@ literal =
         ]
 
 
-nullLiteral :: Parser ()
+nullLiteral : Parser ()
 nullLiteral =
     (keyword "null")
 
 
-booleanLiteral :: Parser Bool
+booleanLiteral : Parser Bool
 booleanLiteral =
     oneOf
         [ imap True (keyword "true")
@@ -469,31 +524,31 @@ booleanLiteral =
         ]
 
 
-characterLiteral :: Parser Char
+characterLiteral : Parser Char
 characterLiteral =
     ignorer (succeed 'c') (symbol "'")
         -- TODO
 
 
-textBlock :: Parser String
+textBlock : Parser String
 textBlock =
     ignorer (succeed "TODO") (symbol "\"")
         -- TODO
 
 
-stringLiteral :: Parser String
+stringLiteral : Parser String
 stringLiteral =
     ignorer (succeed "TODO") (symbol "\"")
         -- TODO
 
 
-integerLiteral :: Parser Int
+integerLiteral : Parser Int
 integerLiteral =
     ignorer (succeed 1) (symbol "1")
         -- TODO
 
 
-floatingPointLiteral :: Parser Float
+floatingPointLiteral : Parser Float
 floatingPointLiteral =
     ignorer (succeed 1) (symbol "1")
         -- TODO
@@ -504,13 +559,13 @@ floatingPointLiteral =
 -- {{{ Productions from §4 (Types, Values, and Variables)
 
 
-data Type
+type Type
     = Type_PrimitiveType PrimitiveType
     | Type_ReferenceType ReferenceType
-    deriving (Show)
+    
 
 
-type_ :: Parser Type
+type_ : Parser Type
 type_ =
     oneOf
         [ kmap Type_PrimitiveType primitiveType
@@ -518,33 +573,33 @@ type_ =
         ]
 
 
-data PrimitiveType
-    = PrimitiveType_Numeric ([ Annotation ]) NumericType
-    | PrimitiveType_Boolean ([ Annotation ])
-    deriving (Show)
+type PrimitiveType
+    = PrimitiveType_Numeric (List Annotation) NumericType
+    | PrimitiveType_Boolean (List Annotation)
+    
 
 
-primitiveType :: Parser PrimitiveType
+primitiveType : Parser PrimitiveType
 primitiveType =
     keeper (
     ignorer (
     keeper (
-    succeed (\annotations f -> f annotations) ) $
-    list annotation ) $
-    spaces ) $
+    succeed (\annotations f -> f annotations) ) <|
+    list annotation ) <|
+    spaces ) <|
     oneOf
       [ kmap (\num -> \ann -> PrimitiveType_Numeric ann num) numericType
       , imap PrimitiveType_Boolean (keyword "boolean")
       ]
 
 
-data NumericType
+type NumericType
     = NumericType_IntegralType IntegralType
     | NumericType_FloatingPointType FloatingPointType
-    deriving (Show)
+    
 
 
-numericType :: Parser NumericType
+numericType : Parser NumericType
 numericType =
     oneOf
         [ kmap NumericType_IntegralType integralType
@@ -552,16 +607,16 @@ numericType =
         ]
 
 
-data IntegralType
+type IntegralType
     = IntegralType_Byte
     | IntegralType_Short
     | IntegralType_Int
     | IntegralType_Long
     | IntegralType_Char
-    deriving (Show)
+    
 
 
-integralType :: Parser IntegralType
+integralType : Parser IntegralType
 integralType =
     oneOf
         [ imap IntegralType_Byte (keyword "byte")
@@ -572,13 +627,13 @@ integralType =
         ]
 
 
-data FloatingPointType
+type FloatingPointType
     = FloatingPointType_Float
     | FloatingPointType_Double
-    deriving (Show)
+    
 
 
-floatingPointType :: Parser FloatingPointType
+floatingPointType : Parser FloatingPointType
 floatingPointType =
     oneOf
         [ imap FloatingPointType_Float (keyword "float")
@@ -586,14 +641,14 @@ floatingPointType =
         ]
 
 
-data ReferenceType
+type ReferenceType
     = ReferenceType_ClassOrInterfaceType ClassOrInterfaceType
     | ReferenceType_TypeVariable TypeVariable
     | ReferenceType_ArrayType ArrayType
-    deriving (Show)
+    
 
 
-referenceType :: Parser ReferenceType
+referenceType : Parser ReferenceType
 referenceType =
     lazy (\_ ->
         oneOf
@@ -604,13 +659,13 @@ referenceType =
     )
 
 
-data ClassOrInterfaceType
+type ClassOrInterfaceType
     = ClassOrInterfaceType_ClassType ClassType
     | ClassOrInterfaceType_InterfaceType InterfaceType
-    deriving (Show)
+    
 
 
-classOrInterfaceType :: Parser ClassOrInterfaceType
+classOrInterfaceType : Parser ClassOrInterfaceType
 classOrInterfaceType =
     oneOf
         [ kmap ClassOrInterfaceType_ClassType classType
@@ -618,14 +673,14 @@ classOrInterfaceType =
         ]
 
 
-data ClassType
-    = ClassType_NoPackage ([ Annotation ]) TypeIdentifier (Maybe TypeArguments)
-    | ClassType_Package PackageName ([ Annotation ]) TypeIdentifier (Maybe TypeArguments)
-    | ClassType_ClassOrInterfaceType ClassOrInterfaceType ([ Annotation ]) TypeIdentifier (Maybe TypeArguments)
-    deriving (Show)
+type ClassType
+    = ClassType_NoPackage (List Annotation) TypeIdentifier (Maybe TypeArguments)
+    | ClassType_Package PackageName (List Annotation) TypeIdentifier (Maybe TypeArguments)
+    | ClassType_ClassOrInterfaceType ClassOrInterfaceType (List Annotation) TypeIdentifier (Maybe TypeArguments)
+    
 
 
-classType :: Parser ClassType
+classType : Parser ClassType
 classType =
     lazy (\_ ->
         oneOf
@@ -634,11 +689,11 @@ classType =
               keeper (
               ignorer (
               keeper (
-              succeed ClassType_NoPackage ) $
-              list annotation ) $
-              spaces ) $
-              typeIdentifier ) $
-              spaces ) $
+              succeed ClassType_NoPackage ) <|
+              list annotation ) <|
+              spaces ) <|
+              typeIdentifier ) <|
+              spaces ) <|
               optional typeArguments
             , keeper (
               ignorer (
@@ -649,15 +704,15 @@ classType =
               ignorer (
               ignorer (
               keeper (
-              succeed ClassType_Package ) $
-              packageName ) $
-              spaces ) $
-              (symbol ".") ) $
-              spaces ) $
-              list annotation ) $
-              spaces ) $
-              typeIdentifier ) $
-              spaces ) $
+              succeed ClassType_Package ) <|
+              packageName ) <|
+              spaces ) <|
+              (symbol ".") ) <|
+              spaces ) <|
+              list annotation ) <|
+              spaces ) <|
+              typeIdentifier ) <|
+              spaces ) <|
               optional typeArguments
             , keeper (
               ignorer (
@@ -668,86 +723,86 @@ classType =
               ignorer (
               ignorer (
               keeper (
-              succeed ClassType_ClassOrInterfaceType ) $
-              classOrInterfaceType ) $
-              spaces ) $
-              (symbol ".") ) $
-              spaces ) $
-              list annotation ) $
-              spaces ) $
-              typeIdentifier ) $
-              spaces ) $
+              succeed ClassType_ClassOrInterfaceType ) <|
+              classOrInterfaceType ) <|
+              spaces ) <|
+              (symbol ".") ) <|
+              spaces ) <|
+              list annotation ) <|
+              spaces ) <|
+              typeIdentifier ) <|
+              spaces ) <|
               optional typeArguments
             ]
     )
 
 
-data InterfaceType
+type InterfaceType
     = InterfaceType_ClassType ClassType
-    deriving (Show)
+    
 
 
-interfaceType :: Parser InterfaceType
+interfaceType : Parser InterfaceType
 interfaceType =
     kmap InterfaceType_ClassType classType
 
 
-data TypeVariable
-    = TypeVariable ([ Annotation ]) TypeIdentifier
-    deriving (Show)
+type TypeVariable
+    = TypeVariable (List Annotation) TypeIdentifier
+    
 
 
-typeVariable :: Parser TypeVariable
+typeVariable : Parser TypeVariable
 typeVariable =
     keeper (
     ignorer (
     keeper (
-    succeed TypeVariable ) $
-    list annotation ) $
-    spaces ) $
+    succeed TypeVariable ) <|
+    list annotation ) <|
+    spaces ) <|
     typeIdentifier
 
 
-data ArrayType
+type ArrayType
     = ArrayType_PrimitiveType PrimitiveType Dims
     | ArrayType_ClassOrInterfaceType ClassOrInterfaceType Dims
     | ArrayType_TypeVariable TypeVariable Dims
-    deriving (Show)
+    
 
 
-arrayType :: Parser ArrayType
+arrayType : Parser ArrayType
 arrayType =
     oneOf
         [ keeper (
           ignorer (
           keeper (
-          succeed ArrayType_PrimitiveType ) $
-          primitiveType ) $
-          spaces ) $
+          succeed ArrayType_PrimitiveType ) <|
+          primitiveType ) <|
+          spaces ) <|
           dims
         , keeper (
           ignorer (
           keeper (
-          succeed ArrayType_ClassOrInterfaceType ) $
-          classOrInterfaceType ) $
-          spaces ) $
+          succeed ArrayType_ClassOrInterfaceType ) <|
+          classOrInterfaceType ) <|
+          spaces ) <|
           dims
         , keeper (
           ignorer (
           keeper (
-          succeed ArrayType_TypeVariable ) $
-          typeVariable ) $
-          spaces ) $
+          succeed ArrayType_TypeVariable ) <|
+          typeVariable ) <|
+          spaces ) <|
           dims
         ]
 
 
-data Dims
-    = Dims [[ Annotation ]]
-    deriving (Show)
+type Dims
+    = Dims (List (List Annotation))
+    
 
 
-dims :: Parser Dims
+dims : Parser Dims
 dims =
     kmap Dims
         ( list
@@ -756,59 +811,59 @@ dims =
                 ignorer (
                 ignorer (
                 ignorer (
-                list (annotation) ) $ -- ?
-                spaces ) $
-                (symbol "[") ) $
-                spaces ) $
+                list (annotation) ) <| -- ?
+                spaces ) <|
+                (symbol "[") ) <|
+                spaces ) <|
                 (symbol "]")
             )
           )
 
 
-data TypeParameter
-    = TypeParameter ([ TypeParameterModifier ]) TypeIdentifier (Maybe TypeBound)
-    deriving (Show)
+type TypeParameter
+    = TypeParameter (List TypeParameterModifier) TypeIdentifier (Maybe TypeBound)
+    
 
 
-typeParameter :: Parser TypeParameter
+typeParameter : Parser TypeParameter
 typeParameter =
         keeper (
         ignorer (
         keeper (
         ignorer (
         keeper (
-        succeed TypeParameter ) $
-        list typeParameterModifier ) $
-        spaces ) $
-        typeIdentifier ) $
-        spaces ) $
+        succeed TypeParameter ) <|
+        list typeParameterModifier ) <|
+        spaces ) <|
+        typeIdentifier ) <|
+        spaces ) <|
         optional typeBound
 
 
-data TypeParameterModifier
+type TypeParameterModifier
     = TypeParameterModifier Annotation
-    deriving (Show)
+    
 
 
-typeParameterModifier :: Parser TypeParameterModifier
+typeParameterModifier : Parser TypeParameterModifier
 typeParameterModifier =
     kmap TypeParameterModifier annotation
 
 
-data TypeBound
+type TypeBound
     = TypeBound_TypeVariable TypeVariable
-    | TypeBound_ClassOrInterfaceType ClassOrInterfaceType ([ AdditionalBound ])
-    deriving (Show)
+    | TypeBound_ClassOrInterfaceType ClassOrInterfaceType (List AdditionalBound)
+    
 
 
-typeBound :: Parser TypeBound
+typeBound : Parser TypeBound
 typeBound =
     keeper (
     ignorer (
     ignorer (
-    succeed identity ) $
-    (keyword "extends") ) $
-    spaces ) $
+    succeed identity ) <|
+    (keyword "extends") ) <|
+    spaces ) <|
     oneOf
             [ kmap TypeBound_TypeVariable typeVariable
             , kikmap TypeBound_ClassOrInterfaceType
@@ -818,12 +873,12 @@ typeBound =
             ]
 
 
-data AdditionalBound
+type AdditionalBound
     = AdditionalBound InterfaceType
-    deriving (Show)
+    
 
 
-additionalBound :: Parser AdditionalBound
+additionalBound : Parser AdditionalBound
 additionalBound =
     iikmap AdditionalBound
         (symbol "&")
@@ -831,12 +886,12 @@ additionalBound =
         interfaceType
 
 
-data TypeArguments
+type TypeArguments
     = TypeArguments_Brackets TypeArgumentList
-    deriving (Show)
+    
 
 
-typeArguments :: Parser TypeArguments
+typeArguments : Parser TypeArguments
 typeArguments =
     ikimap TypeArguments_Brackets
         (symbol "<")
@@ -844,24 +899,24 @@ typeArguments =
         (symbol ">")
 
 
-data TypeArgumentList
-    = TypeArgumentList ([ TypeArgument ])
-    deriving (Show)
+type TypeArgumentList
+    = TypeArgumentList (List TypeArgument)
+    
 
 
-typeArgumentList :: Parser TypeArgumentList
+typeArgumentList : Parser TypeArgumentList
 typeArgumentList =
     kmap TypeArgumentList
         (nonEmptySep "," typeArgument)
 
 
-data TypeArgument
+type TypeArgument
     = TypeArgument_ReferenceType ReferenceType
     | TypeArgument_Wildcard Wildcard
-    deriving (Show)
+    
 
 
-typeArgument :: Parser TypeArgument
+typeArgument : Parser TypeArgument
 typeArgument =
     oneOf
         [ kmap TypeArgument_ReferenceType referenceType
@@ -869,12 +924,12 @@ typeArgument =
         ]
 
 
-data Wildcard
-    = Wildcard ([ Annotation ]) (Maybe WildcardBounds)
-    deriving (Show)
+type Wildcard
+    = Wildcard (List Annotation) (Maybe WildcardBounds)
+    
 
 
-wildcard :: Parser Wildcard
+wildcard : Parser Wildcard
 wildcard =
     lazy (\_ ->
         kiikmap Wildcard
@@ -885,13 +940,13 @@ wildcard =
         )
 
 
-data WildcardBounds
+type WildcardBounds
     = WildcardBounds_Extends ReferenceType
     | WildcardBounds_Super ReferenceType
-    deriving (Show)
+    
 
 
-wildcardBounds :: Parser WildcardBounds
+wildcardBounds : Parser WildcardBounds
 wildcardBounds =
     oneOf
         [ ikmap WildcardBounds_Extends
@@ -908,43 +963,43 @@ wildcardBounds =
 -- {{{ Productions from §6 (Names)
 
 
-data ModuleName
-    = ModuleName ([ Identifier ])
-    deriving (Show)
+type ModuleName
+    = ModuleName (List Identifier)
+    
 
 
-moduleName :: Parser ModuleName
+moduleName : Parser ModuleName
 moduleName =
     kmap ModuleName (dotted identifier)
 
 
-data PackageName
-    = PackageName ([ Identifier ])
-    deriving (Show)
+type PackageName
+    = PackageName (List Identifier)
+    
 
 
-packageName :: Parser PackageName
+packageName : Parser PackageName
 packageName =
     kmap PackageName (dotted identifier)
 
 
-data TypeName
-    = TypeName ([ TypeIdentifier ])
-    deriving (Show)
+type TypeName
+    = TypeName (List TypeIdentifier)
+    
 
 
-typeName :: Parser TypeName
+typeName : Parser TypeName
 typeName =
     kmap TypeName (dotted typeIdentifier)
 
 
-data ExpressionName
+type ExpressionName
     = ExpressionName_Identifier Identifier
     | ExpressionName_AmbiguousDotIdentifier AmbiguousName Identifier
-    deriving (Show)
+    
 
 
-expressionName :: Parser ExpressionName
+expressionName : Parser ExpressionName
 expressionName =
     oneOf
         [ kmap ExpressionName_Identifier identifier
@@ -955,32 +1010,32 @@ expressionName =
         ]
 
 
-data MethodName
+type MethodName
     = MethodName UnqualifiedMethodIdentifier
-    deriving (Show)
+    
 
 
-methodName :: Parser MethodName
+methodName : Parser MethodName
 methodName =
     kmap MethodName unqualifiedMethodIdentifier
 
 
-data PackageOrTypeName
-    = PackageOrTypeName ([ Identifier ])
-    deriving (Show)
+type PackageOrTypeName
+    = PackageOrTypeName (List Identifier)
+    
 
 
-packageOrTypeName :: Parser PackageOrTypeName
+packageOrTypeName : Parser PackageOrTypeName
 packageOrTypeName =
     kmap PackageOrTypeName (dotted identifier)
 
 
-data AmbiguousName
-    = AmbiguousName ([ Identifier ])
-    deriving (Show)
+type AmbiguousName
+    = AmbiguousName (List Identifier)
+    
 
 
-ambiguousName :: Parser AmbiguousName
+ambiguousName : Parser AmbiguousName
 ambiguousName =
     kmap AmbiguousName (dotted identifier)
 
@@ -990,13 +1045,13 @@ ambiguousName =
 -- {{{ Productions from §7 (Packages and Modules)
 
 
-data CompilationUnit
+type CompilationUnit
     = CompilationUnit_Ordinary OrdinaryCompilationUnit
     | CompilationUnit_Modular ModularCompilationUnit
-    deriving (Show)
+    
 
 
-compilationUnit :: Parser CompilationUnit
+compilationUnit : Parser CompilationUnit
 compilationUnit =
     oneOf
         [ kmap CompilationUnit_Ordinary ordinaryCompilationUnit
@@ -1004,12 +1059,12 @@ compilationUnit =
         ]
 
 
-data OrdinaryCompilationUnit
-    = OrdinaryCompilationUnit (Maybe PackageDeclaration) ([ ImportDeclaration ]) ([ TypeDeclaration ])
-    deriving (Show)
+type OrdinaryCompilationUnit
+    = OrdinaryCompilationUnit (Maybe PackageDeclaration) (List ImportDeclaration) (List TypeDeclaration)
+    
 
 
-ordinaryCompilationUnit :: Parser OrdinaryCompilationUnit
+ordinaryCompilationUnit : Parser OrdinaryCompilationUnit
 ordinaryCompilationUnit =
     kikikmap OrdinaryCompilationUnit
         (optional packageDeclaration)
@@ -1019,12 +1074,12 @@ ordinaryCompilationUnit =
         (list typeDeclaration)
 
 
-data ModularCompilationUnit
-    = ModularCompilationUnit ([ ImportDeclaration ]) ModuleDeclaration
-    deriving (Show)
+type ModularCompilationUnit
+    = ModularCompilationUnit (List ImportDeclaration) ModuleDeclaration
+    
 
 
-modularCompilationUnit :: Parser ModularCompilationUnit
+modularCompilationUnit : Parser ModularCompilationUnit
 modularCompilationUnit =
     kikmap ModularCompilationUnit
         (list importDeclaration)
@@ -1032,12 +1087,12 @@ modularCompilationUnit =
         (moduleDeclaration)
 
 
-data PackageDeclaration
-    = PackageDeclaration ([ PackageModifier ]) ([ Identifier ])
-    deriving (Show)
+type PackageDeclaration
+    = PackageDeclaration (List PackageModifier) (List Identifier)
+    
 
 
-packageDeclaration :: Parser PackageDeclaration
+packageDeclaration : Parser PackageDeclaration
 packageDeclaration =
     kiiikiimap PackageDeclaration
         (list packageModifier)
@@ -1049,25 +1104,25 @@ packageDeclaration =
         (symbol ";")
 
 
-data PackageModifier
+type PackageModifier
     = PackageModifier Annotation
-    deriving (Show)
+    
 
 
-packageModifier :: Parser PackageModifier
+packageModifier : Parser PackageModifier
 packageModifier =
     kmap PackageModifier annotation
 
 
-data ImportDeclaration
+type ImportDeclaration
     = ImportDeclaration_SingleTypeImport SingleTypeImportDeclaration
     | ImportDeclaration_TypeImportOnDemand TypeImportOnDemandDeclaration
     | ImportDeclaration_SingleStaticImport SingleStaticImportDeclaration
     | ImportDeclaration_StaticImportOnDemand StaticImportOnDemandDeclaration
-    deriving (Show)
+    
 
 
-importDeclaration :: Parser ImportDeclaration
+importDeclaration : Parser ImportDeclaration
 importDeclaration =
     oneOf
         [ kmap ImportDeclaration_SingleTypeImport singleTypeImportDeclaration
@@ -1077,12 +1132,12 @@ importDeclaration =
         ]
 
 
-data SingleTypeImportDeclaration
+type SingleTypeImportDeclaration
     = SingleTypeImportDeclaration TypeName
-    deriving (Show)
+    
 
 
-singleTypeImportDeclaration :: Parser SingleTypeImportDeclaration
+singleTypeImportDeclaration : Parser SingleTypeImportDeclaration
 singleTypeImportDeclaration =
     iikiimap SingleTypeImportDeclaration
         (keyword "import")
@@ -1092,12 +1147,12 @@ singleTypeImportDeclaration =
         (symbol ";")
 
 
-data TypeImportOnDemandDeclaration
+type TypeImportOnDemandDeclaration
     = TypeImportOnDemandDeclaration PackageOrTypeName
-    deriving (Show)
+    
 
 
-typeImportOnDemandDeclaration :: Parser TypeImportOnDemandDeclaration
+typeImportOnDemandDeclaration : Parser TypeImportOnDemandDeclaration
 typeImportOnDemandDeclaration =
     iikiiiiimap TypeImportOnDemandDeclaration
         (keyword "import")
@@ -1110,12 +1165,12 @@ typeImportOnDemandDeclaration =
         (symbol ";")
 
 
-data SingleStaticImportDeclaration
+type SingleStaticImportDeclaration
     = SingleStaticImportDeclaration TypeName Identifier
-    deriving (Show)
+    
 
 
-singleStaticImportDeclaration :: Parser SingleStaticImportDeclaration
+singleStaticImportDeclaration : Parser SingleStaticImportDeclaration
 singleStaticImportDeclaration =
     iiiikiiikiimap SingleStaticImportDeclaration
         (keyword "import")
@@ -1131,12 +1186,12 @@ singleStaticImportDeclaration =
         (symbol ";")
 
 
-data StaticImportOnDemandDeclaration
+type StaticImportOnDemandDeclaration
     = StaticImportOnDemandDeclaration TypeName
-    deriving (Show)
+    
 
 
-staticImportOnDemandDeclaration :: Parser StaticImportOnDemandDeclaration
+staticImportOnDemandDeclaration : Parser StaticImportOnDemandDeclaration
 staticImportOnDemandDeclaration =
     iiiikiiiiiimap StaticImportOnDemandDeclaration
         (keyword "import")
@@ -1152,14 +1207,14 @@ staticImportOnDemandDeclaration =
         (symbol ";")
 
 
-data TypeDeclaration
+type TypeDeclaration
     = TypeDeclaration_ClassDeclaration ClassDeclaration
     | TypeDeclaration_InterfaceDeclaration InterfaceDeclaration
     | TypeDeclaration_Semi
-    deriving (Show)
+    
 
 
-typeDeclaration :: Parser TypeDeclaration
+typeDeclaration : Parser TypeDeclaration
 typeDeclaration =
     oneOf
         [ kmap TypeDeclaration_ClassDeclaration classDeclaration
@@ -1168,12 +1223,12 @@ typeDeclaration =
         ]
 
 
-data ModuleDeclaration
-    = ModuleDeclaration ([ Annotation ]) (Maybe ()) ([ Identifier ]) ([ ModuleDirective ])
-    deriving (Show)
+type ModuleDeclaration
+    = ModuleDeclaration (List Annotation) (Maybe ()) (List Identifier) (List ModuleDirective)
+    
 
 
-moduleDeclaration :: Parser ModuleDeclaration
+moduleDeclaration : Parser ModuleDeclaration
 moduleDeclaration =
     kikiiikiiikiimap ModuleDeclaration
         (list annotation)
@@ -1191,16 +1246,16 @@ moduleDeclaration =
         (symbol "}") 
 
 
-data ModuleDirective
-    = ModuleDirective_Requires ([ RequiresModifier ]) ModuleName
-    | ModuleDirective_Exports PackageName (Maybe ([ ModuleName ]))
-    | ModuleDirective_Opens PackageName (Maybe ([ ModuleName ]))
+type ModuleDirective
+    = ModuleDirective_Requires (List RequiresModifier) ModuleName
+    | ModuleDirective_Exports PackageName (Maybe (List ModuleName))
+    | ModuleDirective_Opens PackageName (Maybe (List ModuleName))
     | ModuleDirective_Uses TypeName
-    | ModuleDirective_Provides TypeName ([ TypeName ])
-    deriving (Show)
+    | ModuleDirective_Provides TypeName (List TypeName)
+    
 
 
-moduleDirective :: Parser ModuleDirective
+moduleDirective : Parser ModuleDirective
 moduleDirective =
     oneOf
         [ iikikiimap ModuleDirective_Requires
@@ -1258,13 +1313,13 @@ moduleDirective =
         ]
 
 
-data RequiresModifier
+type RequiresModifier
     = RequiresModifier_Transitive
     | RequiresModifier_Static
-    deriving (Show)
+    
 
 
-requiresModifier :: Parser RequiresModifier
+requiresModifier : Parser RequiresModifier
 requiresModifier =
     oneOf
         [ imap RequiresModifier_Transitive (keyword "transitive")
@@ -1276,13 +1331,13 @@ requiresModifier =
 -- {{{ Productions from §8 (Classes)
 
 
-data ClassDeclaration
+type ClassDeclaration
     = ClassDeclaration_Normal NormalClassDeclaration
     | ClassDeclaration_Enum EnumDeclaration
-    deriving (Show)
+    
 
 
-classDeclaration :: Parser ClassDeclaration
+classDeclaration : Parser ClassDeclaration
 classDeclaration =
     oneOf
         [ kmap ClassDeclaration_Normal normalClassDeclaration
@@ -1290,12 +1345,12 @@ classDeclaration =
         ]
 
 
-data NormalClassDeclaration
-    = NormalClassDeclaration ([ ClassModifier ]) TypeIdentifier (Maybe TypeParameters) (Maybe Superclass) (Maybe Superinterfaces) ClassBody
-    deriving (Show)
+type NormalClassDeclaration
+    = NormalClassDeclaration (List ClassModifier) TypeIdentifier (Maybe TypeParameters) (Maybe Superclass) (Maybe Superinterfaces) ClassBody
+    
 
 
-normalClassDeclaration :: Parser NormalClassDeclaration
+normalClassDeclaration : Parser NormalClassDeclaration
 normalClassDeclaration =
         keeper (
         ignorer (
@@ -1310,22 +1365,22 @@ normalClassDeclaration =
         ignorer (
         ignorer (
         keeper (
-        succeed NormalClassDeclaration ) $
-        list classModifier ) $
-        spaces ) $
-        (keyword "class") ) $
-        spaces ) $
-        typeIdentifier ) $
-        spaces ) $
-        optional typeParameters ) $
-        spaces ) $
-        optional superclass ) $
-        spaces ) $
-        optional superinterfaces ) $
-        spaces ) $
+        succeed NormalClassDeclaration ) <|
+        list classModifier ) <|
+        spaces ) <|
+        (keyword "class") ) <|
+        spaces ) <|
+        typeIdentifier ) <|
+        spaces ) <|
+        optional typeParameters ) <|
+        spaces ) <|
+        optional superclass ) <|
+        spaces ) <|
+        optional superinterfaces ) <|
+        spaces ) <|
         classBody
 
-data ClassModifier
+type ClassModifier
     = ClassModifier_Annotation Annotation
     | ClassModifier_Public
     | ClassModifier_Protected
@@ -1334,10 +1389,10 @@ data ClassModifier
     | ClassModifier_Static
     | ClassModifier_Final
     | ClassModifier_StrictFp
-    deriving (Show)
+    
 
 
-classModifier :: Parser ClassModifier
+classModifier : Parser ClassModifier
 classModifier =
     oneOf
         [ kmap ClassModifier_Annotation annotation
@@ -1351,12 +1406,12 @@ classModifier =
         ]
 
 
-data TypeParameters
+type TypeParameters
     = TypeParameters TypeParameterList
-    deriving (Show)
+    
 
 
-typeParameters :: Parser TypeParameters
+typeParameters : Parser TypeParameters
 typeParameters =
     iikiimap TypeParameters
         (symbol "<")
@@ -1366,22 +1421,22 @@ typeParameters =
         (symbol ">")
 
 
-data TypeParameterList
-    = TypeParameterList ([ TypeParameter ])
-    deriving (Show)
+type TypeParameterList
+    = TypeParameterList (List TypeParameter)
+    
 
 
-typeParameterList :: Parser TypeParameterList
+typeParameterList : Parser TypeParameterList
 typeParameterList =
     kmap TypeParameterList (nonEmptySep "," typeParameter)
 
 
-data Superclass
+type Superclass
     = Superclass ClassType
-    deriving (Show)
+    
 
 
-superclass :: Parser Superclass
+superclass : Parser Superclass
 superclass =
     iikmap Superclass
         (keyword "extends")
@@ -1389,12 +1444,12 @@ superclass =
         classType
 
 
-data Superinterfaces
+type Superinterfaces
     = Superinterfaces InterfaceTypeList
-    deriving (Show)
+    
 
 
-superinterfaces :: Parser Superinterfaces
+superinterfaces : Parser Superinterfaces
 superinterfaces =
     iikmap Superinterfaces
         (keyword "implements")
@@ -1402,23 +1457,23 @@ superinterfaces =
         interfaceTypeList
 
 
-data InterfaceTypeList
-    = InterfaceTypeList ([ InterfaceType ])
-    deriving (Show)
+type InterfaceTypeList
+    = InterfaceTypeList (List InterfaceType)
+    
 
 
-interfaceTypeList :: Parser InterfaceTypeList
+interfaceTypeList : Parser InterfaceTypeList
 interfaceTypeList =
     kmap InterfaceTypeList
         (nonEmptySep "," interfaceType)
 
 
-data ClassBody
-    = ClassBody ([ ClassBodyDeclaration ])
-    deriving (Show)
+type ClassBody
+    = ClassBody (List ClassBodyDeclaration)
+    
 
 
-classBody :: Parser ClassBody
+classBody : Parser ClassBody
 classBody =
     lazy (\_ ->
         iikiimap ClassBody
@@ -1430,15 +1485,15 @@ classBody =
     )
 
 
-data ClassBodyDeclaration
+type ClassBodyDeclaration
     = ClassBodyDeclaration_ClassMemberDeclaration ClassMemberDeclaration
     | ClassBodyDeclaration_InstanceInitializer InstanceInitializer
     | ClassBodyDeclaration_StaticInitializer StaticInitializer
     | ClassBodyDeclaration_ConstructorDeclaration ConstructorDeclaration
-    deriving (Show)
+    
 
 
-classBodyDeclaration :: Parser ClassBodyDeclaration
+classBodyDeclaration : Parser ClassBodyDeclaration
 classBodyDeclaration =
     oneOf
         [ kmap ClassBodyDeclaration_ClassMemberDeclaration
@@ -1452,16 +1507,16 @@ classBodyDeclaration =
         ]
 
 
-data ClassMemberDeclaration
+type ClassMemberDeclaration
     = ClassMemberDeclaration_Field FieldDeclaration
     | ClassMemberDeclaration_Method MethodDeclaration
     | ClassMemberDeclaration_Class ClassDeclaration
     | ClassMemberDeclaration_Interface InterfaceDeclaration
     | ClassMemberDeclaration_Semi
-    deriving (Show)
+    
 
 
-classMemberDeclaration :: Parser ClassMemberDeclaration
+classMemberDeclaration : Parser ClassMemberDeclaration
 classMemberDeclaration =
     oneOf
         [ kmap ClassMemberDeclaration_Field fieldDeclaration
@@ -1472,12 +1527,12 @@ classMemberDeclaration =
         ]
 
 
-data FieldDeclaration
-    = FieldDeclaration ([ FieldModifier ]) UnannType VariableDeclaratorList
-    deriving (Show)
+type FieldDeclaration
+    = FieldDeclaration (List FieldModifier) UnannType VariableDeclaratorList
+    
 
 
-fieldDeclaration :: Parser FieldDeclaration
+fieldDeclaration : Parser FieldDeclaration
 fieldDeclaration =
     kikikiimap FieldDeclaration
         (list fieldModifier)
@@ -1489,7 +1544,7 @@ fieldDeclaration =
         (symbol ";")
 
 
-data FieldModifier
+type FieldModifier
     = FieldModifier_Annotation Annotation
     | FieldModifier_Public
     | FieldModifier_Protected
@@ -1498,10 +1553,10 @@ data FieldModifier
     | FieldModifier_Final
     | FieldModifier_Transient
     | FieldModifier_Volatile
-    deriving (Show)
+    
 
 
-fieldModifier :: Parser FieldModifier
+fieldModifier : Parser FieldModifier
 fieldModifier =
     oneOf
         [ kmap FieldModifier_Annotation annotation
@@ -1515,23 +1570,23 @@ fieldModifier =
         ]
 
 
-data VariableDeclaratorList
-    = VariableDeclaratorList ([ VariableDeclarator ])
-    deriving (Show)
+type VariableDeclaratorList
+    = VariableDeclaratorList (List VariableDeclarator)
+    
 
 
-variableDeclaratorList :: Parser VariableDeclaratorList
+variableDeclaratorList : Parser VariableDeclaratorList
 variableDeclaratorList =
     kmap VariableDeclaratorList
         (nonEmptySep "," variableDeclarator)
 
 
-data VariableDeclarator
+type VariableDeclarator
     = VariableDeclarator VariableDeclaratorId (Maybe VariableInitializer)
-    deriving (Show)
+    
 
 
-variableDeclarator :: Parser VariableDeclarator
+variableDeclarator : Parser VariableDeclarator
 variableDeclarator =
     kikmap VariableDeclarator
         variableDeclaratorId
@@ -1545,12 +1600,12 @@ variableDeclarator =
         )
 
 
-data VariableDeclaratorId
+type VariableDeclaratorId
     = VariableDeclaratorId Identifier (Maybe Dims)
-    deriving (Show)
+    
 
 
-variableDeclaratorId :: Parser VariableDeclaratorId
+variableDeclaratorId : Parser VariableDeclaratorId
 variableDeclaratorId =
     kikmap VariableDeclaratorId
         identifier
@@ -1558,13 +1613,13 @@ variableDeclaratorId =
         (optional dims)
 
 
-data VariableInitializer
+type VariableInitializer
     = VariableInitializer_Expression Expression
     | VariableInitializer_ArrayInitializer ArrayInitializer
-    deriving (Show)
+    
 
 
-variableInitializer :: Parser VariableInitializer
+variableInitializer : Parser VariableInitializer
 variableInitializer =
     lazy (\_ ->
         oneOf
@@ -1574,13 +1629,13 @@ variableInitializer =
     )
 
 
-data UnannType
+type UnannType
     = UnannType_Primitive UnannPrimitiveType
     | UnannType_Reference UnannReferenceType
-    deriving (Show)
+    
 
 
-unannType :: Parser UnannType
+unannType : Parser UnannType
 unannType =
     oneOf
         [ kmap UnannType_Primitive unannPrimitiveType
@@ -1588,13 +1643,13 @@ unannType =
         ]
 
 
-data UnannPrimitiveType
+type UnannPrimitiveType
     = UnannPrimitiveType_Numeric NumericType
     | UnannPrimitiveType_Boolean
-    deriving (Show)
+    
 
 
-unannPrimitiveType :: Parser UnannPrimitiveType
+unannPrimitiveType : Parser UnannPrimitiveType
 unannPrimitiveType =
     oneOf
         [ kmap UnannPrimitiveType_Numeric numericType
@@ -1602,14 +1657,14 @@ unannPrimitiveType =
         ]
 
 
-data UnannReferenceType
+type UnannReferenceType
     = UnannReferenceType_Class UnannClassOrInterfaceType
     | UnannReferenceType_TypeVariable UnannTypeVariable
     | UnannReferenceType_Array UnannArrayType
-    deriving (Show)
+    
 
 
-unannReferenceType :: Parser UnannReferenceType
+unannReferenceType : Parser UnannReferenceType
 unannReferenceType =
     oneOf
         [ kmap UnannReferenceType_Class unannClassOrInterfaceType
@@ -1618,13 +1673,13 @@ unannReferenceType =
         ]
 
 
-data UnannClassOrInterfaceType
+type UnannClassOrInterfaceType
     = UnannClassOrInterfaceType_Class UnannClassType
     | UnannClassOrInterfaceType_Interface UnannInterfaceType
-    deriving (Show)
+    
 
 
-unannClassOrInterfaceType :: Parser UnannClassOrInterfaceType
+unannClassOrInterfaceType : Parser UnannClassOrInterfaceType
 unannClassOrInterfaceType =
     oneOf
         [ kmap UnannClassOrInterfaceType_Class unannClassType
@@ -1632,14 +1687,14 @@ unannClassOrInterfaceType =
         ]
 
 
-data UnannClassType
+type UnannClassType
     = UnannClassType_TypeIdentifer TypeIdentifier (Maybe TypeArguments)
-    | UnannClassType_Package PackageName ([ Annotation ]) TypeIdentifier (Maybe TypeArguments)
-    | UnannClassType_Class UnannClassOrInterfaceType ([ Annotation ]) TypeIdentifier (Maybe TypeArguments)
-    deriving (Show)
+    | UnannClassType_Package PackageName (List Annotation) TypeIdentifier (Maybe TypeArguments)
+    | UnannClassType_Class UnannClassOrInterfaceType (List Annotation) TypeIdentifier (Maybe TypeArguments)
+    
 
 
-unannClassType :: Parser UnannClassType
+unannClassType : Parser UnannClassType
 unannClassType =
     lazy (\_ ->
         oneOf
@@ -1671,34 +1726,34 @@ unannClassType =
     )
 
 
-data UnannInterfaceType
+type UnannInterfaceType
     = UnannInterfaceType UnannClassType
-    deriving (Show)
+    
 
 
-unannInterfaceType :: Parser UnannInterfaceType
+unannInterfaceType : Parser UnannInterfaceType
 unannInterfaceType =
     kmap UnannInterfaceType unannClassType
 
 
-data UnannTypeVariable
+type UnannTypeVariable
     = UnannTypeVariable TypeIdentifier
-    deriving (Show)
+    
 
 
-unannTypeVariable :: Parser UnannTypeVariable
+unannTypeVariable : Parser UnannTypeVariable
 unannTypeVariable =
     kmap UnannTypeVariable typeIdentifier
 
 
-data UnannArrayType
+type UnannArrayType
     = UnannArrayType_Primitive UnannPrimitiveType Dims
     | UnannArrayType_Class UnannClassOrInterfaceType Dims
     | UnannArrayType_TypeVariable UnannTypeVariable Dims
-    deriving (Show)
+    
 
 
-unannArrayType :: Parser UnannArrayType
+unannArrayType : Parser UnannArrayType
 unannArrayType =
     oneOf
         [ kikmap UnannArrayType_Primitive
@@ -1716,12 +1771,12 @@ unannArrayType =
         ]
 
 
-data MethodDeclaration
-    = MethodDeclaration ([ MethodModifier ]) MethodHeader MethodBody
-    deriving (Show)
+type MethodDeclaration
+    = MethodDeclaration (List MethodModifier) MethodHeader MethodBody
+    
 
 
-methodDeclaration :: Parser MethodDeclaration
+methodDeclaration : Parser MethodDeclaration
 methodDeclaration =
     kikikmap MethodDeclaration
         (list methodModifier)
@@ -1731,7 +1786,7 @@ methodDeclaration =
         methodBody
 
 
-data MethodModifier
+type MethodModifier
     = MethodModifier_Annotation Annotation
     | MethodModifier_Public
     | MethodModifier_Protected
@@ -1742,10 +1797,10 @@ data MethodModifier
     | MethodModifier_Synchronized
     | MethodModifier_Native
     | MethodModifier_Strictfp
-    deriving (Show)
+    
 
 
-methodModifier :: Parser MethodModifier
+methodModifier : Parser MethodModifier
 methodModifier =
     oneOf
         [ kmap MethodModifier_Annotation annotation
@@ -1761,13 +1816,13 @@ methodModifier =
         ]
 
 
-data MethodHeader
+type MethodHeader
     = MethodHeader_Result Result MethodDeclarator (Maybe Throws)
-    | MethodHeader_TypeParameters TypeParameters ([ Annotation ]) Result MethodDeclarator (Maybe Throws)
-    deriving (Show)
+    | MethodHeader_TypeParameters TypeParameters (List Annotation) Result MethodDeclarator (Maybe Throws)
+    
 
 
-methodHeader :: Parser MethodHeader
+methodHeader : Parser MethodHeader
 methodHeader =
     oneOf
         [ kikikmap MethodHeader_Result
@@ -1789,13 +1844,13 @@ methodHeader =
         ]
 
 
-data Result
+type Result
     = Result_UnannType UnannType
     | Result_Void
-    deriving (Show)
+    
 
 
-result :: Parser Result
+result : Parser Result
 result =
     oneOf
         [ kmap Result_UnannType unannType
@@ -1803,12 +1858,12 @@ result =
         ]
 
 
-data MethodDeclarator
+type MethodDeclarator
     = MethodDeclarator Identifier (Maybe ReceiverParameter) (Maybe FormalParameterList) (Maybe Dims)
-    deriving (Show)
+    
 
 
-methodDeclarator :: Parser MethodDeclarator
+methodDeclarator : Parser MethodDeclarator
 methodDeclarator =
     kiikkiikmap MethodDeclarator
         identifier
@@ -1826,12 +1881,12 @@ methodDeclarator =
         (optional dims)
 
 
-data ReceiverParameter
-    = ReceiverParameter ([ Annotation ]) UnannType (Maybe Identifier)
-    deriving (Show)
+type ReceiverParameter
+    = ReceiverParameter (List Annotation) UnannType (Maybe Identifier)
+    
 
 
-receiverParameter :: Parser ReceiverParameter
+receiverParameter : Parser ReceiverParameter
 receiverParameter =
     kikikiimap ReceiverParameter
         (list annotation)
@@ -1848,24 +1903,24 @@ receiverParameter =
         (keyword "this")
 
 
-data FormalParameterList
-    = FormalParameterList ([ FormalParameter ])
-    deriving (Show)
+type FormalParameterList
+    = FormalParameterList (List FormalParameter)
+    
 
 
-formalParameterList :: Parser FormalParameterList
+formalParameterList : Parser FormalParameterList
 formalParameterList =
     kmap FormalParameterList
         (nonEmptySep "," formalParameter)
 
 
-data FormalParameter
-    = FormalParameter_Normal ([ VariableModifier ]) UnannType VariableDeclaratorId
+type FormalParameter
+    = FormalParameter_Normal (List VariableModifier) UnannType VariableDeclaratorId
     | FormalParameter_Arity VariableArityParameter
-    deriving (Show)
+    
 
 
-formalParameter :: Parser FormalParameter
+formalParameter : Parser FormalParameter
 formalParameter =
     oneOf
         [ kikikmap FormalParameter_Normal
@@ -1879,12 +1934,12 @@ formalParameter =
         ]
 
 
-data VariableArityParameter
-    = VariableArityParameter ([ VariableModifier ]) UnannType ([ Annotation ]) Identifier
-    deriving (Show)
+type VariableArityParameter
+    = VariableArityParameter (List VariableModifier) UnannType (List Annotation) Identifier
+    
 
 
-variableArityParameter :: Parser VariableArityParameter
+variableArityParameter : Parser VariableArityParameter
 variableArityParameter =
     kikikiiikmap VariableArityParameter
         (list variableModifier)
@@ -1898,13 +1953,13 @@ variableArityParameter =
         identifier
 
 
-data VariableModifier
+type VariableModifier
     = VariableModifier_Annotation Annotation
     | VariableModifier_Final
-    deriving (Show)
+    
 
 
-variableModifier :: Parser VariableModifier
+variableModifier : Parser VariableModifier
 variableModifier =
     oneOf
         [ kmap VariableModifier_Annotation annotation
@@ -1912,12 +1967,12 @@ variableModifier =
         ]
 
 
-data Throws
+type Throws
     = Throws ExceptionTypeList
-    deriving (Show)
+    
 
 
-throws :: Parser Throws
+throws : Parser Throws
 throws =
     iikmap Throws
         (keyword "throws")
@@ -1925,24 +1980,24 @@ throws =
         exceptionTypeList
 
 
-data ExceptionTypeList
-    = ExceptionTypeList ([ ExceptionType ])
-    deriving (Show)
+type ExceptionTypeList
+    = ExceptionTypeList (List ExceptionType)
+    
 
 
-exceptionTypeList :: Parser ExceptionTypeList
+exceptionTypeList : Parser ExceptionTypeList
 exceptionTypeList =
     kmap ExceptionTypeList
         (nonEmptySep "," exceptionType)
 
 
-data ExceptionType
+type ExceptionType
     = ExceptionType_Class ClassType
     | ExceptionType_TypeVariable TypeVariable
-    deriving (Show)
+    
 
 
-exceptionType :: Parser ExceptionType
+exceptionType : Parser ExceptionType
 exceptionType =
     oneOf
         [ kmap ExceptionType_Class classType
@@ -1950,13 +2005,13 @@ exceptionType =
         ]
 
 
-data MethodBody
+type MethodBody
     = MethodBody_Block Block
     | MethodBody_Semi
-    deriving (Show)
+    
 
 
-methodBody :: Parser MethodBody
+methodBody : Parser MethodBody
 methodBody =
     oneOf
         [ kmap MethodBody_Block block
@@ -1964,22 +2019,22 @@ methodBody =
         ]
 
 
-data InstanceInitializer
+type InstanceInitializer
     = InstanceInitializer Block
-    deriving (Show)
+    
 
 
-instanceInitializer :: Parser InstanceInitializer
+instanceInitializer : Parser InstanceInitializer
 instanceInitializer =
     kmap InstanceInitializer block
 
 
-data StaticInitializer
+type StaticInitializer
     = StaticInitializer Block
-    deriving (Show)
+    
 
 
-staticInitializer :: Parser StaticInitializer
+staticInitializer : Parser StaticInitializer
 staticInitializer =
     iikmap StaticInitializer
         (keyword "static")
@@ -1987,12 +2042,12 @@ staticInitializer =
         block
 
 
-data ConstructorDeclaration
-    = ConstructorDeclaration ([ ConstructorModifier ]) ConstructorDeclarator (Maybe Throws) ConstructorBody
-    deriving (Show)
+type ConstructorDeclaration
+    = ConstructorDeclaration (List ConstructorModifier) ConstructorDeclarator (Maybe Throws) ConstructorBody
+    
 
 
-constructorDeclaration :: Parser ConstructorDeclaration
+constructorDeclaration : Parser ConstructorDeclaration
 constructorDeclaration =
     kikikikmap ConstructorDeclaration
         (list constructorModifier)
@@ -2004,15 +2059,15 @@ constructorDeclaration =
         constructorBody
 
 
-data ConstructorModifier
+type ConstructorModifier
     = ConstructorModifier_Annotation Annotation
     | ConstructorModifier_Public
     | ConstructorModifier_Protected
     | ConstructorModifier_Private
-    deriving (Show)
+    
 
 
-constructorModifier :: Parser ConstructorModifier
+constructorModifier : Parser ConstructorModifier
 constructorModifier =
     oneOf
         [ kmap ConstructorModifier_Annotation annotation
@@ -2022,12 +2077,12 @@ constructorModifier =
         ]
 
 
-data ConstructorDeclarator
+type ConstructorDeclarator
     = ConstructorDeclarator (Maybe TypeParameters) SimpleTypeName (Maybe ReceiverParameter) (Maybe FormalParameterList)
-    deriving (Show)
+    
 
 
-constructorDeclarator :: Parser ConstructorDeclarator
+constructorDeclarator : Parser ConstructorDeclarator
 constructorDeclarator =
     kikiiikikiimap ConstructorDeclarator
         (optional typeParameters)
@@ -2049,22 +2104,22 @@ constructorDeclarator =
         (symbol ")")
 
 
-data SimpleTypeName
+type SimpleTypeName
     = SimpleTypeName TypeIdentifier
-    deriving (Show)
+    
 
 
-simpleTypeName :: Parser SimpleTypeName
+simpleTypeName : Parser SimpleTypeName
 simpleTypeName =
     kmap SimpleTypeName typeIdentifier
 
 
-data ConstructorBody
+type ConstructorBody
     = ConstructorBody (Maybe ExplicitConstructorInvocation) (Maybe BlockStatements)
-    deriving (Show)
+    
 
 
-constructorBody :: Parser ConstructorBody
+constructorBody : Parser ConstructorBody
 constructorBody =
     iikikiimap ConstructorBody
         (symbol "{")
@@ -2076,15 +2131,15 @@ constructorBody =
         (symbol "}")
 
 
-data ExplicitConstructorInvocation
+type ExplicitConstructorInvocation
     = ExplicitConstructorInvocation_This (Maybe TypeArguments) (Maybe ArgumentList)
     | ExplicitConstructorInvocation_Super (Maybe TypeArguments) (Maybe ArgumentList)
     | ExplicitConstructorInvocation_ExpressionSuper ExpressionName (Maybe TypeArguments) (Maybe ArgumentList)
     | ExplicitConstructorInvocation_PrimarySuper Primary (Maybe TypeArguments) (Maybe ArgumentList)
-    deriving (Show)
+    
 
 
-explicitConstructorInvocation :: Parser ExplicitConstructorInvocation
+explicitConstructorInvocation : Parser ExplicitConstructorInvocation
 explicitConstructorInvocation =
     oneOf
         [ ignorer (
@@ -2098,17 +2153,17 @@ explicitConstructorInvocation =
           ignorer (
           ignorer (
           keeper (
-          succeed ExplicitConstructorInvocation_This ) $
-          (optional typeArguments) ) $
-          spaces ) $
-          (keyword "this") ) $
-          spaces ) $
-          (symbol "(") ) $
-          spaces ) $
-          (optional argumentList) ) $
-          spaces ) $
-          (symbol ")") ) $
-          spaces ) $
+          succeed ExplicitConstructorInvocation_This ) <|
+          (optional typeArguments) ) <|
+          spaces ) <|
+          (keyword "this") ) <|
+          spaces ) <|
+          (symbol "(") ) <|
+          spaces ) <|
+          (optional argumentList) ) <|
+          spaces ) <|
+          (symbol ")") ) <|
+          spaces ) <|
           (symbol ";")
         , ignorer (
           ignorer (
@@ -2121,17 +2176,17 @@ explicitConstructorInvocation =
           ignorer (
           ignorer (
           keeper ( 
-          succeed ExplicitConstructorInvocation_Super ) $
-          (optional typeArguments) ) $
-          spaces ) $
-          (keyword "super") ) $
-          spaces ) $
-          (symbol "(") ) $
-          spaces ) $
-          (optional argumentList) ) $
-          spaces ) $
-          (symbol ")") ) $
-          spaces ) $
+          succeed ExplicitConstructorInvocation_Super ) <|
+          (optional typeArguments) ) <|
+          spaces ) <|
+          (keyword "super") ) <|
+          spaces ) <|
+          (symbol "(") ) <|
+          spaces ) <|
+          (optional argumentList) ) <|
+          spaces ) <|
+          (symbol ")") ) <|
+          spaces ) <|
           (symbol ";")
         , ignorer ( 
           ignorer (
@@ -2148,21 +2203,21 @@ explicitConstructorInvocation =
           ignorer (
           ignorer (
           keeper (
-          succeed ExplicitConstructorInvocation_ExpressionSuper ) $
-          expressionName ) $
-          spaces ) $
-          keyword "." ) $
-          spaces ) $
-          optional typeArguments ) $
-          spaces ) $
-          (keyword "super") ) $
-          spaces ) $
-          (symbol "(") ) $
-          spaces ) $
-          optional argumentList ) $
-          spaces ) $
-          (symbol ")") ) $
-          spaces ) $
+          succeed ExplicitConstructorInvocation_ExpressionSuper ) <|
+          expressionName ) <|
+          spaces ) <|
+          keyword "." ) <|
+          spaces ) <|
+          optional typeArguments ) <|
+          spaces ) <|
+          (keyword "super") ) <|
+          spaces ) <|
+          (symbol "(") ) <|
+          spaces ) <|
+          optional argumentList ) <|
+          spaces ) <|
+          (symbol ")") ) <|
+          spaces ) <|
           (symbol ";")
         , ignorer (
           ignorer (
@@ -2179,31 +2234,31 @@ explicitConstructorInvocation =
           ignorer (
           ignorer (
           keeper (
-          succeed ExplicitConstructorInvocation_PrimarySuper ) $
-          primary ) $
-          spaces ) $
-          keyword "." ) $
-          spaces ) $
-          optional typeArguments ) $
-          spaces ) $
-          (keyword "super") ) $
-          spaces ) $
-          (symbol "(") ) $
-          spaces ) $
-          optional argumentList ) $
-          spaces ) $
-          (symbol ")") ) $
-          spaces ) $
+          succeed ExplicitConstructorInvocation_PrimarySuper ) <|
+          primary ) <|
+          spaces ) <|
+          keyword "." ) <|
+          spaces ) <|
+          optional typeArguments ) <|
+          spaces ) <|
+          (keyword "super") ) <|
+          spaces ) <|
+          (symbol "(") ) <|
+          spaces ) <|
+          optional argumentList ) <|
+          spaces ) <|
+          (symbol ")") ) <|
+          spaces ) <|
           (symbol ";")
         ]
 
 
-data EnumDeclaration
-    = EnumDeclaration ([ ClassModifier ]) TypeIdentifier (Maybe Superinterfaces) EnumBody
-    deriving (Show)
+type EnumDeclaration
+    = EnumDeclaration (List ClassModifier) TypeIdentifier (Maybe Superinterfaces) EnumBody
+    
 
 
-enumDeclaration :: Parser EnumDeclaration
+enumDeclaration : Parser EnumDeclaration
 enumDeclaration =
         keeper (
         ignorer (
@@ -2214,24 +2269,24 @@ enumDeclaration =
         ignorer (
         ignorer (
         keeper (
-        succeed EnumDeclaration ) $
-        list classModifier ) $
-        spaces ) $
-        (keyword "enum") ) $
-        spaces ) $
-        typeIdentifier ) $
-        spaces ) $
-        optional superinterfaces ) $
-        spaces ) $
+        succeed EnumDeclaration ) <|
+        list classModifier ) <|
+        spaces ) <|
+        (keyword "enum") ) <|
+        spaces ) <|
+        typeIdentifier ) <|
+        spaces ) <|
+        optional superinterfaces ) <|
+        spaces ) <|
         enumBody
 
 
-data EnumBody
+type EnumBody
     = EnumBody (Maybe EnumConstantList) (Maybe EnumBodyDeclarations)
-    deriving (Show)
+    
 
 
-enumBody :: Parser EnumBody
+enumBody : Parser EnumBody
 enumBody =
     lazy (\_ ->
             ignorer (
@@ -2243,25 +2298,25 @@ enumBody =
             keeper (
             ignorer (
             ignorer (
-            succeed EnumBody ) $
-            (symbol "{") ) $
-            spaces ) $
-            optional enumConstantList ) $
-            spaces ) $
-            (symbol ",") ) $
-            spaces ) $
-            optional enumBodyDeclarations ) $
-            spaces ) $
+            succeed EnumBody ) <|
+            (symbol "{") ) <|
+            spaces ) <|
+            optional enumConstantList ) <|
+            spaces ) <|
+            (symbol ",") ) <|
+            spaces ) <|
+            optional enumBodyDeclarations ) <|
+            spaces ) <|
             (symbol "{")
     )
 
 
-data EnumConstantList
-    = EnumConstantList EnumConstant ([ EnumConstant ])
-    deriving (Show)
+type EnumConstantList
+    = EnumConstantList EnumConstant (List EnumConstant)
+    
 
 
-enumConstantList :: Parser EnumConstantList
+enumConstantList : Parser EnumConstantList
 enumConstantList =
     kikmap EnumConstantList
         enumConstant
@@ -2275,9 +2330,9 @@ enumConstantList =
         )
 
 
-data EnumConstant
-    = EnumConstant ([ EnumConstantModifier ]) Identifier (Maybe (Maybe ArgumentList)) (Maybe ClassBody)
-    deriving (Show)
+type EnumConstant
+    = EnumConstant (List EnumConstantModifier) Identifier (Maybe (Maybe ArgumentList)) (Maybe ClassBody)
+    
 
 
 enumConstant =
@@ -2299,23 +2354,23 @@ enumConstant =
         (optional (classBody))
 
 
-data EnumConstantModifier
+type EnumConstantModifier
     = EnumConstantModifier Annotation
-    deriving (Show)
+    
 
 
-enumConstantModifier :: Parser EnumConstantModifier
+enumConstantModifier : Parser EnumConstantModifier
 enumConstantModifier =
     kmap EnumConstantModifier
          annotation
 
 
-data EnumBodyDeclarations
-    = EnumBodyDeclarations ([ ClassBodyDeclaration ])
-    deriving (Show)
+type EnumBodyDeclarations
+    = EnumBodyDeclarations (List ClassBodyDeclaration)
+    
 
 
-enumBodyDeclarations :: Parser EnumBodyDeclarations
+enumBodyDeclarations : Parser EnumBodyDeclarations
 enumBodyDeclarations =
     iikmap EnumBodyDeclarations
         (symbol ";")
@@ -2328,13 +2383,13 @@ enumBodyDeclarations =
 -- {{{ Productions from §9 (Interfaces)
 
 
-data InterfaceDeclaration
+type InterfaceDeclaration
     = InterfaceDeclaration_Normal NormalInterfaceDeclaration
     | InterfaceDeclaration_Annotation AnnotationTypeDeclaration
-    deriving (Show)
+    
 
 
-interfaceDeclaration :: Parser InterfaceDeclaration
+interfaceDeclaration : Parser InterfaceDeclaration
 interfaceDeclaration =
     oneOf
         [ kmap InterfaceDeclaration_Normal normalInterfaceDeclaration
@@ -2342,12 +2397,12 @@ interfaceDeclaration =
         ]
 
 
-data NormalInterfaceDeclaration
-    = NormalInterfaceDeclaration ([ InterfaceModifier ]) TypeIdentifier (Maybe TypeParameters) (Maybe ExtendsInterfaces) InterfaceBody
-    deriving (Show)
+type NormalInterfaceDeclaration
+    = NormalInterfaceDeclaration (List InterfaceModifier) TypeIdentifier (Maybe TypeParameters) (Maybe ExtendsInterfaces) InterfaceBody
+    
 
 
-normalInterfaceDeclaration :: Parser NormalInterfaceDeclaration
+normalInterfaceDeclaration : Parser NormalInterfaceDeclaration
 normalInterfaceDeclaration =
         keeper (
         ignorer (
@@ -2360,21 +2415,21 @@ normalInterfaceDeclaration =
         ignorer (
         ignorer (
         keeper (
-        succeed NormalInterfaceDeclaration ) $
-        list interfaceModifier ) $
-        spaces ) $
-        (keyword "interface") ) $
-        spaces ) $
-        typeIdentifier ) $
-        spaces ) $
-        optional typeParameters ) $
-        spaces ) $
-        optional extendsInterfaces ) $
-        spaces ) $
+        succeed NormalInterfaceDeclaration ) <|
+        list interfaceModifier ) <|
+        spaces ) <|
+        (keyword "interface") ) <|
+        spaces ) <|
+        typeIdentifier ) <|
+        spaces ) <|
+        optional typeParameters ) <|
+        spaces ) <|
+        optional extendsInterfaces ) <|
+        spaces ) <|
         interfaceBody
 
 
-data InterfaceModifier
+type InterfaceModifier
     = InterfaceModifier_Annotation Annotation
     | InterfaceModifier_Public
     | InterfaceModifier_Protected
@@ -2382,10 +2437,10 @@ data InterfaceModifier
     | InterfaceModifier_Abstract
     | InterfaceModifier_Static
     | InterfaceModifier_Strictfp
-    deriving (Show)
+    
 
 
-interfaceModifier :: Parser InterfaceModifier
+interfaceModifier : Parser InterfaceModifier
 interfaceModifier =
     oneOf
         [ kmap InterfaceModifier_Annotation annotation
@@ -2398,12 +2453,12 @@ interfaceModifier =
         ]
 
 
-data ExtendsInterfaces
+type ExtendsInterfaces
     = ExtendsInterfaces InterfaceTypeList
-    deriving (Show)
+    
 
 
-extendsInterfaces :: Parser ExtendsInterfaces
+extendsInterfaces : Parser ExtendsInterfaces
 extendsInterfaces =
     iikmap ExtendsInterfaces
         (keyword "extends")
@@ -2411,12 +2466,12 @@ extendsInterfaces =
         interfaceTypeList
 
 
-data InterfaceBody
-    = InterfaceBody ([ InterfaceMemberDeclaration ])
-    deriving (Show)
+type InterfaceBody
+    = InterfaceBody (List InterfaceMemberDeclaration)
+    
 
 
-interfaceBody :: Parser InterfaceBody
+interfaceBody : Parser InterfaceBody
 interfaceBody =
     lazy (\_ -> 
             iikiimap InterfaceBody
@@ -2428,16 +2483,16 @@ interfaceBody =
     )
 
 
-data InterfaceMemberDeclaration
+type InterfaceMemberDeclaration
     = InterfaceMemberDeclaration_Constant ConstantDeclaration
     | InterfaceMemberDeclaration_Method InterfaceMethodDeclaration
     | InterfaceMemberDeclaration_Class ClassDeclaration
     | InterfaceMemberDeclaration_Interface InterfaceDeclaration
     | InterfaceMemberDeclaration_Semi
-    deriving (Show)
+    
 
 
-interfaceMemberDeclaration :: Parser InterfaceMemberDeclaration
+interfaceMemberDeclaration : Parser InterfaceMemberDeclaration
 interfaceMemberDeclaration =
     oneOf
         [ kmap InterfaceMemberDeclaration_Constant constantDeclaration
@@ -2448,12 +2503,12 @@ interfaceMemberDeclaration =
         ]
 
 
-data ConstantDeclaration
-    = ConstantDeclaration ([ ConstantModifier ]) UnannType VariableDeclaratorList
-    deriving (Show)
+type ConstantDeclaration
+    = ConstantDeclaration (List ConstantModifier) UnannType VariableDeclaratorList
+    
 
 
-constantDeclaration :: Parser ConstantDeclaration
+constantDeclaration : Parser ConstantDeclaration
 constantDeclaration =
     kikikiimap ConstantDeclaration
         (list constantModifier)
@@ -2465,15 +2520,15 @@ constantDeclaration =
         (symbol ";")
 
 
-data ConstantModifier
+type ConstantModifier
     = ConstantModifier_Annotation Annotation
     | ConstantModifier_Public
     | ConstantModifier_Static
     | ConstantModifier_Final
-    deriving (Show)
+    
 
 
-constantModifier :: Parser ConstantModifier
+constantModifier : Parser ConstantModifier
 constantModifier =
     oneOf
         [ kmap ConstantModifier_Annotation annotation
@@ -2483,12 +2538,12 @@ constantModifier =
         ]
 
 
-data InterfaceMethodDeclaration
-    = InterfaceMethodDeclaration ([ InterfaceMethodModifier ]) MethodHeader MethodBody
-    deriving (Show)
+type InterfaceMethodDeclaration
+    = InterfaceMethodDeclaration (List InterfaceMethodModifier) MethodHeader MethodBody
+    
 
 
-interfaceMethodDeclaration :: Parser InterfaceMethodDeclaration
+interfaceMethodDeclaration : Parser InterfaceMethodDeclaration
 interfaceMethodDeclaration =
     kikikmap InterfaceMethodDeclaration
         (list interfaceMethodModifier)
@@ -2498,7 +2553,7 @@ interfaceMethodDeclaration =
         methodBody
 
 
-data InterfaceMethodModifier
+type InterfaceMethodModifier
     = InterfaceMethodModifier_Annotation Annotation
     | InterfaceMethodModifier_Public
     | InterfaceMethodModifier_Private
@@ -2506,10 +2561,10 @@ data InterfaceMethodModifier
     | InterfaceMethodModifier_Default
     | InterfaceMethodModifier_Static
     | InterfaceMethodModifier_Strictfp
-    deriving (Show)
+    
 
 
-interfaceMethodModifier :: Parser InterfaceMethodModifier
+interfaceMethodModifier : Parser InterfaceMethodModifier
 interfaceMethodModifier =
     oneOf
         [ kmap InterfaceMethodModifier_Annotation annotation
@@ -2522,12 +2577,12 @@ interfaceMethodModifier =
         ]
 
 
-data AnnotationTypeDeclaration
-    = AnnotationTypeDeclaration ([ InterfaceModifier ]) TypeIdentifier AnnotationTypeBody
-    deriving (Show)
+type AnnotationTypeDeclaration
+    = AnnotationTypeDeclaration (List InterfaceModifier) TypeIdentifier AnnotationTypeBody
+    
 
 
-annotationTypeDeclaration :: Parser AnnotationTypeDeclaration
+annotationTypeDeclaration : Parser AnnotationTypeDeclaration
 annotationTypeDeclaration =
     kiiiiikikmap AnnotationTypeDeclaration
         (list interfaceModifier)
@@ -2541,12 +2596,12 @@ annotationTypeDeclaration =
         annotationTypeBody
 
 
-data AnnotationTypeBody
-    = AnnotationTypeBody ([ AnnotationTypeMemberDeclaration ])
-    deriving (Show)
+type AnnotationTypeBody
+    = AnnotationTypeBody (List AnnotationTypeMemberDeclaration)
+    
 
 
-annotationTypeBody :: Parser AnnotationTypeBody
+annotationTypeBody : Parser AnnotationTypeBody
 annotationTypeBody =
     lazy (\_ ->
         iikiimap AnnotationTypeBody
@@ -2558,16 +2613,16 @@ annotationTypeBody =
     )
 
 
-data AnnotationTypeMemberDeclaration
+type AnnotationTypeMemberDeclaration
     = AnnotationTypeMemberDeclaration_Element AnnotationTypeElementDeclaration
     | AnnotationTypeMemberDeclaration_Constant ConstantDeclaration
     | AnnotationTypeMemberDeclaration_Class ClassDeclaration
     | AnnotationTypeMemberDeclaration_Interface InterfaceDeclaration
     | AnnotationTypeMemberDeclaration_Semi
-    deriving (Show)
+    
 
 
-annotationTypeMemberDeclaration :: Parser AnnotationTypeMemberDeclaration
+annotationTypeMemberDeclaration : Parser AnnotationTypeMemberDeclaration
 annotationTypeMemberDeclaration =
     oneOf
         [ kmap AnnotationTypeMemberDeclaration_Element
@@ -2583,12 +2638,12 @@ annotationTypeMemberDeclaration =
         ]
 
 
-data AnnotationTypeElementDeclaration
-    = AnnotationTypeElementDeclaration ([ AnnotationTypeElementModifier ]) UnannType Identifier (Maybe Dims) (Maybe DefaultValue)
-    deriving (Show)
+type AnnotationTypeElementDeclaration
+    = AnnotationTypeElementDeclaration (List AnnotationTypeElementModifier) UnannType Identifier (Maybe Dims) (Maybe DefaultValue)
+    
 
 
-annotationTypeElementDeclaration :: Parser AnnotationTypeElementDeclaration
+annotationTypeElementDeclaration : Parser AnnotationTypeElementDeclaration
 annotationTypeElementDeclaration =
         ignorer (
         ignorer (
@@ -2605,32 +2660,32 @@ annotationTypeElementDeclaration =
         keeper (
         ignorer (
         keeper (
-        succeed AnnotationTypeElementDeclaration ) $
-        list annotationTypeElementModifier ) $
-        spaces ) $
-        unannType ) $
-        spaces ) $
-        identifier ) $
-        spaces ) $
-        (symbol "(") ) $
-        spaces ) $
-        (symbol ")") ) $
-        spaces ) $
-        optional dims ) $
-        spaces ) $
-        optional defaultValue ) $
-        spaces ) $
+        succeed AnnotationTypeElementDeclaration ) <|
+        list annotationTypeElementModifier ) <|
+        spaces ) <|
+        unannType ) <|
+        spaces ) <|
+        identifier ) <|
+        spaces ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        (symbol ")") ) <|
+        spaces ) <|
+        optional dims ) <|
+        spaces ) <|
+        optional defaultValue ) <|
+        spaces ) <|
         (symbol ";")
 
 
-data AnnotationTypeElementModifier
+type AnnotationTypeElementModifier
     = AnnotationTypeElementModifier_Annotation Annotation
     | AnnotationTypeElementModifier_Public
     | AnnotationTypeElementModifier_Abstract
-    deriving (Show)
+    
 
 
-annotationTypeElementModifier :: Parser AnnotationTypeElementModifier
+annotationTypeElementModifier : Parser AnnotationTypeElementModifier
 annotationTypeElementModifier =
     oneOf
         [ kmap AnnotationTypeElementModifier_Annotation annotation
@@ -2639,12 +2694,12 @@ annotationTypeElementModifier =
         ]
 
 
-data DefaultValue
+type DefaultValue
     = DefaultValue ElementValue
-    deriving (Show)
+    
 
 
-defaultValue :: Parser DefaultValue
+defaultValue : Parser DefaultValue
 defaultValue =
     iikmap DefaultValue
         (keyword "default")
@@ -2652,14 +2707,14 @@ defaultValue =
         elementValue
 
 
-data Annotation
+type Annotation
     = Annotation_Normal NormalAnnotation
     | Annotation_Marker MarkerAnnotation
     | Annotation_SingleElement SingleElementAnnotation
-    deriving (Show)
+    
 
 
-annotation :: Parser Annotation
+annotation : Parser Annotation
 annotation =
     lazy (\_ ->
         oneOf
@@ -2670,12 +2725,12 @@ annotation =
     )
 
 
-data NormalAnnotation
+type NormalAnnotation
     = NormalAnnotation TypeName (Maybe ElementValuePairList)
-    deriving (Show)
+    
 
 
-normalAnnotation :: Parser NormalAnnotation
+normalAnnotation : Parser NormalAnnotation
 normalAnnotation =
         ignorer (
         ignorer (
@@ -2686,24 +2741,24 @@ normalAnnotation =
         keeper (
         ignorer (
         ignorer (
-        succeed NormalAnnotation ) $
-        (symbol "@") ) $
-        spaces ) $
-        typeName ) $
-        spaces ) $
-        (symbol "(") ) $
-        spaces ) $
-        (optional elementValuePairList) ) $
-        spaces ) $
+        succeed NormalAnnotation ) <|
+        (symbol "@") ) <|
+        spaces ) <|
+        typeName ) <|
+        spaces ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        (optional elementValuePairList) ) <|
+        spaces ) <|
         (symbol ")")
 
 
-data ElementValuePairList
-    = ElementValuePairList ElementValuePair ([ ElementValuePair ])
-    deriving (Show)
+type ElementValuePairList
+    = ElementValuePairList ElementValuePair (List ElementValuePair)
+    
 
 
-elementValuePairList :: Parser ElementValuePairList
+elementValuePairList : Parser ElementValuePairList
 elementValuePairList =
     kikmap ElementValuePairList
         elementValuePair
@@ -2717,12 +2772,12 @@ elementValuePairList =
         )
 
 
-data ElementValuePair
+type ElementValuePair
     = ElementValuePair Identifier ElementValue
-    deriving (Show)
+    
 
 
-elementValuePair :: Parser ElementValuePair
+elementValuePair : Parser ElementValuePair
 elementValuePair =
     kiiikmap ElementValuePair
         identifier
@@ -2732,14 +2787,14 @@ elementValuePair =
         elementValue
 
 
-data ElementValue
+type ElementValue
     = ElementValue_Conditional ConditionalExpression
     | ElementValue_ArrayInitializer ElementValueArrayInitializer
     | ElementValue_Annotation Annotation
-    deriving (Show)
+    
 
 
-elementValue :: Parser ElementValue
+elementValue : Parser ElementValue
 elementValue =
     lazy (\_ ->
         oneOf
@@ -2751,12 +2806,12 @@ elementValue =
     )
 
 
-data ElementValueArrayInitializer
+type ElementValueArrayInitializer
     = ElementValueArrayInitializer (Maybe ElementValueList)
-    deriving (Show)
+    
 
 
-elementValueArrayInitializer :: Parser ElementValueArrayInitializer
+elementValueArrayInitializer : Parser ElementValueArrayInitializer
 elementValueArrayInitializer =
         ignorer (
         ignorer (
@@ -2765,22 +2820,22 @@ elementValueArrayInitializer =
         keeper (
         ignorer (
         ignorer (
-        succeed ElementValueArrayInitializer ) $
-        (symbol "{") ) $
-        spaces ) $
-        (optional (elementValueList)) ) $
-        spaces ) $
-        (optional (symbol ",")) ) $
-        spaces ) $
+        succeed ElementValueArrayInitializer ) <|
+        (symbol "{") ) <|
+        spaces ) <|
+        (optional (elementValueList)) ) <|
+        spaces ) <|
+        (optional (symbol ",")) ) <|
+        spaces ) <|
         (symbol "}")
 
 
-data ElementValueList
-    = ElementValueList ElementValue ([ ElementValue ])
-    deriving (Show)
+type ElementValueList
+    = ElementValueList ElementValue (List ElementValue)
+    
 
 
-elementValueList :: Parser ElementValueList
+elementValueList : Parser ElementValueList
 elementValueList =
     kikmap ElementValueList
         elementValue
@@ -2794,24 +2849,24 @@ elementValueList =
         )
 
 
-data MarkerAnnotation
+type MarkerAnnotation
     = MarkerAnnotation TypeName
-    deriving (Show)
+    
 
 
-markerAnnotation :: Parser MarkerAnnotation
+markerAnnotation : Parser MarkerAnnotation
 markerAnnotation =
     ikmap MarkerAnnotation
         (symbol "@")
         typeName
 
 
-data SingleElementAnnotation
+type SingleElementAnnotation
     = SingleElementAnnotation TypeName ElementValue
-    deriving (Show)
+    
 
 
-singleElementAnnotation :: Parser SingleElementAnnotation
+singleElementAnnotation : Parser SingleElementAnnotation
 singleElementAnnotation =
         ignorer (
         ignorer (
@@ -2822,15 +2877,15 @@ singleElementAnnotation =
         keeper (
         ignorer (
         ignorer (
-        succeed SingleElementAnnotation ) $
-        (symbol "@") ) $
-        spaces ) $
-        typeName ) $
-        spaces ) $
-        (symbol "(") ) $
-        spaces ) $
-        elementValue ) $
-        spaces ) $
+        succeed SingleElementAnnotation ) <|
+        (symbol "@") ) <|
+        spaces ) <|
+        typeName ) <|
+        spaces ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        elementValue ) <|
+        spaces ) <|
         (symbol ")")
 
 
@@ -2839,32 +2894,32 @@ singleElementAnnotation =
 -- {{{ Productions from §10 (Arrays)
 
 
-data ArrayInitializer
+type ArrayInitializer
     = ArrayInitializer (Maybe VariableInitializerList)
-    deriving (Show)
+    
 
 
-arrayInitializer :: Parser ArrayInitializer
+arrayInitializer : Parser ArrayInitializer
 arrayInitializer =
         ignorer (
         ignorer (
         ignorer (
         keeper (
         ignorer (
-        succeed ArrayInitializer ) $
-        (symbol "{") ) $
-        optional (variableInitializerList) ) $
-        spaces ) $
-        optional (symbol ",") ) $
+        succeed ArrayInitializer ) <|
+        (symbol "{") ) <|
+        optional (variableInitializerList) ) <|
+        spaces ) <|
+        optional (symbol ",") ) <|
         (symbol "}")
 
 
-data VariableInitializerList
-    = VariableInitializerList VariableInitializer ([ VariableInitializer ])
-    deriving (Show)
+type VariableInitializerList
+    = VariableInitializerList VariableInitializer (List VariableInitializer)
+    
 
 
-variableInitializerList :: Parser VariableInitializerList
+variableInitializerList : Parser VariableInitializerList
 variableInitializerList =
     kikmap VariableInitializerList
         variableInitializer
@@ -2883,12 +2938,12 @@ variableInitializerList =
 -- {{{ Productions from §14 (Blocks and Statements)
 
 
-data Block
+type Block
     = Block (Maybe BlockStatements)
-    deriving (Show)
+    
 
 
-block :: Parser Block
+block : Parser Block
 block =
     ikimap Block
         (symbol "{")
@@ -2896,12 +2951,12 @@ block =
         (symbol "}")
 
 
-data BlockStatements
-    = BlockStatements BlockStatement ([ BlockStatement ])
-    deriving (Show)
+type BlockStatements
+    = BlockStatements BlockStatement (List BlockStatement)
+    
 
 
-blockStatements :: Parser BlockStatements
+blockStatements : Parser BlockStatements
 blockStatements =
     kikmap BlockStatements
         blockStatement
@@ -2909,14 +2964,14 @@ blockStatements =
         (list blockStatement)
 
 
-data BlockStatement
+type BlockStatement
     = BlockStatement_LocalVariable LocalVariableDeclarationStatement
     | BlockStatement_Class ClassDeclaration
     | BlockStatement_Statement Statement
-    deriving (Show)
+    
 
 
-blockStatement :: Parser BlockStatement
+blockStatement : Parser BlockStatement
 blockStatement =
     oneOf
         [ kmap BlockStatement_LocalVariable localVariableDeclarationStatement
@@ -2925,12 +2980,12 @@ blockStatement =
         ]
 
 
-data LocalVariableDeclarationStatement
+type LocalVariableDeclarationStatement
     = LocalVariableDeclarationStatement LocalVariableDeclaration
-    deriving (Show)
+    
 
 
-localVariableDeclarationStatement :: Parser LocalVariableDeclarationStatement
+localVariableDeclarationStatement : Parser LocalVariableDeclarationStatement
 localVariableDeclarationStatement =
     kiimap LocalVariableDeclarationStatement
         localVariableDeclaration
@@ -2938,12 +2993,12 @@ localVariableDeclarationStatement =
         (symbol ";")
 
 
-data LocalVariableDeclaration
-    = LocalVariableDeclaration ([ VariableModifier ]) LocalVariableType VariableDeclaratorList
-    deriving (Show)
+type LocalVariableDeclaration
+    = LocalVariableDeclaration (List VariableModifier) LocalVariableType VariableDeclaratorList
+    
 
 
-localVariableDeclaration :: Parser LocalVariableDeclaration
+localVariableDeclaration : Parser LocalVariableDeclaration
 localVariableDeclaration =
     kikikmap LocalVariableDeclaration
         (list variableModifier)
@@ -2953,13 +3008,13 @@ localVariableDeclaration =
         variableDeclaratorList
 
 
-data LocalVariableType
+type LocalVariableType
     = LocalVariableType_UnannType UnannType
     | LocalVariableType_Var
-    deriving (Show)
+    
 
 
-localVariableType :: Parser LocalVariableType
+localVariableType : Parser LocalVariableType
 localVariableType =
     oneOf
         [ kmap LocalVariableType_UnannType unannType
@@ -2967,17 +3022,17 @@ localVariableType =
         ]
 
 
-data Statement
+type Statement
     = Statement_Statement StatementWithoutTrailingSubstatement
     | Statement_Labeled LabeledStatement
     | Statement_If IfThenStatement
     | Statement_IfThenElse IfThenElseStatement
     | Statement_While WhileStatement
     | Statement_For ForStatement
-    deriving (Show)
+    
 
 
-statement :: Parser Statement
+statement : Parser Statement
 statement =
     oneOf
         [ kmap Statement_Statement statementWithoutTrailingSubstatement
@@ -2989,16 +3044,16 @@ statement =
         ]
 
 
-data StatementNoShortIf
+type StatementNoShortIf
     = StatementNoShortIf_NoTrailing StatementWithoutTrailingSubstatement
     | StatementNoShortIf_Labeled LabeledStatementNoShortIf
     | StatementNoShortIf_IfThenElse IfThenElseStatementNoShortIf
     | StatementNoShortIf_While WhileStatementNoShortIf
     | StatementNoShortIf_For ForStatementNoShortIf
-    deriving (Show)
+    
 
 
-statementNoShortIf :: Parser StatementNoShortIf
+statementNoShortIf : Parser StatementNoShortIf
 statementNoShortIf =
     oneOf
         [ kmap StatementNoShortIf_NoTrailing statementWithoutTrailingSubstatement
@@ -3009,7 +3064,7 @@ statementNoShortIf =
         ]
 
 
-data StatementWithoutTrailingSubstatement
+type StatementWithoutTrailingSubstatement
     = StatementWithoutTrailingSubstatement_Block Block
     | StatementWithoutTrailingSubstatement_Empty EmptyStatement
     | StatementWithoutTrailingSubstatement_Expression ExpressionStatement
@@ -3023,10 +3078,10 @@ data StatementWithoutTrailingSubstatement
     | StatementWithoutTrailingSubstatement_Throw ThrowStatement
     | StatementWithoutTrailingSubstatement_Try TryStatement
     | StatementWithoutTrailingSubstatement_Yield YieldStatement
-    deriving (Show)
+    
 
 
-statementWithoutTrailingSubstatement :: Parser StatementWithoutTrailingSubstatement
+statementWithoutTrailingSubstatement : Parser StatementWithoutTrailingSubstatement
 statementWithoutTrailingSubstatement =
     oneOf
         [ kmap StatementWithoutTrailingSubstatement_Block
@@ -3058,22 +3113,22 @@ statementWithoutTrailingSubstatement =
         ]
 
 
-data EmptyStatement
+type EmptyStatement
     = EmptyStatement
-    deriving (Show)
+    
 
 
-emptyStatement :: Parser EmptyStatement
+emptyStatement : Parser EmptyStatement
 emptyStatement =
     imap EmptyStatement (symbol ";")
 
 
-data LabeledStatement
+type LabeledStatement
     = LabeledStatement Identifier Statement
-    deriving (Show)
+    
 
 
-labeledStatement :: Parser LabeledStatement
+labeledStatement : Parser LabeledStatement
 labeledStatement =
     kiiikmap LabeledStatement
         identifier
@@ -3083,12 +3138,12 @@ labeledStatement =
         (lazy (\_ -> statement))
 
 
-data LabeledStatementNoShortIf
+type LabeledStatementNoShortIf
     = LabeledStatementNoShortIf Identifier StatementNoShortIf
-    deriving (Show)
+    
 
 
-labeledStatementNoShortIf :: Parser LabeledStatementNoShortIf
+labeledStatementNoShortIf : Parser LabeledStatementNoShortIf
 labeledStatementNoShortIf =
     kiiikmap LabeledStatementNoShortIf
         identifier
@@ -3098,12 +3153,12 @@ labeledStatementNoShortIf =
         (lazy (\_ -> statementNoShortIf))
 
 
-data ExpressionStatement
+type ExpressionStatement
     = ExpressionStatement StatementExpression
-    deriving (Show)
+    
 
 
-expressionStatement :: Parser ExpressionStatement
+expressionStatement : Parser ExpressionStatement
 expressionStatement =
     kiimap ExpressionStatement
         statementExpression
@@ -3111,7 +3166,7 @@ expressionStatement =
         (symbol ";")
 
 
-data StatementExpression
+type StatementExpression
     = StatementExpression_Assignment Assignment
     | StatementExpression_PreIncrement PreIncrementExpression
     | StatementExpression_PreDecrement PreDecrementExpression
@@ -3119,10 +3174,10 @@ data StatementExpression
     | StatementExpression_PostDecrement PostDecrementExpression
     | StatementExpression_MethodInvocation MethodInvocation
     | StatementExpression_ClassCreation ClassInstanceCreationExpression
-    deriving (Show)
+    
 
 
-statementExpression :: Parser StatementExpression
+statementExpression : Parser StatementExpression
 statementExpression =
     oneOf
         [ kmap StatementExpression_Assignment
@@ -3142,12 +3197,12 @@ statementExpression =
         ]
 
 
-data IfThenStatement
+type IfThenStatement
     = IfThenStatement Expression Statement
-    deriving (Show)
+    
 
 
-ifThenStatement :: Parser IfThenStatement
+ifThenStatement : Parser IfThenStatement
 ifThenStatement =
         keeper (
         ignorer (
@@ -3158,24 +3213,24 @@ ifThenStatement =
         ignorer (
         ignorer (
         ignorer (
-        succeed IfThenStatement ) $
-        (keyword "if") ) $
-        spaces ) $
-        (symbol "(") ) $
-        spaces ) $
-        expression ) $
-        spaces ) $
-        (symbol ")") ) $
-        spaces ) $
+        succeed IfThenStatement ) <|
+        (keyword "if") ) <|
+        spaces ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        expression ) <|
+        spaces ) <|
+        (symbol ")") ) <|
+        spaces ) <|
         (lazy (\_ -> statement))
 
 
-data IfThenElseStatement
+type IfThenElseStatement
     = IfThenElseStatement Expression StatementNoShortIf Statement
-    deriving (Show)
+    
 
 
-ifThenElseStatement :: Parser IfThenElseStatement
+ifThenElseStatement : Parser IfThenElseStatement
 ifThenElseStatement =
         keeper (
         ignorer (
@@ -3190,28 +3245,28 @@ ifThenElseStatement =
         ignorer (
         ignorer (
         ignorer (
-        succeed IfThenElseStatement ) $
-        (keyword "if") ) $
-        spaces ) $
-        (symbol "(") ) $
-        spaces ) $
-        expression ) $
-        spaces ) $
-        (symbol ")") ) $
-        spaces ) $
-        statementNoShortIf ) $
-        spaces ) $
-        (keyword "else") ) $
-        spaces ) $
+        succeed IfThenElseStatement ) <|
+        (keyword "if") ) <|
+        spaces ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        expression ) <|
+        spaces ) <|
+        (symbol ")") ) <|
+        spaces ) <|
+        statementNoShortIf ) <|
+        spaces ) <|
+        (keyword "else") ) <|
+        spaces ) <|
         lazy (\_ -> statement)
 
 
-data IfThenElseStatementNoShortIf
+type IfThenElseStatementNoShortIf
     = IfThenElseStatementNoShortIf Expression StatementNoShortIf StatementNoShortIf
-    deriving (Show)
+    
 
 
-ifThenElseStatementNoShortIf :: Parser IfThenElseStatementNoShortIf
+ifThenElseStatementNoShortIf : Parser IfThenElseStatementNoShortIf
 ifThenElseStatementNoShortIf =
         keeper (
         ignorer (
@@ -3226,29 +3281,29 @@ ifThenElseStatementNoShortIf =
         ignorer (
         ignorer (
         ignorer (
-        succeed IfThenElseStatementNoShortIf ) $
-        (keyword "if") ) $
-        spaces ) $
-        (symbol "(") ) $
-        spaces ) $
-        expression ) $
-        spaces ) $
-        (symbol ")") ) $
-        spaces ) $
-        lazy (\_ -> statementNoShortIf) ) $
-        spaces ) $
-        (keyword "else") ) $
-        spaces ) $
+        succeed IfThenElseStatementNoShortIf ) <|
+        (keyword "if") ) <|
+        spaces ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        expression ) <|
+        spaces ) <|
+        (symbol ")") ) <|
+        spaces ) <|
+        lazy (\_ -> statementNoShortIf) ) <|
+        spaces ) <|
+        (keyword "else") ) <|
+        spaces ) <|
         lazy (\_ -> statementNoShortIf)
 
 
-data AssertStatement
+type AssertStatement
     = AssertStatement_Expression Expression
     | AssertStatement_WithError Expression Expression
-    deriving (Show)
+    
 
 
-assertStatement :: Parser AssertStatement
+assertStatement : Parser AssertStatement
 assertStatement =
     oneOf
         [ iikiimap AssertStatement_Expression
@@ -3266,25 +3321,25 @@ assertStatement =
           keeper (
           ignorer (
           ignorer (
-          succeed AssertStatement_WithError) $
-          (keyword "assert")) $
-          spaces) $
-          expression) $
-          spaces) $
-          (symbol ":")) $
-          spaces) $
-          expression) $
-          spaces) $
+          succeed AssertStatement_WithError) <|
+          (keyword "assert")) <|
+          spaces) <|
+          expression) <|
+          spaces) <|
+          (symbol ":")) <|
+          spaces) <|
+          expression) <|
+          spaces) <|
           (symbol ";")
         ]
 
 
-data SwitchStatement
+type SwitchStatement
     = SwitchStatement Expression SwitchBlock
-    deriving (Show)
+    
 
 
-switchStatement :: Parser SwitchStatement
+switchStatement : Parser SwitchStatement
 switchStatement =
         keeper (
         ignorer (
@@ -3295,25 +3350,25 @@ switchStatement =
         ignorer (
         ignorer (
         ignorer (
-        succeed SwitchStatement ) $
-        (keyword "switch") ) $
-        spaces ) $
-        (symbol "(") ) $
-        spaces ) $
-        expression ) $
-        spaces ) $
-        (symbol ")") ) $
-        spaces ) $
+        succeed SwitchStatement ) <|
+        (keyword "switch") ) <|
+        spaces ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        expression ) <|
+        spaces ) <|
+        (symbol ")") ) <|
+        spaces ) <|
         switchBlock
 
 
-data SwitchBlock
-    = SwitchBlock_Rule SwitchRule ([ SwitchRule ])
-    | SwitchBlock_Group ([ SwitchBlockStatementGroup ]) ([ SwitchLabel ])
-    deriving (Show)
+type SwitchBlock
+    = SwitchBlock_Rule SwitchRule (List SwitchRule)
+    | SwitchBlock_Group (List SwitchBlockStatementGroup) (List SwitchLabel)
+    
 
 
-switchBlock :: Parser SwitchBlock
+switchBlock : Parser SwitchBlock
 switchBlock =
     iikiimap identity
         (symbol "{")
@@ -3339,14 +3394,14 @@ switchBlock =
         (symbol "}")
 
 
-data SwitchRule
+type SwitchRule
     = SwitchRule_Expression SwitchLabel Expression
     | SwitchRule_Block SwitchLabel Block
     | SwitchRule_Throw SwitchLabel ThrowStatement
-    deriving (Show)
+    
 
 
-switchRule :: Parser SwitchRule
+switchRule : Parser SwitchRule
 switchRule =
     oneOf
         [ kiiikiimap SwitchRule_Expression
@@ -3376,12 +3431,12 @@ switchRule =
         ]
 
 
-data SwitchBlockStatementGroup
-    = SwitchBlockStatementGroup SwitchLabel ([ SwitchLabel ]) BlockStatements
-    deriving (Show)
+type SwitchBlockStatementGroup
+    = SwitchBlockStatementGroup SwitchLabel (List SwitchLabel) BlockStatements
+    
 
 
-switchBlockStatementGroup :: Parser SwitchBlockStatementGroup
+switchBlockStatementGroup : Parser SwitchBlockStatementGroup
 switchBlockStatementGroup =
     kiiikikmap SwitchBlockStatementGroup
         switchLabel
@@ -3399,13 +3454,13 @@ switchBlockStatementGroup =
         (lazy (\_ -> blockStatements))
 
 
-data SwitchLabel
-    = SwitchLabel_Case CaseConstant ([ CaseConstant ])
+type SwitchLabel
+    = SwitchLabel_Case CaseConstant (List CaseConstant)
     | SwitchLabel_Default
-    deriving (Show)
+    
 
 
-switchLabel :: Parser SwitchLabel
+switchLabel : Parser SwitchLabel
 switchLabel =
     oneOf
         [ iikkmap SwitchLabel_Case
@@ -3424,22 +3479,22 @@ switchLabel =
         ]
 
 
-data CaseConstant
+type CaseConstant
     = CaseConstant ConditionalExpression
-    deriving (Show)
+    
 
 
-caseConstant :: Parser CaseConstant
+caseConstant : Parser CaseConstant
 caseConstant =
     kmap CaseConstant (lazy (\_ -> conditionalExpression))
 
 
-data WhileStatement
+type WhileStatement
     = WhileStatement Expression Statement
-    deriving (Show)
+    
 
 
-whileStatement :: Parser WhileStatement
+whileStatement : Parser WhileStatement
 whileStatement =
     iiiikiiikmap WhileStatement
         (keyword "while")
@@ -3453,12 +3508,12 @@ whileStatement =
         (lazy (\_ -> statement))
 
 
-data WhileStatementNoShortIf
+type WhileStatementNoShortIf
     = WhileStatementNoShortIf Expression StatementNoShortIf
-    deriving (Show)
+    
 
 
-whileStatementNoShortIf :: Parser WhileStatementNoShortIf
+whileStatementNoShortIf : Parser WhileStatementNoShortIf
 whileStatementNoShortIf =
     iiiikiiikmap WhileStatementNoShortIf
         (keyword "while")
@@ -3472,12 +3527,12 @@ whileStatementNoShortIf =
         (lazy (\_ -> statementNoShortIf))
 
 
-data DoStatement
+type DoStatement
     = DoStatement Statement Expression
-    deriving (Show)
+    
 
 
-doStatement :: Parser DoStatement
+doStatement : Parser DoStatement
 doStatement =
         ignorer (
         ignorer (
@@ -3492,29 +3547,29 @@ doStatement =
         keeper (
         ignorer (
         ignorer (
-        succeed DoStatement ) $
-        (keyword "do") ) $
-        spaces ) $
-        lazy (\_ -> statement) ) $
-        spaces ) $
-        (keyword "while") ) $
-        spaces ) $
-        (symbol "(") ) $
-        spaces ) $
-        expression ) $
-        spaces ) $
-        (symbol ")") ) $
-        spaces ) $
+        succeed DoStatement ) <|
+        (keyword "do") ) <|
+        spaces ) <|
+        lazy (\_ -> statement) ) <|
+        spaces ) <|
+        (keyword "while") ) <|
+        spaces ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        expression ) <|
+        spaces ) <|
+        (symbol ")") ) <|
+        spaces ) <|
         (symbol ";")
 
 
-data ForStatement
+type ForStatement
     = ForStatement_Basic BasicForStatement
     | ForStatement_Enhanced EnhancedForStatement
-    deriving (Show)
+    
 
 
-forStatement :: Parser ForStatement
+forStatement : Parser ForStatement
 forStatement =
     oneOf
         [ kmap ForStatement_Basic basicForStatement
@@ -3522,13 +3577,13 @@ forStatement =
         ]
 
 
-data ForStatementNoShortIf
+type ForStatementNoShortIf
     = ForStatementNoShortIf_Basic BasicForStatementNoShortIf
     | ForStatementNoShortIf_Enhanced EnhancedForStatementNoShortIf
-    deriving (Show)
+    
 
 
-forStatementNoShortIf :: Parser ForStatementNoShortIf
+forStatementNoShortIf : Parser ForStatementNoShortIf
 forStatementNoShortIf =
     oneOf
         [ kmap ForStatementNoShortIf_Basic
@@ -3538,12 +3593,12 @@ forStatementNoShortIf =
         ]
 
 
-data BasicForStatement
+type BasicForStatement
     = BasicForStatement (Maybe ForInit) (Maybe Expression) (Maybe ForUpdate) Statement
-    deriving (Show)
+    
 
 
-basicForStatement :: Parser BasicForStatement
+basicForStatement : Parser BasicForStatement
 basicForStatement =
         keeper (
         ignorer (
@@ -3562,32 +3617,32 @@ basicForStatement =
         ignorer (
         ignorer (
         ignorer (
-        succeed BasicForStatement ) $
-        (keyword "for") ) $
-        spaces ) $
-        (symbol "(") ) $
-        spaces ) $
-        optional forInit ) $
-        spaces ) $
-        (symbol ";") ) $
-        spaces ) $
-        optional expression ) $
-        spaces ) $
-        (symbol ";") ) $
-        spaces ) $
-        optional forUpdate ) $
-        spaces ) $
-        (symbol ")") ) $
-        spaces ) $
+        succeed BasicForStatement ) <|
+        (keyword "for") ) <|
+        spaces ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        optional forInit ) <|
+        spaces ) <|
+        (symbol ";") ) <|
+        spaces ) <|
+        optional expression ) <|
+        spaces ) <|
+        (symbol ";") ) <|
+        spaces ) <|
+        optional forUpdate ) <|
+        spaces ) <|
+        (symbol ")") ) <|
+        spaces ) <|
         lazy (\_ -> statement)
 
 
-data BasicForStatementNoShortIf
+type BasicForStatementNoShortIf
     = BasicForStatementNoShortIf (Maybe ForInit) (Maybe Expression) (Maybe ForUpdate) StatementNoShortIf
-    deriving (Show)
+    
 
 
-basicForStatementNoShortIf :: Parser BasicForStatementNoShortIf
+basicForStatementNoShortIf : Parser BasicForStatementNoShortIf
 basicForStatementNoShortIf =
         keeper (
         ignorer (
@@ -3606,33 +3661,33 @@ basicForStatementNoShortIf =
         ignorer (
         ignorer (
         ignorer (
-        succeed BasicForStatementNoShortIf ) $
-        (keyword "for") ) $
-        spaces ) $
-        (symbol "(") ) $
-        spaces ) $
-        optional forInit ) $
-        spaces ) $
-        (symbol ";") ) $
-        spaces ) $
-        optional expression ) $
-        spaces ) $
-        (symbol ";") ) $
-        spaces ) $
-        optional forUpdate ) $
-        spaces ) $
-        (symbol ")") ) $
-        spaces ) $
+        succeed BasicForStatementNoShortIf ) <|
+        (keyword "for") ) <|
+        spaces ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        optional forInit ) <|
+        spaces ) <|
+        (symbol ";") ) <|
+        spaces ) <|
+        optional expression ) <|
+        spaces ) <|
+        (symbol ";") ) <|
+        spaces ) <|
+        optional forUpdate ) <|
+        spaces ) <|
+        (symbol ")") ) <|
+        spaces ) <|
         lazy (\_ -> statementNoShortIf)
 
 
-data ForInit
+type ForInit
     = ForInit_StatementList StatementExpressionList
     | ForInit_Variable LocalVariableDeclaration
-    deriving (Show)
+    
 
 
-forInit :: Parser ForInit
+forInit : Parser ForInit
 forInit =
     oneOf
         [ kmap ForInit_StatementList
@@ -3642,21 +3697,21 @@ forInit =
         ]
 
 
-data ForUpdate
+type ForUpdate
     = ForUpdate StatementExpressionList
-    deriving (Show)
+    
 
 
-forUpdate :: Parser ForUpdate
+forUpdate : Parser ForUpdate
 forUpdate = kmap ForUpdate statementExpressionList
 
 
-data StatementExpressionList
-    = StatementExpressionList StatementExpression ([ StatementExpression ])
-    deriving (Show)
+type StatementExpressionList
+    = StatementExpressionList StatementExpression (List StatementExpression)
+    
 
 
-statementExpressionList :: Parser StatementExpressionList
+statementExpressionList : Parser StatementExpressionList
 statementExpressionList =
     kikmap StatementExpressionList
         statementExpression
@@ -3670,12 +3725,12 @@ statementExpressionList =
         )
 
 
-data EnhancedForStatement
-    = EnhancedForStatement ([ VariableModifier ]) LocalVariableType VariableDeclaratorId Expression Statement
-    deriving (Show)
+type EnhancedForStatement
+    = EnhancedForStatement (List VariableModifier) LocalVariableType VariableDeclaratorId Expression Statement
+    
 
 
-enhancedForStatement :: Parser EnhancedForStatement
+enhancedForStatement : Parser EnhancedForStatement
 enhancedForStatement =
         keeper (
         ignorer (
@@ -3694,32 +3749,32 @@ enhancedForStatement =
         ignorer (
         ignorer (
         ignorer (
-        succeed EnhancedForStatement ) $
-        (keyword "for") ) $
-        spaces ) $
-        (symbol "(") ) $
-        spaces ) $
-        list variableModifier ) $
-        spaces ) $
-        localVariableType ) $
-        spaces ) $
-        variableDeclaratorId ) $
-        spaces ) $
-        (symbol ":") ) $
-        spaces ) $
-        expression ) $
-        spaces ) $
-        (symbol ")") ) $
-        spaces ) $
+        succeed EnhancedForStatement ) <|
+        (keyword "for") ) <|
+        spaces ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        list variableModifier ) <|
+        spaces ) <|
+        localVariableType ) <|
+        spaces ) <|
+        variableDeclaratorId ) <|
+        spaces ) <|
+        (symbol ":") ) <|
+        spaces ) <|
+        expression ) <|
+        spaces ) <|
+        (symbol ")") ) <|
+        spaces ) <|
         lazy (\_ -> statement)
 
 
-data EnhancedForStatementNoShortIf
-    = EnhancedForStatementNoShortIf ([ VariableModifier ]) LocalVariableType VariableDeclaratorId Expression StatementNoShortIf
-    deriving (Show)
+type EnhancedForStatementNoShortIf
+    = EnhancedForStatementNoShortIf (List VariableModifier) LocalVariableType VariableDeclaratorId Expression StatementNoShortIf
+    
 
 
-enhancedForStatementNoShortIf :: Parser EnhancedForStatementNoShortIf
+enhancedForStatementNoShortIf : Parser EnhancedForStatementNoShortIf
 enhancedForStatementNoShortIf =
         keeper (
         ignorer (
@@ -3738,32 +3793,32 @@ enhancedForStatementNoShortIf =
         ignorer (
         ignorer (
         ignorer (
-        succeed EnhancedForStatementNoShortIf ) $
-        (keyword "for") ) $
-        spaces ) $
-        (symbol "(") ) $
-        spaces ) $
-        list variableModifier ) $
-        spaces ) $
-        localVariableType ) $
-        spaces ) $
-        variableDeclaratorId ) $
-        spaces ) $
-        (symbol ":") ) $
-        spaces ) $
-        expression ) $
-        spaces ) $
-        (symbol ")") ) $
-        spaces ) $
+        succeed EnhancedForStatementNoShortIf ) <|
+        (keyword "for") ) <|
+        spaces ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        list variableModifier ) <|
+        spaces ) <|
+        localVariableType ) <|
+        spaces ) <|
+        variableDeclaratorId ) <|
+        spaces ) <|
+        (symbol ":") ) <|
+        spaces ) <|
+        expression ) <|
+        spaces ) <|
+        (symbol ")") ) <|
+        spaces ) <|
         lazy (\_ -> statementNoShortIf)
 
 
-data BreakStatement
+type BreakStatement
     = BreakStatement (Maybe Identifier)
-    deriving (Show)
+    
 
 
-breakStatement :: Parser BreakStatement
+breakStatement : Parser BreakStatement
 breakStatement =
     iikiimap BreakStatement
         (keyword "break")
@@ -3773,12 +3828,12 @@ breakStatement =
         (symbol ";")
 
 
-data YieldStatement
+type YieldStatement
     = YieldStatement Expression
-    deriving (Show)
+    
 
 
-yieldStatement :: Parser YieldStatement
+yieldStatement : Parser YieldStatement
 yieldStatement =
     iikiimap YieldStatement
         (keyword "yield")
@@ -3788,12 +3843,12 @@ yieldStatement =
         (symbol ";")
 
 
-data ContinueStatement
+type ContinueStatement
     = ContinueStatement (Maybe Identifier)
-    deriving (Show)
+    
 
 
-continueStatement :: Parser ContinueStatement
+continueStatement : Parser ContinueStatement
 continueStatement = 
     iikiimap ContinueStatement
         (keyword "continue")
@@ -3802,12 +3857,12 @@ continueStatement =
         spaces
         (symbol ";")
 
-data ReturnStatement
+type ReturnStatement
     = ReturnStatement (Maybe Expression)
-    deriving (Show)
+    
 
 
-returnStatement :: Parser ReturnStatement
+returnStatement : Parser ReturnStatement
 returnStatement =
     iikiimap ReturnStatement
         (keyword "return")
@@ -3816,12 +3871,12 @@ returnStatement =
         spaces
         (symbol ";")
 
-data ThrowStatement
+type ThrowStatement
     = ThrowStatement Expression
-    deriving (Show)
+    
 
 
-throwStatement :: Parser ThrowStatement
+throwStatement : Parser ThrowStatement
 throwStatement =
     iikiimap ThrowStatement
         (keyword "throw")
@@ -3831,12 +3886,12 @@ throwStatement =
         (symbol ";")
 
 
-data SynchronizedStatement
+type SynchronizedStatement
     = SynchronizedStatement Expression Block
-    deriving (Show)
+    
 
 
-synchronizedStatement :: Parser SynchronizedStatement
+synchronizedStatement : Parser SynchronizedStatement
 synchronizedStatement =
     iiiikiiikmap SynchronizedStatement
         (keyword "synchronized")
@@ -3850,14 +3905,14 @@ synchronizedStatement =
         (lazy (\_ -> block))
 
 
-data TryStatement
+type TryStatement
     = TryStatement_Normal Block Catches
     | TryStatement_Finally Block (Maybe Catches) Finally
     | TryStatement_With TryWithResourcesStatement
-    deriving (Show)
+    
 
 
-tryStatement :: Parser TryStatement
+tryStatement : Parser TryStatement
 tryStatement =
     oneOf
         [ iikikmap TryStatement_Normal
@@ -3879,12 +3934,12 @@ tryStatement =
         ]
 
 
-data Catches
-    = Catches CatchClause ([ CatchClause ])
-    deriving (Show)
+type Catches
+    = Catches CatchClause (List CatchClause)
+    
 
 
-catches :: Parser Catches
+catches : Parser Catches
 catches =
     kikmap Catches
         catchClause
@@ -3892,12 +3947,12 @@ catches =
         (list catchClause)
 
 
-data CatchClause
+type CatchClause
     = CatchClause CatchFormalParameter Block
-    deriving (Show)
+    
 
 
-catchClause :: Parser CatchClause
+catchClause : Parser CatchClause
 catchClause =
     iiiikiiikmap CatchClause
         (keyword "catch")
@@ -3911,12 +3966,12 @@ catchClause =
         (lazy (\_ -> block))
 
 
-data CatchFormalParameter
-    = CatchFormalParameter ([ VariableModifier ]) CatchType VariableDeclaratorId
-    deriving (Show)
+type CatchFormalParameter
+    = CatchFormalParameter (List VariableModifier) CatchType VariableDeclaratorId
+    
 
 
-catchFormalParameter :: Parser CatchFormalParameter
+catchFormalParameter : Parser CatchFormalParameter
 catchFormalParameter =
     kikikmap CatchFormalParameter
         (list variableModifier)
@@ -3926,12 +3981,12 @@ catchFormalParameter =
         variableDeclaratorId
 
 
-data CatchType
-    = CatchType UnannClassType ([ ClassType ])
-    deriving (Show)
+type CatchType
+    = CatchType UnannClassType (List ClassType)
+    
 
 
-catchType :: Parser CatchType
+catchType : Parser CatchType
 catchType =
     kikmap CatchType
            unannClassType
@@ -3945,12 +4000,12 @@ catchType =
            )
 
 
-data Finally
+type Finally
     = Finally Block
-    deriving (Show)
+    
 
 
-finally :: Parser Finally
+finally : Parser Finally
 finally =
     iikmap Finally
         (succeed "finally")
@@ -3958,12 +4013,12 @@ finally =
         (lazy (\_ -> block))
 
 
-data TryWithResourcesStatement
+type TryWithResourcesStatement
     = TryWithResourcesStatement ResourceSpecification Block (Maybe Catches) (Maybe Finally)
-    deriving (Show)
+    
 
 
-tryWithResourcesStatement :: Parser TryWithResourcesStatement
+tryWithResourcesStatement : Parser TryWithResourcesStatement
 tryWithResourcesStatement =
         keeper (
         ignorer (
@@ -3974,24 +4029,24 @@ tryWithResourcesStatement =
         keeper (
         ignorer (
         ignorer (
-        succeed TryWithResourcesStatement ) $
-        (keyword "try") ) $
-        spaces ) $
-        resourceSpecification ) $
-        spaces ) $
-        (lazy (\_ -> block)) ) $
-        spaces ) $
-        (optional catches) ) $
-        spaces ) $
+        succeed TryWithResourcesStatement ) <|
+        (keyword "try") ) <|
+        spaces ) <|
+        resourceSpecification ) <|
+        spaces ) <|
+        (lazy (\_ -> block)) ) <|
+        spaces ) <|
+        (optional catches) ) <|
+        spaces ) <|
         (optional finally)
 
 
-data ResourceSpecification
+type ResourceSpecification
     = ResourceSpecification ResourceList
-    deriving (Show)
+    
 
 
-resourceSpecification :: Parser ResourceSpecification
+resourceSpecification : Parser ResourceSpecification
 resourceSpecification =
         ignorer (
         ignorer (
@@ -4000,22 +4055,22 @@ resourceSpecification =
         keeper (
         ignorer (
         ignorer (
-        succeed ResourceSpecification ) $
-        (symbol "(") ) $
-        spaces ) $
-        resourceList ) $
-        spaces ) $
-        (optional (symbol ";")) ) $
-        spaces ) $
+        succeed ResourceSpecification ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        resourceList ) <|
+        spaces ) <|
+        (optional (symbol ";")) ) <|
+        spaces ) <|
         (symbol ")")
 
 
-data ResourceList
-    = ResourceList Resource ([ Resource ])
-    deriving (Show)
+type ResourceList
+    = ResourceList Resource (List Resource)
+    
 
 
-resourceList :: Parser ResourceList
+resourceList : Parser ResourceList
 resourceList =
     kikmap ResourceList
         resource
@@ -4029,13 +4084,13 @@ resourceList =
         )
 
 
-data Resource
-    = Resource_Declaration ([ VariableModifier ]) LocalVariableType Identifier Expression
+type Resource
+    = Resource_Declaration (List VariableModifier) LocalVariableType Identifier Expression
     | Resource_VariableAccess VariableAccess
-    deriving (Show)
+    
 
 
-resource :: Parser Resource
+resource : Parser Resource
 resource =
     oneOf
         [ keeper (
@@ -4047,28 +4102,28 @@ resource =
           keeper (
           ignorer (
           keeper (
-          succeed Resource_Declaration ) $
-          list variableModifier ) $
-          spaces ) $
-          localVariableType ) $
-          spaces ) $
-          identifier ) $
-          spaces ) $
-          (symbol "=") ) $
-          spaces ) $
+          succeed Resource_Declaration ) <|
+          list variableModifier ) <|
+          spaces ) <|
+          localVariableType ) <|
+          spaces ) <|
+          identifier ) <|
+          spaces ) <|
+          (symbol "=") ) <|
+          spaces ) <|
           expression
         , kmap Resource_VariableAccess
             variableAccess
         ]
 
 
-data VariableAccess
+type VariableAccess
     = VariableAccess_Expression ExpressionName
     | VariableAccess_Field FieldAccess
-    deriving (Show)
+    
 
 
-variableAccess :: Parser VariableAccess
+variableAccess : Parser VariableAccess
 variableAccess =
     oneOf
         [ kmap VariableAccess_Expression
@@ -4083,13 +4138,13 @@ variableAccess =
 -- {{{ Productions from §15 (Expressions)
 
 
-data Primary
+type Primary
     = Primary_NoNewArray PrimaryNoNewArray
     | Primary_Creation ArrayCreationExpression
-    deriving (Show)
+    
 
 
-primary :: Parser Primary
+primary : Parser Primary
 primary =
     oneOf
         [ kmap Primary_NoNewArray
@@ -4099,7 +4154,7 @@ primary =
         ]
 
 
-data PrimaryNoNewArray
+type PrimaryNoNewArray
     = PrimaryNoNewArray_Literal Literal
     | PrimaryNoNewArray_ClassLiteral ClassLiteral
     | PrimaryNoNewArray_This
@@ -4110,10 +4165,10 @@ data PrimaryNoNewArray
     | PrimaryNoNewArray_ArrayAccess ArrayAccess
     | PrimaryNoNewArray_MethodInvocation MethodInvocation
     | PrimaryNoNewArray_MethodReference MethodReference
-    deriving (Show)
+    
 
 
-primaryNoNewArray :: Parser PrimaryNoNewArray
+primaryNoNewArray : Parser PrimaryNoNewArray
 primaryNoNewArray =
     oneOf
         [ kmap PrimaryNoNewArray_Literal
@@ -4147,15 +4202,15 @@ primaryNoNewArray =
         ]
 
 
-data ClassLiteral
+type ClassLiteral
     = ClassLiteral_TypeName TypeName Int
     | ClassLiteral_Numeric NumericType Int
     | ClassLiteral_Boolean Int
     | ClassLiteral_Void
-    deriving (Show)
+    
 
 
-classLiteral :: Parser ClassLiteral
+classLiteral : Parser ClassLiteral
 classLiteral =
     oneOf
         [ ignorer (
@@ -4165,13 +4220,13 @@ classLiteral =
           keeper (
           ignorer (
           keeper (
-          succeed ClassLiteral_TypeName ) $
-          typeName ) $
-          spaces ) $
-          brackets ) $
-          spaces ) $
-          (symbol ".") ) $
-          spaces ) $
+          succeed ClassLiteral_TypeName ) <|
+          typeName ) <|
+          spaces ) <|
+          brackets ) <|
+          spaces ) <|
+          (symbol ".") ) <|
+          spaces ) <|
           (keyword "class")
         , ignorer (
           ignorer (
@@ -4180,13 +4235,13 @@ classLiteral =
           keeper (
           ignorer (
           keeper (
-          succeed ClassLiteral_Numeric ) $
-          numericType ) $
-          spaces ) $
-          brackets ) $
-          spaces ) $
-          (symbol ".") ) $
-          spaces ) $
+          succeed ClassLiteral_Numeric ) <|
+          numericType ) <|
+          spaces ) <|
+          brackets ) <|
+          spaces ) <|
+          (symbol ".") ) <|
+          spaces ) <|
           (keyword "class")
         , ignorer (
           ignorer (
@@ -4195,36 +4250,36 @@ classLiteral =
           keeper (
           ignorer (
           ignorer (
-          succeed ClassLiteral_Boolean ) $
-          (keyword "boolean") ) $
-          spaces ) $
-          brackets ) $
-          spaces ) $
-          (symbol ".") ) $
-          spaces ) $
+          succeed ClassLiteral_Boolean ) <|
+          (keyword "boolean") ) <|
+          spaces ) <|
+          brackets ) <|
+          spaces ) <|
+          (symbol ".") ) <|
+          spaces ) <|
           (keyword "class")
         , ignorer (
           ignorer (
           ignorer (
           ignorer (
           ignorer (
-          succeed ClassLiteral_Void ) $
-          (keyword "void") ) $
-          spaces ) $
-          (symbol ".") ) $
-          spaces ) $
+          succeed ClassLiteral_Void ) <|
+          (keyword "void") ) <|
+          spaces ) <|
+          (symbol ".") ) <|
+          spaces ) <|
           (keyword "class")
         ]
 
 
-data ClassInstanceCreationExpression
+type ClassInstanceCreationExpression
     = ClassInstanceCreationExpression_Normal UnqualifiedClassInstanceCreationExpression
     | ClassInstanceCreationExpression_Expression ExpressionName UnqualifiedClassInstanceCreationExpression
     | ClassInstanceCreationExpression_Primary Primary UnqualifiedClassInstanceCreationExpression
-    deriving (Show)
+    
 
 
-classInstanceCreationExpression :: Parser ClassInstanceCreationExpression
+classInstanceCreationExpression : Parser ClassInstanceCreationExpression
 classInstanceCreationExpression =
     oneOf
         [ kmap ClassInstanceCreationExpression_Normal
@@ -4244,12 +4299,12 @@ classInstanceCreationExpression =
         ]
 
 
-data UnqualifiedClassInstanceCreationExpression
+type UnqualifiedClassInstanceCreationExpression
     = UnqualifiedClassInstanceCreationExpression (Maybe TypeArguments) ClassOrInterfaceTypeToInstantiate (Maybe ArgumentList) (Maybe ClassBody)
-    deriving (Show)
+    
 
 
-unqualifiedClassInstanceCreationExpression :: Parser UnqualifiedClassInstanceCreationExpression
+unqualifiedClassInstanceCreationExpression : Parser UnqualifiedClassInstanceCreationExpression
 unqualifiedClassInstanceCreationExpression =
         keeper (
         ignorer (
@@ -4264,28 +4319,29 @@ unqualifiedClassInstanceCreationExpression =
         keeper (
         ignorer (
         ignorer (
-        succeed UnqualifiedClassInstanceCreationExpression ) $
-        (keyword "new") ) $
-        spaces ) $
-        optional typeArguments ) $
-        spaces ) $
-        classOrInterfaceTypeToInstantiate ) $
-        spaces ) $
-        (symbol "(") ) $
-        spaces ) $
-        optional argumentList ) $
-        spaces ) $
-        (symbol ")") ) $
-        spaces ) $
+        succeed UnqualifiedClassInstanceCreationExpression ) <|
+        (keyword "new") ) <|
+        spaces ) <|
+        optional typeArguments ) <|
+        spaces ) <|
+        classOrInterfaceTypeToInstantiate ) <|
+        spaces ) <|
+        (symbol "(") ) <|
+        spaces ) <|
+        optional argumentList ) <|
+        spaces ) <|
+        (symbol ")") ) <|
+        spaces ) <|
         optional (lazy (\_ -> classBody))
 
 
-data ClassOrInterfaceTypeToInstantiate
-    = ClassOrInterfaceTypeToInstantiate ([ Annotation ]) Identifier ([( [Annotation], Identifier )]) (Maybe TypeArgumentsOrDiamond)
-    deriving (Show)
+type ClassOrInterfaceTypeToInstantiate
+    = ClassOrInterfaceTypeToInstantiate (List Annotation) Identifier (List(
+        (List Annotation), Identifier )) (Maybe TypeArgumentsOrDiamond)
+    
 
 
-classOrInterfaceTypeToInstantiate :: Parser ClassOrInterfaceTypeToInstantiate
+classOrInterfaceTypeToInstantiate : Parser ClassOrInterfaceTypeToInstantiate
 classOrInterfaceTypeToInstantiate =
     kikikikmap ClassOrInterfaceTypeToInstantiate
         (list annotation)
@@ -4293,7 +4349,7 @@ classOrInterfaceTypeToInstantiate =
         identifier
         spaces
         (list
-            (iikikmap (,)
+            (iikikmap Tuple.pair
                 (symbol ".")
                 spaces
                 (list annotation)
@@ -4305,13 +4361,13 @@ classOrInterfaceTypeToInstantiate =
         (optional typeArgumentsOrDiamond)
 
 
-data TypeArgumentsOrDiamond
+type TypeArgumentsOrDiamond
     = TypeArguments_TypeArguments TypeArguments
     | TypeArguments_Diamond
-    deriving (Show)
+    
 
 
-typeArgumentsOrDiamond :: Parser TypeArgumentsOrDiamond
+typeArgumentsOrDiamond : Parser TypeArgumentsOrDiamond
 typeArgumentsOrDiamond =
     oneOf
         [ kmap TypeArguments_TypeArguments
@@ -4321,14 +4377,14 @@ typeArgumentsOrDiamond =
         ]
 
 
-data FieldAccess
+type FieldAccess
     = FieldAccess_Primary Primary Identifier
     | FieldAccess_Super Identifier
     | FieldAccess_TypeNameSuper TypeName Identifier
-    deriving (Show)
+    
 
 
-fieldAccess :: Parser FieldAccess
+fieldAccess : Parser FieldAccess
 fieldAccess =
     oneOf
         [ kiiikmap FieldAccess_Primary
@@ -4352,26 +4408,26 @@ fieldAccess =
           ignorer (
           ignorer (
           keeper (
-          succeed FieldAccess_TypeNameSuper ) $
-          typeName ) $
-          spaces ) $
-          (symbol ".") ) $
-          spaces ) $
-          (keyword "super") ) $
-          spaces ) $
-          (symbol ".") ) $
-          spaces ) $
+          succeed FieldAccess_TypeNameSuper ) <|
+          typeName ) <|
+          spaces ) <|
+          (symbol ".") ) <|
+          spaces ) <|
+          (keyword "super") ) <|
+          spaces ) <|
+          (symbol ".") ) <|
+          spaces ) <|
           identifier
         ]
 
 
-data ArrayAccess
+type ArrayAccess
     = ArrayAccess_Expression ExpressionName Expression
     | ArrayAccess_Primary PrimaryNoNewArray Expression
-    deriving (Show)
+    
 
 
-arrayAccess :: Parser ArrayAccess
+arrayAccess : Parser ArrayAccess
 arrayAccess =
     oneOf
         [ kiiikiimap ArrayAccess_Expression
@@ -4393,17 +4449,17 @@ arrayAccess =
         ]
 
 
-data MethodInvocation
+type MethodInvocation
     = MethodInvocation_Name MethodName (Maybe ArgumentList)
     | MethodInvocation_Type TypeName (Maybe TypeArguments) Identifier (Maybe ArgumentList)
     | MethodInvocation_Expression ExpressionName (Maybe TypeArguments) Identifier (Maybe ArgumentList)
     | MethodInvocation_Primary Primary (Maybe TypeArguments) Identifier (Maybe ArgumentList)
     | MethodInvocation_Super (Maybe TypeArguments) Identifier (Maybe ArgumentList)
     | MethodInvocation_TypeSuper TypeName (Maybe TypeArguments) Identifier (Maybe ArgumentList)
-    deriving (Show)
+    
 
 
-methodInvocation :: Parser MethodInvocation
+methodInvocation : Parser MethodInvocation
 methodInvocation =
     oneOf
         [
@@ -4414,13 +4470,13 @@ methodInvocation =
             ignorer (
             ignorer (
             keeper (
-            succeed MethodInvocation_Name ) $
-            methodName ) $
-            spaces ) $
-            (symbol "(") ) $
-            spaces ) $
-            optional argumentList ) $
-            spaces ) $
+            succeed MethodInvocation_Name ) <|
+            methodName ) <|
+            spaces ) <|
+            (symbol "(") ) <|
+            spaces ) <|
+            optional argumentList ) <|
+            spaces ) <|
             (symbol ")")
         ,
             ignorer (
@@ -4436,19 +4492,19 @@ methodInvocation =
             ignorer (
             ignorer (
             keeper (
-            succeed MethodInvocation_Type ) $
-            typeName ) $
-            spaces ) $
-            (symbol ".") ) $
-            spaces ) $
-            optional typeArguments ) $
-            spaces ) $
-            identifier ) $
-            spaces ) $
-            (symbol "(") ) $
-            spaces ) $
-            optional argumentList ) $
-            spaces ) $
+            succeed MethodInvocation_Type ) <|
+            typeName ) <|
+            spaces ) <|
+            (symbol ".") ) <|
+            spaces ) <|
+            optional typeArguments ) <|
+            spaces ) <|
+            identifier ) <|
+            spaces ) <|
+            (symbol "(") ) <|
+            spaces ) <|
+            optional argumentList ) <|
+            spaces ) <|
             (symbol ")")
         ,   
             ignorer (
@@ -4464,19 +4520,19 @@ methodInvocation =
             ignorer (
             ignorer (
             keeper (
-            succeed MethodInvocation_Expression ) $
-            expressionName ) $
-            spaces ) $
-            (symbol ".") ) $
-            spaces ) $
-            optional typeArguments ) $
-            spaces ) $
-            identifier ) $
-            spaces ) $
-            (symbol "(") ) $
-            spaces ) $
-            optional argumentList ) $
-            spaces ) $
+            succeed MethodInvocation_Expression ) <|
+            expressionName ) <|
+            spaces ) <|
+            (symbol ".") ) <|
+            spaces ) <|
+            optional typeArguments ) <|
+            spaces ) <|
+            identifier ) <|
+            spaces ) <|
+            (symbol "(") ) <|
+            spaces ) <|
+            optional argumentList ) <|
+            spaces ) <|
             (symbol ")")
         ,   
             ignorer (
@@ -4492,19 +4548,19 @@ methodInvocation =
             ignorer (
             ignorer (
             keeper (
-            succeed MethodInvocation_Primary ) $
-            lazy (\_ -> primary) ) $
-            spaces ) $
-            (symbol ".") ) $
-            spaces ) $
-            optional typeArguments ) $
-            spaces ) $
-            identifier ) $
-            spaces ) $
-            (symbol "(") ) $
-            spaces ) $
-            optional argumentList ) $
-            spaces ) $
+            succeed MethodInvocation_Primary ) <|
+            lazy (\_ -> primary) ) <|
+            spaces ) <|
+            (symbol ".") ) <|
+            spaces ) <|
+            optional typeArguments ) <|
+            spaces ) <|
+            identifier ) <|
+            spaces ) <|
+            (symbol "(") ) <|
+            spaces ) <|
+            optional argumentList ) <|
+            spaces ) <|
             (symbol ")")
         ,   
             ignorer (
@@ -4520,19 +4576,19 @@ methodInvocation =
             ignorer (
             ignorer (
             ignorer (
-            succeed MethodInvocation_Super ) $
-            symbol "super" ) $
-            spaces ) $
-            (symbol ".") ) $
-            spaces ) $
-            optional typeArguments ) $
-            spaces ) $
-            identifier ) $
-            spaces ) $
-            (symbol "(") ) $
-            spaces ) $
-            optional argumentList ) $
-            spaces ) $
+            succeed MethodInvocation_Super ) <|
+            symbol "super" ) <|
+            spaces ) <|
+            (symbol ".") ) <|
+            spaces ) <|
+            optional typeArguments ) <|
+            spaces ) <|
+            identifier ) <|
+            spaces ) <|
+            (symbol "(") ) <|
+            spaces ) <|
+            optional argumentList ) <|
+            spaces ) <|
             (symbol ")")
         , 
             ignorer (
@@ -4552,33 +4608,33 @@ methodInvocation =
             ignorer (
             ignorer (
             keeper (
-            succeed MethodInvocation_TypeSuper ) $
-            typeName ) $
-            spaces ) $
-            (symbol ".") ) $
-            spaces ) $
-            (keyword "super") ) $
-            spaces ) $
-            (symbol ".") ) $
-            spaces ) $
-            optional typeArguments ) $
-            spaces ) $
-            identifier ) $
-            spaces ) $
-            (symbol "(") ) $
-            spaces ) $
-            optional argumentList ) $
-            spaces ) $
+            succeed MethodInvocation_TypeSuper ) <|
+            typeName ) <|
+            spaces ) <|
+            (symbol ".") ) <|
+            spaces ) <|
+            (keyword "super") ) <|
+            spaces ) <|
+            (symbol ".") ) <|
+            spaces ) <|
+            optional typeArguments ) <|
+            spaces ) <|
+            identifier ) <|
+            spaces ) <|
+            (symbol "(") ) <|
+            spaces ) <|
+            optional argumentList ) <|
+            spaces ) <|
             (symbol ")")
         ]
 
 
-data ArgumentList
-    = ArgumentList Expression ([ Expression ])
-    deriving (Show)
+type ArgumentList
+    = ArgumentList Expression (List Expression)
+    
 
 
-argumentList :: Parser ArgumentList
+argumentList : Parser ArgumentList
 argumentList =
     kikmap ArgumentList
            expression
@@ -4592,7 +4648,7 @@ argumentList =
            )
 
 
-data MethodReference
+type MethodReference
     = MethodReference_Expression ExpressionName (Maybe TypeArguments) Identifier
     | MethodReference_Primary Primary (Maybe TypeArguments) Identifier
     | MethodReference_Reference ReferenceType (Maybe TypeArguments) Identifier
@@ -4600,10 +4656,10 @@ data MethodReference
     | MethodReference_TypeSuper TypeName (Maybe TypeArguments) Identifier
     | MethodReference_ClassNew ClassType (Maybe TypeArguments)
     | MethodReference_ArrayNew ArrayType
-    deriving (Show)
+    
 
 
-methodReference :: Parser MethodReference
+methodReference : Parser MethodReference
 methodReference =
     oneOf
         [ keeper (
@@ -4613,13 +4669,13 @@ methodReference =
           ignorer (
           ignorer (
           keeper (
-          succeed MethodReference_Expression ) $
-          expressionName ) $
-          spaces ) $
-          symbol "::" ) $
-          spaces ) $
-          optional typeArguments ) $
-          spaces ) $
+          succeed MethodReference_Expression ) <|
+          expressionName ) <|
+          spaces ) <|
+          symbol ":" ) <|
+          spaces ) <|
+          optional typeArguments ) <|
+          spaces ) <|
           identifier
         , keeper (
           ignorer (
@@ -4628,13 +4684,13 @@ methodReference =
           ignorer (
           ignorer (
           keeper (
-          succeed MethodReference_Primary ) $
-          lazy (\_ -> primary) ) $
-          spaces ) $
-          symbol "::" ) $
-          spaces ) $
-          optional typeArguments ) $
-          spaces ) $
+          succeed MethodReference_Primary ) <|
+          lazy (\_ -> primary) ) <|
+          spaces ) <|
+          symbol ":" ) <|
+          spaces ) <|
+          optional typeArguments ) <|
+          spaces ) <|
           identifier
         , 
             keeper (
@@ -4644,13 +4700,13 @@ methodReference =
             ignorer (
             ignorer (
             keeper (
-          succeed MethodReference_Reference ) $
-             referenceType ) $
-             spaces ) $
-             symbol "::" ) $
-             spaces ) $
-             optional typeArguments ) $
-             spaces ) $
+          succeed MethodReference_Reference ) <|
+             referenceType ) <|
+             spaces ) <|
+             symbol ":" ) <|
+             spaces ) <|
+             optional typeArguments ) <|
+             spaces ) <|
              identifier
         , 
             keeper (
@@ -4660,13 +4716,13 @@ methodReference =
             ignorer (
             ignorer (
             ignorer (
-          succeed MethodReference_Super ) $
-             (keyword "super") ) $
-             spaces ) $
-             symbol "::" ) $
-             spaces ) $
-             optional typeArguments ) $
-             spaces ) $
+          succeed MethodReference_Super ) <|
+             (keyword "super") ) <|
+             spaces ) <|
+             symbol ":" ) <|
+             spaces ) <|
+             optional typeArguments ) <|
+             spaces ) <|
              identifier
         , 
             keeper (
@@ -4681,18 +4737,18 @@ methodReference =
             ignorer (
             keeper (
             ignorer (
-          succeed MethodReference_TypeSuper ) $
-             spaces ) $
-             typeName ) $
-             spaces ) $
-             (symbol ".") ) $
-             spaces ) $
-             (keyword "super") ) $
-             spaces ) $
-             symbol "::" ) $
-             spaces ) $
-             optional typeArguments ) $
-             spaces ) $
+          succeed MethodReference_TypeSuper ) <|
+             spaces ) <|
+             typeName ) <|
+             spaces ) <|
+             (symbol ".") ) <|
+             spaces ) <|
+             (keyword "super") ) <|
+             spaces ) <|
+             symbol ":" ) <|
+             spaces ) <|
+             optional typeArguments ) <|
+             spaces ) <|
              identifier
         , 
             ignorer (
@@ -4702,13 +4758,13 @@ methodReference =
             ignorer (
             ignorer (
             keeper (
-          succeed MethodReference_ClassNew ) $
-             classType ) $
-             spaces ) $
-             symbol "::" ) $
-             spaces ) $
-             optional typeArguments ) $
-             spaces ) $
+          succeed MethodReference_ClassNew ) <|
+             classType ) <|
+             spaces ) <|
+             symbol ":" ) <|
+             spaces ) <|
+             optional typeArguments ) <|
+             spaces ) <|
              (keyword "new")
         , 
             ignorer (
@@ -4716,24 +4772,24 @@ methodReference =
             ignorer (
             ignorer (
             keeper (
-          succeed MethodReference_ArrayNew ) $
-             arrayType ) $
-             spaces ) $
-             symbol "::" ) $
-             spaces ) $
+          succeed MethodReference_ArrayNew ) <|
+             arrayType ) <|
+             spaces ) <|
+             symbol ":" ) <|
+             spaces ) <|
              (keyword "new")
         ]
 
 
-data ArrayCreationExpression
+type ArrayCreationExpression
     = ArrayCreationExpression_Primitive PrimitiveType DimExprs (Maybe Dims)
     | ArrayCreationExpression_Class ClassOrInterfaceType DimExprs (Maybe Dims)
     | ArrayCreationExpression_PrimitiveArrayInit PrimitiveType Dims ArrayInitializer
     | ArrayCreationExpression_ClassArrayInit ClassOrInterfaceType Dims ArrayInitializer
-    deriving (Show)
+    
 
 
-arrayCreationExpression :: Parser ArrayCreationExpression
+arrayCreationExpression : Parser ArrayCreationExpression
 arrayCreationExpression =
     oneOf
         [
@@ -4744,13 +4800,13 @@ arrayCreationExpression =
             keeper (
             ignorer (
             ignorer (
-            succeed ArrayCreationExpression_Primitive ) $
-            (keyword "new") ) $
-            spaces ) $
-            primitiveType ) $
-            spaces ) $
-            dimExprs ) $
-            spaces ) $
+            succeed ArrayCreationExpression_Primitive ) <|
+            (keyword "new") ) <|
+            spaces ) <|
+            primitiveType ) <|
+            spaces ) <|
+            dimExprs ) <|
+            spaces ) <|
             optional dims
         ,
             keeper (
@@ -4760,13 +4816,13 @@ arrayCreationExpression =
             keeper (
             ignorer (
             ignorer (
-            succeed ArrayCreationExpression_Class ) $
-            (keyword "new") ) $
-            spaces ) $
-            classOrInterfaceType ) $
-            spaces ) $
-            dimExprs ) $
-            spaces ) $
+            succeed ArrayCreationExpression_Class ) <|
+            (keyword "new") ) <|
+            spaces ) <|
+            classOrInterfaceType ) <|
+            spaces ) <|
+            dimExprs ) <|
+            spaces ) <|
             optional dims
         ,
             keeper (
@@ -4776,13 +4832,13 @@ arrayCreationExpression =
             keeper (
             ignorer (
             ignorer (
-            succeed ArrayCreationExpression_PrimitiveArrayInit ) $
-            (keyword "new") ) $
-            spaces ) $
-            primitiveType ) $
-            spaces ) $
-            dims ) $
-            spaces ) $
+            succeed ArrayCreationExpression_PrimitiveArrayInit ) <|
+            (keyword "new") ) <|
+            spaces ) <|
+            primitiveType ) <|
+            spaces ) <|
+            dims ) <|
+            spaces ) <|
             arrayInitializer
         ,
             keeper (
@@ -4792,23 +4848,23 @@ arrayCreationExpression =
             keeper (
             ignorer (
             ignorer (
-            succeed ArrayCreationExpression_ClassArrayInit ) $
-            (keyword "new") ) $
-            spaces ) $
-            classOrInterfaceType ) $
-            spaces ) $
-            dims ) $
-            spaces ) $
+            succeed ArrayCreationExpression_ClassArrayInit ) <|
+            (keyword "new") ) <|
+            spaces ) <|
+            classOrInterfaceType ) <|
+            spaces ) <|
+            dims ) <|
+            spaces ) <|
             arrayInitializer
         ]
 
 
-data DimExprs
-    = DimExprs DimExpr ([ DimExpr ])
-    deriving (Show)
+type DimExprs
+    = DimExprs DimExpr (List DimExpr)
+    
 
 
-dimExprs :: Parser DimExprs
+dimExprs : Parser DimExprs
 dimExprs =
     kikmap DimExprs
         dimExpr
@@ -4816,12 +4872,12 @@ dimExprs =
         (list dimExpr)
 
 
-data DimExpr
-    = DimExpr ([ Annotation ]) Expression
-    deriving (Show)
+type DimExpr
+    = DimExpr (List Annotation) Expression
+    
 
 
-dimExpr :: Parser DimExpr
+dimExpr : Parser DimExpr
 dimExpr =
     kiiikiimap DimExpr
         (list annotation)
@@ -4833,13 +4889,13 @@ dimExpr =
         (symbol "]")
 
 
-data Expression
+type Expression
     = Expression_Lambda LambdaExpression
     | Expression_Assignment AssignmentExpression
-    deriving (Show)
+    
 
 
-expression :: Parser Expression
+expression : Parser Expression
 expression =
     oneOf
         [ kmap Expression_Lambda
@@ -4849,12 +4905,12 @@ expression =
         ]
 
 
-data LambdaExpression
+type LambdaExpression
     = LambdaExpression LambdaParameters LambdaBody
-    deriving (Show)
+    
 
 
-lambdaExpression :: Parser LambdaExpression
+lambdaExpression : Parser LambdaExpression
 lambdaExpression =
     kiiikmap LambdaExpression
         lambdaParameters
@@ -4864,13 +4920,13 @@ lambdaExpression =
         (lazy (\_ -> lambdaBody))
 
 
-data LambdaParameters
+type LambdaParameters
     = LambdaParameters_List (Maybe LambdaParameterList)
     | LambdaParameters_Identifier Identifier
-    deriving (Show)
+    
 
 
-lambdaParameters :: Parser LambdaParameters
+lambdaParameters : Parser LambdaParameters
 lambdaParameters =
     oneOf
         [ iikiimap LambdaParameters_List
@@ -4884,13 +4940,13 @@ lambdaParameters =
         ]
 
 
-data LambdaParameterList
-    = LambdaParameterList_Parameters LambdaParameter ([ LambdaParameter ])
-    | LambdaParameterList_Identifiers Identifier ([ Identifier ])
-    deriving (Show)
+type LambdaParameterList
+    = LambdaParameterList_Parameters LambdaParameter (List LambdaParameter)
+    | LambdaParameterList_Identifiers Identifier (List Identifier)
+    
 
 
-lambdaParameterList :: Parser LambdaParameterList
+lambdaParameterList : Parser LambdaParameterList
 lambdaParameterList =
     oneOf
         [ kikmap LambdaParameterList_Parameters
@@ -4916,13 +4972,13 @@ lambdaParameterList =
         ]
 
 
-data LambdaParameter
-    = LambdaParameter_Normal ([ VariableModifier ]) LambdaParameterType VariableDeclaratorId
+type LambdaParameter
+    = LambdaParameter_Normal (List VariableModifier) LambdaParameterType VariableDeclaratorId
     | LambdaParameter_Arity VariableArityParameter
-    deriving (Show)
+    
 
 
-lambdaParameter :: Parser LambdaParameter
+lambdaParameter : Parser LambdaParameter
 lambdaParameter =
     oneOf
         [ kikikmap LambdaParameter_Normal
@@ -4936,13 +4992,13 @@ lambdaParameter =
         ]
 
 
-data LambdaParameterType
+type LambdaParameterType
     = LambdaParameterType_Unann UnannType
     | LambdaParameterType_Var
-    deriving (Show)
+    
 
 
-lambdaParameterType :: Parser LambdaParameterType
+lambdaParameterType : Parser LambdaParameterType
 lambdaParameterType =
     oneOf
         [ kmap LambdaParameterType_Unann
@@ -4952,13 +5008,13 @@ lambdaParameterType =
         ]
 
 
-data LambdaBody
+type LambdaBody
     = LambdaBody_Expression Expression
     | LambdaBody_Block Block
-    deriving (Show)
+    
 
 
-lambdaBody :: Parser LambdaBody
+lambdaBody : Parser LambdaBody
 lambdaBody =
     oneOf
         [ kmap LambdaBody_Expression
@@ -4968,13 +5024,13 @@ lambdaBody =
         ]
 
 
-data AssignmentExpression
+type AssignmentExpression
     = AssignmentExpression_Conditional ConditionalExpression
     | AssignmentExpression_Assignment Assignment
-    deriving (Show)
+    
 
 
-assignmentExpression :: Parser AssignmentExpression
+assignmentExpression : Parser AssignmentExpression
 assignmentExpression =
     oneOf
         [ kmap AssignmentExpression_Conditional
@@ -4984,12 +5040,12 @@ assignmentExpression =
         ]
 
 
-data Assignment
+type Assignment
     = Assignment LeftHandSide AssignmentOperator Expression
-    deriving (Show)
+    
 
 
-assignment :: Parser Assignment
+assignment : Parser Assignment
 assignment =
     kikikmap Assignment
         leftHandSide
@@ -4999,14 +5055,14 @@ assignment =
         (lazy (\_ -> expression))
 
 
-data LeftHandSide
+type LeftHandSide
     = LeftHandSide_Expression ExpressionName
     | LeftHandSide_Field FieldAccess
     | LeftHandSide_Array ArrayAccess
-    deriving (Show)
+    
 
 
-leftHandSide :: Parser LeftHandSide
+leftHandSide : Parser LeftHandSide
 leftHandSide =
     oneOf
         [ kmap LeftHandSide_Expression expressionName
@@ -5015,7 +5071,7 @@ leftHandSide =
         ]
 
 
-data AssignmentOperator
+type AssignmentOperator
     = AssignmentOperator_Normal
     | AssignmentOperator_Multiply
     | AssignmentOperator_Divide
@@ -5028,10 +5084,10 @@ data AssignmentOperator
     | AssignmentOperator_And
     | AssignmentOperator_Xor
     | AssignmentOperator_Or
-    deriving (Show)
+    
 
 
-assignmentOperator :: Parser AssignmentOperator
+assignmentOperator : Parser AssignmentOperator
 assignmentOperator =
     oneOf
         [ imap AssignmentOperator_Normal
@@ -5061,14 +5117,14 @@ assignmentOperator =
         ]
 
 
-data ConditionalExpression
+type ConditionalExpression
     = ConditionalExpression_Or ConditionalOrExpression
     | ConditionalExpression_TernaryConditional ConditionalOrExpression Expression ConditionalExpression
     | ConditionalExpression_TernaryLambda ConditionalOrExpression Expression LambdaExpression
-    deriving (Show)
+    
 
 
-conditionalExpression :: Parser ConditionalExpression
+conditionalExpression : Parser ConditionalExpression
 conditionalExpression =
     oneOf
         [ kmap ConditionalExpression_Or
@@ -5098,7 +5154,7 @@ conditionalExpression =
 
 --------------------------- FROM HERE
 
-zeta :: String -> (a -> c) -> (b -> a -> c)
+zeta : String -> (a -> c) -> (b -> a -> c)
               -> Parser a -> (() -> Parser b) -> Parser c
 zeta op tca tcb aparser bparser =
   kikmap (\a mb -> case mb of
@@ -5115,12 +5171,12 @@ zeta op tca tcb aparser bparser =
   )
 
 
-data ConditionalOrExpression
+type ConditionalOrExpression
   = ConditionalOrExpression_And ConditionalAndExpression
   | ConditionalOrExpression_Or ConditionalOrExpression ConditionalAndExpression
-    deriving (Show)
+    
 
-conditionalOrExpression :: Parser ConditionalOrExpression
+conditionalOrExpression : Parser ConditionalOrExpression
 conditionalOrExpression =
   zeta
   "||"
@@ -5130,12 +5186,12 @@ conditionalOrExpression =
   (\_ -> conditionalOrExpression)
 
 
-data ConditionalAndExpression
+type ConditionalAndExpression
   = ConditionalAndExpression_Or InclusiveOrExpression
   | ConditionalAndExpression_And ConditionalAndExpression InclusiveOrExpression
-    deriving (Show)
+    
 
-conditionalAndExpression :: Parser ConditionalAndExpression
+conditionalAndExpression : Parser ConditionalAndExpression
 conditionalAndExpression =
   zeta
   "&&"
@@ -5144,12 +5200,12 @@ conditionalAndExpression =
   inclusiveOrExpression
   (\_ -> conditionalAndExpression)
 
-data InclusiveOrExpression
+type InclusiveOrExpression
   = InclusiveOrExpression_Xor ExclusiveOrExpression
   | InclusiveOrExpression_Or InclusiveOrExpression ExclusiveOrExpression
-    deriving (Show)
+    
 
-inclusiveOrExpression :: Parser InclusiveOrExpression
+inclusiveOrExpression : Parser InclusiveOrExpression
 inclusiveOrExpression =
   zeta
   "|"
@@ -5159,12 +5215,12 @@ inclusiveOrExpression =
   (\_ -> inclusiveOrExpression)
 
 
-data ExclusiveOrExpression
+type ExclusiveOrExpression
   = ExclusiveOrExpression_And AndExpression
   | ExclusiveOrExpression_Xor ExclusiveOrExpression AndExpression
-    deriving (Show)
+    
 
-exclusiveOrExpression :: Parser ExclusiveOrExpression
+exclusiveOrExpression : Parser ExclusiveOrExpression
 exclusiveOrExpression =
   zeta
   "^"
@@ -5174,12 +5230,12 @@ exclusiveOrExpression =
   (\_ -> exclusiveOrExpression)
 
 
-data AndExpression
+type AndExpression
   = AndExpression_Equality EqualityExpression
   | AndExpression_And AndExpression EqualityExpression
-    deriving (Show)
+    
 
-andExpression :: Parser AndExpression
+andExpression : Parser AndExpression
 andExpression =
   zeta
   "&"
@@ -5189,13 +5245,13 @@ andExpression =
   (\_ -> andExpression)
 
 
-data EqualityExpression
+type EqualityExpression
   = EqualityExpression_Relational RelationalExpression
   | EqualityExpression_Equals EqualityExpression RelationalExpression
   | EqualityExpression_NotEquals EqualityExpression RelationalExpression
-    deriving (Show)
+    
 
-equalityExpression :: Parser EqualityExpression
+equalityExpression : Parser EqualityExpression
 equalityExpression =
   kikmap (\re mf ->
                  case mf of
@@ -5217,16 +5273,16 @@ equalityExpression =
      )
 
 
-data RelationalExpression
+type RelationalExpression
   = RelationalExpression_Shift ShiftExpression
   | RelationalExpression_Less RelationalExpression ShiftExpression
   | RelationalExpression_Greater RelationalExpression ShiftExpression
   | RelationalExpression_LessEqual RelationalExpression ShiftExpression
   | RelationalExpression_GreaterEqual RelationalExpression ShiftExpression
   | RelationalExpression_Instanceof RelationalExpression ReferenceType
-    deriving (Show)
+    
 
-relationalExpression :: Parser RelationalExpression
+relationalExpression : Parser RelationalExpression
 relationalExpression =
   kikmap (\a mf ->
                case mf of 
@@ -5262,14 +5318,14 @@ relationalExpression =
        -}
 
 
-data ShiftExpression
+type ShiftExpression
   = ShiftExpression_Additive AdditiveExpression
   | ShiftExpression_Left ShiftExpression AdditiveExpression
   | ShiftExpression_Right ShiftExpression AdditiveExpression
   | ShiftExpression_Right2 ShiftExpression AdditiveExpression
-    deriving (Show)
+    
 
-shiftExpression :: Parser ShiftExpression
+shiftExpression : Parser ShiftExpression
 shiftExpression =
   kikmap (\a mf ->
                case mf of 
@@ -5291,13 +5347,13 @@ shiftExpression =
      )
 
 
-data AdditiveExpression
+type AdditiveExpression
   = AdditiveExpression_Multiplicative MultiplicativeExpression
   | AdditiveExpression_Plus AdditiveExpression MultiplicativeExpression
   | AdditiveExpression_Minus AdditiveExpression MultiplicativeExpression
-    deriving (Show)
+    
 
-additiveExpression :: Parser AdditiveExpression
+additiveExpression : Parser AdditiveExpression
 additiveExpression =
   kikmap (\a mf ->
                case mf of 
@@ -5319,14 +5375,14 @@ additiveExpression =
       )
      )
 
-data MultiplicativeExpression
+type MultiplicativeExpression
   = MultiplicativeExpression_Unary UnaryExpression
   | MultiplicativeExpression_Multiply MultiplicativeExpression UnaryExpression
   | MultiplicativeExpression_Divide MultiplicativeExpression UnaryExpression
   | MultiplicativeExpression_Mod MultiplicativeExpression UnaryExpression
-    deriving (Show)
+    
 
-multiplicativeExpression :: Parser MultiplicativeExpression
+multiplicativeExpression : Parser MultiplicativeExpression
 multiplicativeExpression =
   kikmap (\a mf ->
                case mf of 
@@ -5352,16 +5408,16 @@ multiplicativeExpression =
  
 --------------------------- TO HERE
 
-data UnaryExpression
+type UnaryExpression
     = UnaryExpression_PreIncrement PreIncrementExpression
     | UnaryExpression_PreDecrement PreDecrementExpression
     | UnaryExpression_Plus UnaryExpression
     | UnaryExpression_Minus UnaryExpression
     | UnaryExpression_NotPlusMinus UnaryExpressionNotPlusMinus
-    deriving (Show)
+    
 
 
-unaryExpression :: Parser UnaryExpression
+unaryExpression : Parser UnaryExpression
 unaryExpression =
     oneOf
         [ kmap UnaryExpression_PreIncrement
@@ -5381,12 +5437,12 @@ unaryExpression =
         ]
 
 
-data PreIncrementExpression
+type PreIncrementExpression
     = PreIncrementExpression UnaryExpression
-    deriving (Show)
+    
 
 
-preIncrementExpression :: Parser PreIncrementExpression
+preIncrementExpression : Parser PreIncrementExpression
 preIncrementExpression =
     iikmap PreIncrementExpression
         (symbol "++")
@@ -5394,12 +5450,12 @@ preIncrementExpression =
         (lazy (\_ -> unaryExpression))
 
 
-data PreDecrementExpression
+type PreDecrementExpression
     = PreDecrementExpression UnaryExpression
-    deriving (Show)
+    
 
 
-preDecrementExpression :: Parser PreDecrementExpression
+preDecrementExpression : Parser PreDecrementExpression
 preDecrementExpression =
     iikmap PreDecrementExpression
         (symbol "--")
@@ -5407,16 +5463,16 @@ preDecrementExpression =
         (lazy (\_ -> unaryExpression))
 
 
-data UnaryExpressionNotPlusMinus
+type UnaryExpressionNotPlusMinus
     = UnaryExpressionNotPlusMinus_Postfix PostfixExpression
     | UnaryExpressionNotPlusMinus_BitwiseNot UnaryExpression
     | UnaryExpressionNotPlusMinus_LogicalNot UnaryExpression
     | UnaryExpressionNotPlusMinus_Cast CastExpression
     | UnaryExpressionNotPlusMinus_Switch SwitchExpression
-    deriving (Show)
+    
 
 
-unaryExpressionNotPlusMinus :: Parser UnaryExpressionNotPlusMinus
+unaryExpressionNotPlusMinus : Parser UnaryExpressionNotPlusMinus
 unaryExpressionNotPlusMinus =
     oneOf
         [ kmap UnaryExpressionNotPlusMinus_Postfix
@@ -5436,15 +5492,15 @@ unaryExpressionNotPlusMinus =
         ]
 
 
-data PostfixExpression
+type PostfixExpression
     = PostfixExpression_Primary Primary
     | PostfixExpression_Name ExpressionName
     | PostfixExpression_Increment PostIncrementExpression
     | PostfixExpression_Decrement PostDecrementExpression
-    deriving (Show)
+    
 
 
-postfixExpression :: Parser PostfixExpression
+postfixExpression : Parser PostfixExpression
 postfixExpression =
     oneOf
         [ kmap PostfixExpression_Primary
@@ -5458,12 +5514,12 @@ postfixExpression =
         ]
 
 
-data PostIncrementExpression
+type PostIncrementExpression
     = PostIncrementExpression PostfixExpression
-    deriving (Show)
+    
 
 
-postIncrementExpression :: Parser PostIncrementExpression
+postIncrementExpression : Parser PostIncrementExpression
 postIncrementExpression =
     kiimap PostIncrementExpression
         (lazy (\_ -> postfixExpression))
@@ -5471,12 +5527,12 @@ postIncrementExpression =
         (symbol "++")
 
 
-data PostDecrementExpression
+type PostDecrementExpression
     = PostDecrementExpression PostfixExpression
-    deriving (Show)
+    
 
 
-postDecrementExpression :: Parser PostDecrementExpression
+postDecrementExpression : Parser PostDecrementExpression
 postDecrementExpression =
     kiimap PostDecrementExpression
         (lazy (\_ -> postfixExpression))
@@ -5484,14 +5540,14 @@ postDecrementExpression =
         (symbol "--")
 
 
-data CastExpression
+type CastExpression
     = CastExpression_Unary PrimitiveType UnaryExpression
-    | CastExpression_UnaryAdditional ReferenceType ([ AdditionalBound ]) UnaryExpressionNotPlusMinus
-    | CastExpression_Lambda ReferenceType ([ AdditionalBound ]) LambdaExpression
-    deriving (Show)
+    | CastExpression_UnaryAdditional ReferenceType (List AdditionalBound) UnaryExpressionNotPlusMinus
+    | CastExpression_Lambda ReferenceType (List AdditionalBound) LambdaExpression
+    
 
 
-castExpression :: Parser CastExpression
+castExpression : Parser CastExpression
 castExpression =
     oneOf
         [
@@ -5502,13 +5558,13 @@ castExpression =
             keeper (
             ignorer (
             ignorer (
-            succeed CastExpression_Unary ) $
-            (symbol "(") ) $
-            spaces ) $
-            primitiveType ) $
-            spaces ) $
-            (symbol ")") ) $
-            spaces ) $
+            succeed CastExpression_Unary ) <|
+            (symbol "(") ) <|
+            spaces ) <|
+            primitiveType ) <|
+            spaces ) <|
+            (symbol ")") ) <|
+            spaces ) <|
             unaryExpression
         ,
             keeper (
@@ -5520,15 +5576,15 @@ castExpression =
             keeper (
             ignorer (
             ignorer (
-            succeed CastExpression_UnaryAdditional ) $
-            (symbol "(") ) $
-            spaces ) $
-            referenceType ) $
-            spaces ) $
-            list additionalBound ) $
-            spaces ) $
-            (symbol ")") ) $
-            spaces ) $
+            succeed CastExpression_UnaryAdditional ) <|
+            (symbol "(") ) <|
+            spaces ) <|
+            referenceType ) <|
+            spaces ) <|
+            list additionalBound ) <|
+            spaces ) <|
+            (symbol ")") ) <|
+            spaces ) <|
             unaryExpressionNotPlusMinus
         ,
             keeper (
@@ -5540,25 +5596,25 @@ castExpression =
             keeper (
             ignorer (
             ignorer (
-            succeed CastExpression_Lambda ) $
-            (symbol "(") ) $
-            spaces ) $
-            referenceType ) $
-            spaces ) $
-            list additionalBound ) $
-            spaces ) $
-            (symbol ")") ) $
-            spaces ) $
+            succeed CastExpression_Lambda ) <|
+            (symbol "(") ) <|
+            spaces ) <|
+            referenceType ) <|
+            spaces ) <|
+            list additionalBound ) <|
+            spaces ) <|
+            (symbol ")") ) <|
+            spaces ) <|
             lambdaExpression
         ]
 
 
-data SwitchExpression
+type SwitchExpression
     = SwitchExpression Expression SwitchBlock
-    deriving (Show)
+    
 
 
-switchExpression :: Parser SwitchExpression
+switchExpression : Parser SwitchExpression
 switchExpression =
     keeper (
     ignorer (
@@ -5569,24 +5625,24 @@ switchExpression =
     ignorer (
     ignorer (
     ignorer (
-    succeed SwitchExpression ) $
-    (keyword "switch") ) $
-    spaces ) $
-    (symbol "(") ) $
-    spaces ) $
-    expression ) $
-    spaces ) $
-    (symbol ")") ) $
-    spaces ) $
+    succeed SwitchExpression ) <|
+    (keyword "switch") ) <|
+    spaces ) <|
+    (symbol "(") ) <|
+    spaces ) <|
+    expression ) <|
+    spaces ) <|
+    (symbol ")") ) <|
+    spaces ) <|
     switchBlock
 
 
-data ConstantExpression
+type ConstantExpression
     = ConstantExpression Expression
-    deriving (Show)
+    
 
 
-constantExpression :: Parser ConstantExpression
+constantExpression : Parser ConstantExpression
 constantExpression =
     kmap ConstantExpression
         expression
