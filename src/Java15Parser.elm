@@ -85,22 +85,28 @@ keywords =
 type Identifier
     = Identifier String
     
-takeWhile : (Char -> Bool) -> String -> String
-takeWhile f str =
-    let
-        helper l =
-            case l of
-                x::xs -> if f x then x :: helper xs else []
-                [] -> []
-    in
-      String.fromList <| helper <| String.toList str
+takeWhile : (a -> Bool) -> List a -> List a
+takeWhile f l =
+    case l of
+        x::xs ->
+            if f x
+                then x :: takeWhile f xs
+                else []
+        [] ->
+            []
 
 
 identifier : Parser Identifier
 identifier =
   \str ->
     let
-      ident = takeWhile javaLetter str
+      ident =
+          case String.toList str of
+              [] -> ""
+              c::cs ->
+                if javaLetter c
+                    then String.fromList <| c :: takeWhile javaLetterOrDigit cs
+                    else ""
     in
       if String.length ident > 0 then
          Ok (Identifier ident, String.dropLeft (String.length ident) str)
@@ -163,8 +169,7 @@ literal =
 
 
 nullLiteral : Parser ()
-nullLiteral =
-    (keyword "null")
+nullLiteral = keyword "null"
 
 
 booleanLiteral : Parser Bool
@@ -177,8 +182,10 @@ booleanLiteral =
 
 characterLiteral : Parser Char
 characterLiteral =
-    ignorer (succeed 'c') (symbol "'")
-        -- TODO
+    ikimap identity
+        (symbol "'")
+        (\str -> Result.fromMaybe str (String.uncons str)) -- TODO escaped chars
+        (symbol "'")
 
 
 textBlock : Parser String

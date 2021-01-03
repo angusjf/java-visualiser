@@ -2,8 +2,8 @@ module Package.JavaToGraph exposing (..) -- TODO (fromSources)
 
 import Graph exposing (NodeId)
 import Package.Graph exposing (..)
-import Java7Parser as JP
-import Java7AstHelpers
+import Java15Parser as JP
+import Java15AstHelpers as AstHelpers
 import Parser
 import List.Nonempty as Nonempty exposing (Nonempty(..))
 import Set
@@ -22,7 +22,7 @@ fromSources srcs =
     packageSubgraphs =
       srcs
       |> List.filterMap toAst
-      |> List.concatMap compUnitToSubgraph
+      |> List.concatMap compilationUnitTS
       |> groupByPackage
   in
     packageSubgraphs
@@ -84,108 +84,101 @@ toMaybeLog res src =
     Err e ->
       always Nothing (Debug.log "toMaybeLog: " (e, String.left 100 src))
 
-compUnitToSubgraph : JP.CompilationUnit -> List Subgraph
-compUnitToSubgraph unit =
-  let
-    pkg = Maybe.withDefault "" unit.package
-  in
-    List.filterMap (typeToSubgraph pkg) unit.types
+getNodeId : Entity -> NodeId
+getNodeId { pkg , name } = mkNodeId pkg name
 
-typeToSubgraph : String -> JP.TypeDeclaration -> Maybe Subgraph
-typeToSubgraph pkg t =
-  case t of
-    JP.ClassOrInterface coi ->
-      case coi of
-        JP.Class mod c ->
-          case c of
-            JP.NormalClass data ->
-              Just <| normalClassToSubgraph data pkg mod
-            JP.Enum data ->
-              Just <| enumToSubgraph data pkg mod
-        JP.Interface mod data ->
-          Just <| interfaceToSubgraph data pkg mod
-    JP.Semicolon ->
-      Nothing
+mkNodeId : String -> String -> String
+mkNodeId pkg name = pkg ++ "." ++ name
 
-normalClassToSubgraph : JP.NormalClassDeclaration -> String
-                            -> (List JP.Modifier) -> Subgraph
-normalClassToSubgraph class pkg mod =
+subgraphToExtension : Subgraph -> Maybe Edge
+subgraphToExtension { entity, parent } =
+  parent
+  |> Maybe.map (\p -> { from = getNodeId entity, to = p, data = Extends })
+
+subgraphToImplements : Subgraph -> List Edge
+subgraphToImplements { entity, interfaces } =
+  interfaces
+  |> List.map (\i -> { from = getNodeId entity, to = i, data = Implements })
+
+subgraphToReferences : Subgraph -> List Edge
+subgraphToReferences { entity, references } =
+  references
+  |> List.map (\ref -> { from = getNodeId entity, to = ref, data = References })
+
+subgraphToNode : Subgraph -> Node
+subgraphToNode { entity } =
+    { id = getNodeId entity, data = entity }
+
+-- {{{ TO SUBGRAPHS
+
+compilationUnitTS : JP.CompilationUnit -> List Subgraph
+compilationUnitTS unit =
+    case unit of
+        JP.CompilationUnit_Ordinary u ->
+            ordinaryCompilationUnitTS u
+        JP.CompilationUnit_Modular u ->
+            Debug.todo "TODO"
+
+ordinaryCompilationUnitTS : JP.OrdinaryCompilationUnit -> List Subgraph
+ordinaryCompilationUnitTS (JP.OrdinaryCompilationUnit pkg imports types) =
+    let
+        package =
+            pkg
+            |> Maybe.map (\(JP.PackageDeclaration _ ids) -> ids)
+            |> Maybe.withDefault []
+            |> List.map (\(JP.Identifier i) -> i)
+            |> String.join "."
+    in
+        List.concatMap (typeDeclarationTS package) types
+
+typeDeclarationTS : String -> JP.TypeDeclaration -> List Subgraph
+typeDeclarationTS pkg typeDecl =
+    case typeDecl of
+        JP.TypeDeclaration_ClassDeclaration c ->
+            classDeclarationTS pkg c
+        JP.TypeDeclaration_InterfaceDeclaration i ->
+            Debug.todo "TODO"
+        JP.TypeDeclaration_Semi ->
+            []
+
+classDeclarationTS : String -> JP.ClassDeclaration -> List Subgraph
+classDeclarationTS pkg classDecl =
+    case classDecl of
+        JP.ClassDeclaration_Normal n ->
+            normalClassDeclarationTS pkg n
+        JP.ClassDeclaration_Enum e ->
+            Debug.todo "TODO"
+
+normalClassDeclarationTS : String -> JP.NormalClassDeclaration -> List Subgraph
+normalClassDeclarationTS pkg (JP.NormalClassDeclaration mods id typeParams superclass superinterfaces classBody) =
   { entity = { pkg = pkg
-             , name = class.identifier
+             , name = AstHelpers.typeIdentifierToString id
              , kind = Class 
-             , access = if List.member JP.Public mod
+             , access = if List.member JP.ClassModifier_Public mods
                           then Public
-                          else if List.member JP.Private mod
+                          else if List.member JP.ClassModifier_Private mods
                             then Private
                             else Protected
-             , static = List.member JP.Static mod
-             , final = List.member JP.Final mod
-             , abstract = List.member JP.Abstract mod
-             , publicAttributes = getPublicAttributes class.body
-             , publicMethods = getPublicMethods class.body
-             , expansion = Not
-             }
-  , parent = Maybe.map (mkNodeId pkg) (Maybe.andThen onlyRefTypes class.extends)
-  , interfaces = List.filterMap onlyRefTypes class.implements
-  , references = getReferences pkg class.body
-  }
-
-enumToSubgraph : JP.EnumDeclaration -> String -> (List JP.Modifier) -> Subgraph
-enumToSubgraph enum pkg mod =
-  { entity = { pkg = pkg
-             , name = enum.identifier
-             , kind = Enum 
-             , access = if List.member JP.Public mod
-                          then Public
-                          else if List.member JP.Private mod
-                            then Private
-                            else Protected
-             , static = List.member JP.Static mod
-             , final = List.member JP.Final mod
-             , abstract = List.member JP.Abstract mod
-             , publicAttributes = [] -- TODO
+             , static = List.member JP.ClassModifier_Static mods
+             , final = List.member JP.ClassModifier_Final mods
+             , abstract = List.member JP.ClassModifier_Abstract mods
+             , publicAttributes = []
              , publicMethods = []
              , expansion = Not
              }
-  , parent = Nothing
-  , interfaces = []
-  , references = []
-  }
+  , parent = Nothing --Maybe.map (mkNodeId pkg) (Maybe.andThen onlyRefTypes class.extends)
+  , interfaces = [] --List.filterMap onlyRefTypes class.implements
+  , references = getReferences pkg classBody
+  } :: []
 
-interfaceToSubgraph : JP.InterfaceDeclaration -> String -> (List JP.Modifier) -> Subgraph
-interfaceToSubgraph enum pkg mod =
-  { entity = { pkg = pkg
-             , name = "TODO"
-             , kind = Interface
-             , access = if List.member JP.Public mod
-                          then Public
-                          else if List.member JP.Private mod
-                            then Private
-                            else Protected
-             , static = List.member JP.Static mod
-             , final = List.member JP.Final mod
-             , abstract = List.member JP.Abstract mod
-             , publicAttributes = [] -- TODO
-             , publicMethods = [] -- TODO
-             , expansion = Not
-             }
-  , parent = Nothing
-  , interfaces = [] -- TODO
-  , references = [] -- TODO
-  }
+-- }}}
 
 -- TODO could be a reference anywhere in here...
 getReferences : String -> JP.ClassBody -> List NodeId
 getReferences pkg body =
   let
-    inMembers =
-      body.declarations
-      |> List.filterMap onlyMembers
-      |> List.map Tuple.second
-      |> List.filterMap memberToAttribute
-      |> List.concatMap (attributeToNodeIds pkg)
     allReferences =
-        Java7AstHelpers.getRefsInClassBody body
+        AstHelpers.getRefsInClassBody body
         |> removeDuplicates
         |> List.map (prefixIfNotAlready pkg)
   in
@@ -200,11 +193,7 @@ prefixIfNotAlready pkg name =
 removeDuplicates : List comparable -> List comparable
 removeDuplicates = Set.toList << Set.fromList
 
--- TODO: I should check imports... package might be different
-attributeToNodeIds : String -> Attribute -> List NodeId
-attributeToNodeIds pkg { typeIdentifiers } =
-    List.map (mkNodeId pkg) typeIdentifiers
-
+{-
 getPublicAttributes : JP.ClassBody -> List Attribute
 getPublicAttributes body =
   body.declarations
@@ -325,28 +314,4 @@ onlyMembers dec =
     JP.CBSemicolon -> Nothing 
     JP.CBMember { modifiers, decl } -> Just (modifiers, decl)
     JP.CBBlock { static, block } -> Nothing
-
-getNodeId : Entity -> NodeId
-getNodeId { pkg , name } = mkNodeId pkg name
-
-mkNodeId : String -> String -> String
-mkNodeId pkg name = pkg ++ "." ++ name
-
-subgraphToExtension : Subgraph -> Maybe Edge
-subgraphToExtension { entity, parent } =
-  parent
-  |> Maybe.map (\p -> { from = getNodeId entity, to = p, data = Extends })
-
-subgraphToImplements : Subgraph -> List Edge
-subgraphToImplements { entity, interfaces } =
-  interfaces
-  |> List.map (\i -> { from = getNodeId entity, to = i, data = Implements })
-
-subgraphToReferences : Subgraph -> List Edge
-subgraphToReferences { entity, references } =
-  references
-  |> List.map (\ref -> { from = getNodeId entity, to = ref, data = References })
-
-subgraphToNode : Subgraph -> Node
-subgraphToNode { entity } =
-    { id = getNodeId entity, data = entity }
+-}
