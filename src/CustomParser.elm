@@ -1,5 +1,7 @@
 module CustomParser exposing (..)
 
+import Parser as ElmParser exposing ((|.), (|=))
+
 type alias Parser a = String -> Result String (a, String)
 
 succeed : a -> Parser a
@@ -29,6 +31,72 @@ keeper parserFunc parserArg =
                         Err e
             Err e ->
                 Err e
+
+stringTakeWhile : (Char -> Bool) -> String -> String
+stringTakeWhile f s =
+    case String.uncons s of
+        Nothing -> ""
+        Just (x, xs) ->
+            if f x then
+                String.cons x (stringTakeWhile f xs)
+            else
+                ""
+
+intParser : Parser Int
+intParser =
+    oneOf
+      [ iikmap negate (symbol "-") (spaces) (unsignedIntParser)
+      , iikmap identity (symbol "+") (spaces) (unsignedIntParser)
+      , unsignedIntParser
+      ]
+
+unsignedIntParser : Parser Int
+unsignedIntParser =
+    \str ->
+        let
+            n = stringTakeWhile Char.isDigit str
+            after = String.dropLeft (String.length n) str
+        in
+            case String.toInt n of
+                Just i ->
+                    Ok (i, after)
+                Nothing ->
+                    Err str
+
+    {-
+    ElmParser.oneOf
+        [ ElmParser.succeed negate
+          |. ElmParser.symbol "-"
+          |= secretIntParser
+        , ElmParser.succeed identity
+          |. ElmParser.symbol "+"
+          |= secretIntParser
+        , secretIntParser
+        ]
+
+
+elmToCustom : ElmParser.Parser a -> Parser a
+elmToCustom p =
+    \str ->
+        case ElmParser.run p str of
+            Ok a -> Ok a
+            Err _ -> Err str
+
+secretIntParser : Parser Int
+secretIntParser =
+    elmToCustom
+        ElmParser.number
+            { int = Just identity
+            , hex = Just identity
+            , octal = Just identity
+            , binary = Just identity
+            , float = Nothing
+            }
+    -}
+
+
+floatParser : Parser Float
+floatParser = \str -> Err str --Result.map (\(n, b) -> (toFloat n, b)) (intParser str)
 
 kmap f x = keeper (succeed f) x
 
@@ -269,6 +337,14 @@ keyword kwd =
     \str ->
         if String.startsWith kwd str then
             Ok ((), String.dropLeft (String.length kwd) str)
+        else
+            Err str
+
+eof : Parser ()
+eof =
+    \str ->
+        if str == "" then
+            Ok ((), "")
         else
             Err str
 

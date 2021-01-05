@@ -14,11 +14,11 @@ type alias Model =
 
 init : () -> (Model, Cmd Msg)
 init _ =
-    ( { text = ""
-      , out = Err "nothing yet"
-      }
-    , Cmd.none
-    )
+        ( { text = ""
+          , out = Err "nothing yet"
+          }
+        , Cmd.none
+        )
 
 view : Model -> Browser.Document Msg
 view model =

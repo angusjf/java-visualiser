@@ -8,7 +8,8 @@ import Result
 
 parse : Parser a -> String -> Result.Result String a
 parse parser =
-    Result.map Tuple.first << parser << removeCommentsAndTabs
+    Result.map Tuple.first <<
+        (kiimap identity parser spaces eof) << removeCommentsAndTabs
 
 
 removeCommentsAndTabs : String -> String
@@ -84,28 +85,17 @@ keywords =
 
 type Identifier
     = Identifier String
-    
-takeWhile : (a -> Bool) -> List a -> List a
-takeWhile f l =
-    case l of
-        x::xs ->
-            if f x
-                then x :: takeWhile f xs
-                else []
-        [] ->
-            []
-
 
 identifier : Parser Identifier
 identifier =
   \str ->
     let
       ident =
-          case String.toList str of
-              [] -> ""
-              c::cs ->
+          case String.uncons str of
+              Nothing -> ""
+              Just (c, cs) ->
                 if javaLetter c
-                    then String.fromList <| c :: takeWhile javaLetterOrDigit cs
+                    then String.cons c (stringTakeWhile javaLetterOrDigit cs)
                     else ""
     in
       if String.length ident > 0 then
@@ -196,21 +186,24 @@ textBlock =
 
 stringLiteral : Parser String
 stringLiteral =
-    ignorer (succeed "TODO") (symbol "\"")
-        -- TODO
+    \str ->
+        case String.uncons str of
+            Just ('"', rest) ->
+                let
+                    contents = stringTakeWhile (\c -> c /= '"') rest
+                    after = String.dropLeft ((String.length contents) + 1) rest
+                in
+                    Ok (contents, after)
+            _ ->
+                Err str
 
 
 integerLiteral : Parser Int
-integerLiteral =
-    ignorer (succeed 1) (symbol "1")
-        -- TODO
+integerLiteral = intParser
 
 
 floatingPointLiteral : Parser Float
-floatingPointLiteral =
-    ignorer (succeed 1) (symbol "1")
-        -- TODO
-
+floatingPointLiteral = floatParser
 
 
 -- }}}
@@ -661,10 +654,10 @@ expressionName : Parser ExpressionName
 expressionName =
     oneOf
         [ kmap ExpressionName_Identifier identifier
-        , kikmap ExpressionName_AmbiguousDotIdentifier
-            ambiguousName
-            (ignorer spaces (ignorer (symbol ".") spaces))
-            (identifier)
+        --, kikmap ExpressionName_AmbiguousDotIdentifier
+        --    ambiguousName
+        --    (ignorer spaces (ignorer (symbol ".") spaces))
+        --    (identifier)
         ]
 
 
@@ -1965,7 +1958,7 @@ enumBody =
             spaces ) <|
             optional enumBodyDeclarations ) <|
             spaces ) <|
-            (symbol "{")
+            (symbol "}")
     )
 
 
@@ -2562,13 +2555,18 @@ arrayInitializer =
         ignorer (
         ignorer (
         ignorer (
+        ignorer (
         keeper (
         ignorer (
+        ignorer (
         succeed ArrayInitializer ) <|
-        (symbol "{") ) <|
+        (symbol "{") ) <| 
+        spaces ) <|
+            -- TODO spaces?
         optional (variableInitializerList) ) <|
         spaces ) <|
         optional (symbol ",") ) <|
+        spaces ) <|
         (symbol "}")
 
 
@@ -2603,9 +2601,11 @@ type Block
 
 block : Parser Block
 block =
-    ikimap Block
+    iikiimap Block
         (symbol "{")
+        (spaces)
         (optional blockStatements)
+        (spaces)
         (symbol "}")
 
 
@@ -2742,12 +2742,12 @@ type StatementWithoutTrailingSubstatement
 statementWithoutTrailingSubstatement : Parser StatementWithoutTrailingSubstatement
 statementWithoutTrailingSubstatement =
     oneOf
-        [ kmap StatementWithoutTrailingSubstatement_Block
-             (lazy (\_ -> block))
-        , kmap StatementWithoutTrailingSubstatement_Empty
+        [ kmap StatementWithoutTrailingSubstatement_Empty
              emptyStatement
+        , kmap StatementWithoutTrailingSubstatement_Block
+             (lazy (\_ -> block))
         , kmap StatementWithoutTrailingSubstatement_Expression
-             expressionStatement
+             expressionStatement -- HERE
         , kmap StatementWithoutTrailingSubstatement_Assert
              assertStatement
         , kmap StatementWithoutTrailingSubstatement_Switch
@@ -2844,14 +2844,14 @@ statementExpression =
              preIncrementExpression
         , kmap StatementExpression_PreDecrement
              preDecrementExpression
-        , kmap StatementExpression_PostIncrement
-             postIncrementExpression
-        , kmap StatementExpression_PostDecrement
-             postDecrementExpression
-        , kmap StatementExpression_MethodInvocation
-             methodInvocation
-        , kmap StatementExpression_ClassCreation
-             classInstanceCreationExpression
+        --, kmap StatementExpression_PostIncrement
+        --     postIncrementExpression
+        --, kmap StatementExpression_PostDecrement
+        --     postDecrementExpression
+        --, kmap StatementExpression_MethodInvocation
+        --     methodInvocation
+        --, kmap StatementExpression_ClassCreation
+        --     classInstanceCreationExpression
         ]
 
 
@@ -2885,7 +2885,6 @@ ifThenStatement =
 
 type IfThenElseStatement
     = IfThenElseStatement Expression StatementNoShortIf Statement
-    
 
 
 ifThenElseStatement : Parser IfThenElseStatement
@@ -3558,7 +3557,7 @@ synchronizedStatement =
         spaces
         expression
         spaces
-        (symbol "(")
+        (symbol ")")
         spaces
         (lazy (\_ -> block))
 
@@ -3847,16 +3846,16 @@ primaryNoNewArray =
             expression
             spaces
             (symbol ")")
-        , kmap PrimaryNoNewArray_ClassCreation
-             classInstanceCreationExpression
-        , kmap PrimaryNoNewArray_FieldAccess
-             fieldAccess
-        , kmap PrimaryNoNewArray_ArrayAccess
-             (lazy (\_ -> arrayAccess)) -- ?
-        , kmap PrimaryNoNewArray_MethodInvocation
-             methodInvocation
-        , kmap PrimaryNoNewArray_MethodReference
-             methodReference
+        --, kmap PrimaryNoNewArray_ClassCreation
+             --classInstanceCreationExpression
+        --, kmap PrimaryNoNewArray_FieldAccess
+        --     fieldAccess
+        --, kmap PrimaryNoNewArray_ArrayAccess
+        --     (lazy (\_ -> arrayAccess)) -- ?
+        --, kmap PrimaryNoNewArray_MethodInvocation
+        --     methodInvocation
+        --, kmap PrimaryNoNewArray_MethodReference
+        --     methodReference
         ]
 
 
@@ -4350,92 +4349,87 @@ methodReference =
           optional typeArguments ) <|
           spaces ) <|
           identifier
-        , 
-            keeper (
-            ignorer (
-            keeper (
-            ignorer (
-            ignorer (
-            ignorer (
-            keeper (
+        , keeper (
+          ignorer (
+          keeper (
+          ignorer (
+          ignorer (
+          ignorer (
+          keeper (
           succeed MethodReference_Reference ) <|
-             referenceType ) <|
-             spaces ) <|
-             symbol ":" ) <|
-             spaces ) <|
-             optional typeArguments ) <|
-             spaces ) <|
-             identifier
-        , 
-            keeper (
-            ignorer (
-            keeper (
-            ignorer (
-            ignorer (
-            ignorer (
-            ignorer (
+          referenceType ) <|
+          spaces ) <|
+          symbol ":" ) <|
+          spaces ) <|
+          optional typeArguments ) <|
+          spaces ) <|
+          identifier
+        , keeper (
+          ignorer (
+          keeper (
+          ignorer (
+          ignorer (
+          ignorer (
+          ignorer (
           succeed MethodReference_Super ) <|
-             (keyword "super") ) <|
-             spaces ) <|
-             symbol ":" ) <|
-             spaces ) <|
-             optional typeArguments ) <|
-             spaces ) <|
-             identifier
-        , 
-            keeper (
-            ignorer (
-            keeper (
-            ignorer (
-            ignorer (
-            ignorer (
-            ignorer (
-            ignorer (
-            ignorer (
-            ignorer (
-            keeper (
-            ignorer (
+          (keyword "super") ) <|
+          spaces ) <|
+          symbol ":" ) <|
+          spaces ) <|
+          optional typeArguments ) <|
+          spaces ) <|
+          identifier
+        , keeper (
+          ignorer (
+          keeper (
+          ignorer (
+          ignorer (
+          ignorer (
+          ignorer (
+          ignorer (
+          ignorer (
+          ignorer (
+          keeper (
+          ignorer (
           succeed MethodReference_TypeSuper ) <|
-             spaces ) <|
-             typeName ) <|
-             spaces ) <|
-             (symbol ".") ) <|
-             spaces ) <|
-             (keyword "super") ) <|
-             spaces ) <|
-             symbol ":" ) <|
-             spaces ) <|
-             optional typeArguments ) <|
-             spaces ) <|
-             identifier
-        , 
-            ignorer (
-            ignorer (
-            keeper (
-            ignorer (
-            ignorer (
-            ignorer (
-            keeper (
+          spaces ) <|
+          typeName ) <|
+          spaces ) <|
+          (symbol ".") ) <|
+          spaces ) <|
+          (keyword "super") ) <|
+          spaces ) <|
+          symbol ":" ) <|
+          spaces ) <|
+          optional typeArguments ) <|
+          spaces ) <|
+          identifier
+        , ignorer (
+          ignorer (
+          keeper (
+          ignorer (
+          ignorer (
+          ignorer (
+          keeper (
           succeed MethodReference_ClassNew ) <|
-             classType ) <|
-             spaces ) <|
-             symbol ":" ) <|
-             spaces ) <|
-             optional typeArguments ) <|
-             spaces ) <|
-             (keyword "new")
-        , 
-            ignorer (
-            ignorer (
-            ignorer (
-            ignorer (
-            keeper (
+          classType ) <|
+          spaces ) <|
+          symbol ":" ) <|
+          spaces ) <|
+          optional typeArguments ) <|
+          spaces ) <|
+          (keyword "new")
+        , ignorer (
+          ignorer (
+          ignorer (
+          ignorer (
+          keeper (
           succeed MethodReference_ArrayNew ) <|
-             arrayType ) <|
-             spaces ) <|
-             symbol ":" ) <|
-             spaces ) <|
-             (keyword "new")
+          arrayType ) <|
+          spaces ) <|
+          symbol ":" ) <|
+          spaces ) <|
+          (keyword "new")
         ]
 
 
@@ -4724,8 +4718,8 @@ leftHandSide : Parser LeftHandSide
 leftHandSide =
     oneOf
         [ kmap LeftHandSide_Expression expressionName
-        , kmap LeftHandSide_Field fieldAccess
-        , kmap LeftHandSide_Array (lazy (\_ -> arrayAccess))
+        --, kmap LeftHandSide_Field fieldAccess
+        --, kmap LeftHandSide_Array (lazy (\_ -> arrayAccess))
         ]
 
 
@@ -5165,10 +5159,10 @@ postfixExpression =
             primary
         , kmap PostfixExpression_Name
             expressionName
-        , kmap PostfixExpression_Increment
-            postIncrementExpression
-        , kmap PostfixExpression_Decrement
-            postDecrementExpression
+        --, kmap PostfixExpression_Increment
+        --    postIncrementExpression
+        --, kmap PostfixExpression_Decrement
+        --    postDecrementExpression
         ]
 
 

@@ -74,15 +74,15 @@ nub eq list =
     [] -> []
 
 toAst : String -> Maybe JP.CompilationUnit
-toAst src = toMaybeLog (JP.parse JP.compilationUnit src) src
+toAst src = toMaybeLog (JP.parse JP.compilationUnit src)
 
-toMaybeLog : Result a b -> String -> Maybe b
-toMaybeLog res src =
+toMaybeLog : Result a b -> Maybe b
+toMaybeLog res =
   case res of
     Ok x ->
-      always (Just x) (Debug.log "toMaybeLog:" (String.left 100 src))
+      always (Just x) (Debug.log "parse Ok" x)
     Err e ->
-      always Nothing (Debug.log "toMaybeLog: " (e, String.left 100 src))
+      always Nothing (Debug.log "parse Err" e)
 
 getNodeId : Entity -> NodeId
 getNodeId { pkg , name } = mkNodeId pkg name
@@ -166,10 +166,18 @@ normalClassDeclarationTS pkg (JP.NormalClassDeclaration mods id typeParams super
              , publicMethods = []
              , expansion = Not
              }
-  , parent = Nothing --Maybe.map (mkNodeId pkg) (Maybe.andThen onlyRefTypes class.extends)
+  , parent = Maybe.map (mkNodeId pkg << superclassToString) superclass
   , interfaces = [] --List.filterMap onlyRefTypes class.implements
   , references = getReferences pkg classBody
   } :: []
+
+superclassToString : JP.Superclass -> String
+superclassToString (JP.Superclass classtype) =
+    case classtype of
+        JP.ClassType_NoPackage _ id _ ->
+            AstHelpers.typeIdentifierToString id
+        _ ->
+            "TODO" -- TODO
 
 -- }}}
 
@@ -182,7 +190,7 @@ getReferences pkg body =
         |> removeDuplicates
         |> List.map (prefixIfNotAlready pkg)
   in
-    Debug.log "refs:" allReferences
+    Debug.log "refs" allReferences
 
 prefixIfNotAlready : String -> String -> String
 prefixIfNotAlready pkg name =
