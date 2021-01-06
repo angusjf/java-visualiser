@@ -124,6 +124,14 @@ kikikiimap func a b c d e f g =
     in
         i (i (k (i (k (i (k (succeed func) a) b) c) d) e) f) g
 
+
+iiiikiimap func a b c d e f g =
+    let
+        i = ignorer
+        k = keeper
+    in
+        i (i (k (i (i (i (i (succeed func) a) b) c) d) e) f) g
+
 iikiimap f a b c d e =
     let
         i = ignorer

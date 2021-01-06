@@ -23,6 +23,10 @@ removeCommentsAndTabs src =
     in
     Regex.replace re (always "") src
 
+-- replace escape chars
+-- : String -> String
+-- TODO
+
 
 -- {{{ Productions from §3 (Lexical Structure)
 
@@ -646,7 +650,7 @@ typeName =
 
 type ExpressionName
     = ExpressionName_Identifier Identifier
-    | ExpressionName_AmbiguousDotIdentifier AmbiguousName Identifier
+    | ExpressionName_AmbiguousDotIdentifier (List Identifier)
     
 
 
@@ -654,10 +658,8 @@ expressionName : Parser ExpressionName
 expressionName =
     oneOf
         [ kmap ExpressionName_Identifier identifier
-        --, kikmap ExpressionName_AmbiguousDotIdentifier
-        --    ambiguousName
-        --    (ignorer spaces (ignorer (symbol ".") spaces))
-        --    (identifier)
+        , kmap ExpressionName_AmbiguousDotIdentifier
+            (dotted identifier)
         ]
 
 
@@ -679,17 +681,6 @@ type PackageOrTypeName
 packageOrTypeName : Parser PackageOrTypeName
 packageOrTypeName =
     kmap PackageOrTypeName (dotted identifier)
-
-
-type AmbiguousName
-    = AmbiguousName (List Identifier)
-    
-
-
-ambiguousName : Parser AmbiguousName
-ambiguousName =
-    kmap AmbiguousName (dotted identifier)
-
 
 
 -- }}}
@@ -817,22 +808,19 @@ typeImportOnDemandDeclaration =
 
 
 type SingleStaticImportDeclaration
-    = SingleStaticImportDeclaration TypeName Identifier
+    --= SingleStaticImportDeclaration TypeName Identifier
+    = SingleStaticImportDeclaration PackageOrTypeName
     
 
 
 singleStaticImportDeclaration : Parser SingleStaticImportDeclaration
 singleStaticImportDeclaration =
-    iiiikiiikiimap SingleStaticImportDeclaration
+    iiiikiimap SingleStaticImportDeclaration
         (keyword "import")
         spaces
         (keyword "static")
         spaces
-        typeName
-        spaces
-        (symbol ".")
-        spaces
-        identifier
+        packageOrTypeName
         spaces
         (symbol ";")
 
@@ -2675,8 +2663,8 @@ type LocalVariableType
 localVariableType : Parser LocalVariableType
 localVariableType =
     oneOf
-        [ kmap LocalVariableType_UnannType unannType
-        , imap LocalVariableType_Var (keyword "var")
+        [ imap LocalVariableType_Var (keyword "var")
+        , kmap LocalVariableType_UnannType unannType
         ]
 
 
@@ -2695,8 +2683,8 @@ statement =
     oneOf
         [ kmap Statement_Statement statementWithoutTrailingSubstatement
         , kmap Statement_Labeled labeledStatement
-        , kmap Statement_If ifThenStatement
         , kmap Statement_IfThenElse ifThenElseStatement
+        , kmap Statement_If ifThenStatement
         , kmap Statement_While whileStatement
         , kmap Statement_For forStatement
         ]
@@ -2848,8 +2836,8 @@ statementExpression =
         --     postIncrementExpression
         --, kmap StatementExpression_PostDecrement
         --     postDecrementExpression
-        --, kmap StatementExpression_MethodInvocation
-        --     methodInvocation
+        , kmap StatementExpression_MethodInvocation
+             methodInvocation
         --, kmap StatementExpression_ClassCreation
         --     classInstanceCreationExpression
         ]
@@ -4191,34 +4179,33 @@ methodInvocation =
             optional argumentList ) <|
             spaces ) <|
             (symbol ")")
-        ,   
-            ignorer (
-            ignorer (
-            keeper (
-            ignorer (
-            ignorer (
-            ignorer (
-            keeper (
-            ignorer (
-            keeper (
-            ignorer (
-            ignorer (
-            ignorer (
-            keeper (
-            succeed MethodInvocation_Primary ) <|
-            lazy (\_ -> primary) ) <|
-            spaces ) <|
-            (symbol ".") ) <|
-            spaces ) <|
-            optional typeArguments ) <|
-            spaces ) <|
-            identifier ) <|
-            spaces ) <|
-            (symbol "(") ) <|
-            spaces ) <|
-            optional argumentList ) <|
-            spaces ) <|
-            (symbol ")")
+        --, ignorer (
+        --  ignorer (
+        --  keeper (
+        --  ignorer (
+        --  ignorer (
+        --  ignorer (
+        --  keeper (
+        --  ignorer (
+        --  keeper (
+        --  ignorer (
+        --  ignorer (
+        --  ignorer (
+        --  keeper (
+        --  succeed MethodInvocation_Primary ) <|
+        --  lazy (\_ -> primary) ) <|
+        --  spaces ) <|
+        --  (symbol ".") ) <|
+        --  spaces ) <|
+        --  optional typeArguments ) <|
+        --  spaces ) <|
+        --  identifier ) <|
+        --  spaces ) <|
+        --  (symbol "(") ) <|
+        --  spaces ) <|
+        --  optional argumentList ) <|
+        --  spaces ) <|
+        --  (symbol ")")
         ,   
             ignorer (
             ignorer (
@@ -4717,9 +4704,9 @@ type LeftHandSide
 leftHandSide : Parser LeftHandSide
 leftHandSide =
     oneOf
-        [ kmap LeftHandSide_Expression expressionName
-        --, kmap LeftHandSide_Field fieldAccess
-        --, kmap LeftHandSide_Array (lazy (\_ -> arrayAccess))
+        [ --kmap LeftHandSide_Array (lazy (\_ -> arrayAccess))
+          kmap LeftHandSide_Field fieldAccess
+        , kmap LeftHandSide_Expression expressionName
         ]
 
 

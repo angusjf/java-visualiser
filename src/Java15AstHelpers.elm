@@ -293,7 +293,7 @@ getRefsInExpressionName e =
     case e of
         ExpressionName_Identifier i ->
             []
-        ExpressionName_AmbiguousDotIdentifier amb i ->
+        ExpressionName_AmbiguousDotIdentifier i ->
             [] -- TODO
 
 getRefsInExpressionStatement : ExpressionStatement -> List String
