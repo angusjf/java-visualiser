@@ -6,10 +6,15 @@ import Regex
 import Set exposing (Set)
 import Result
 
+
+
 parse : Parser a -> String -> Result.Result String a
 parse parser =
-    Result.map Tuple.first <<
-        (kiimap identity parser spaces eof) << removeCommentsAndTabs
+    removeCommentsAndTabs
+    >> replaceEscapeChars
+    >> (kiimap identity parser spaces eof)
+    >> Result.map Tuple.first
+
 
 
 removeCommentsAndTabs : String -> String
@@ -23,9 +28,18 @@ removeCommentsAndTabs src =
     in
     Regex.replace re (always "") src
 
--- replace escape chars
--- : String -> String
--- TODO
+
+
+replaceEscapeChars : String -> String
+replaceEscapeChars src = 
+    let
+        re =
+            "(\\\\'|\\\\\")"
+                |> Regex.fromStringWith
+                    { caseInsensitive = False, multiline = True }
+                |> Maybe.withDefault Regex.never
+    in
+    Regex.replace re (always "_") src
 
 
 -- {{{ Productions from §3 (Lexical Structure)
@@ -184,7 +198,7 @@ characterLiteral =
 
 textBlock : Parser String
 textBlock =
-    ignorer (succeed "TODO") (symbol "\"")
+    ignorer (succeed "TODO") (keyword "\"\"\"TODO\"\"\"")
         -- TODO
 
 
@@ -466,7 +480,7 @@ dims =
                 ignorer (
                 ignorer (
                 ignorer (
-                list (annotation) ) <| -- ?
+                list (annotation) ) <|
                 spaces ) <|
                 (symbol "[") ) <|
                 spaces ) <|
@@ -649,18 +663,13 @@ typeName =
 
 
 type ExpressionName
-    = ExpressionName_Identifier Identifier
-    | ExpressionName_AmbiguousDotIdentifier (List Identifier)
+    = ExpressionName (List Identifier)
     
 
 
 expressionName : Parser ExpressionName
 expressionName =
-    oneOf
-        [ kmap ExpressionName_Identifier identifier
-        , kmap ExpressionName_AmbiguousDotIdentifier
-            (dotted identifier)
-        ]
+    kmap ExpressionName (dotted identifier)
 
 
 type MethodName
@@ -3834,8 +3843,8 @@ primaryNoNewArray =
             expression
             spaces
             (symbol ")")
-        --, kmap PrimaryNoNewArray_ClassCreation
-             --classInstanceCreationExpression
+        , kmap PrimaryNoNewArray_ClassCreation
+           classInstanceCreationExpression
         --, kmap PrimaryNoNewArray_FieldAccess
         --     fieldAccess
         --, kmap PrimaryNoNewArray_ArrayAccess
@@ -3935,12 +3944,12 @@ classInstanceCreationExpression =
             (symbol ".")
             spaces
             unqualifiedClassInstanceCreationExpression
-        , kiiikmap ClassInstanceCreationExpression_Primary
-            (lazy (\_ -> primary))
-            spaces
-            (symbol ".")
-            spaces
-            unqualifiedClassInstanceCreationExpression
+        --, kiiikmap ClassInstanceCreationExpression_Primary
+        --    (lazy (\_ -> primary))
+        --    spaces
+        --    (symbol ".")
+        --    spaces
+        --    unqualifiedClassInstanceCreationExpression
         ]
 
 
@@ -4015,10 +4024,10 @@ type TypeArgumentsOrDiamond
 typeArgumentsOrDiamond : Parser TypeArgumentsOrDiamond
 typeArgumentsOrDiamond =
     oneOf
-        [ kmap TypeArguments_TypeArguments
-            typeArguments
-        , imap TypeArguments_Diamond
+        [ imap TypeArguments_Diamond
             (symbol "<>")
+        , kmap TypeArguments_TypeArguments
+            typeArguments
         ]
 
 
@@ -4098,7 +4107,8 @@ type MethodInvocation
     = MethodInvocation_Name MethodName (Maybe ArgumentList)
     | MethodInvocation_Type TypeName (Maybe TypeArguments) Identifier (Maybe ArgumentList)
     | MethodInvocation_Expression ExpressionName (Maybe TypeArguments) Identifier (Maybe ArgumentList)
-    | MethodInvocation_Primary Primary (Maybe TypeArguments) Identifier (Maybe ArgumentList)
+    --| MethodInvocation_Primary Primary (Maybe TypeArguments) Identifier (Maybe ArgumentList)
+    {--}| MethodInvocation_TODO (List Identifier) (Maybe ArgumentList)
     | MethodInvocation_Super (Maybe TypeArguments) Identifier (Maybe ArgumentList)
     | MethodInvocation_TypeSuper TypeName (Maybe TypeArguments) Identifier (Maybe ArgumentList)
     
@@ -4179,33 +4189,48 @@ methodInvocation =
             optional argumentList ) <|
             spaces ) <|
             (symbol ")")
-        --, ignorer (
-        --  ignorer (
-        --  keeper (
-        --  ignorer (
-        --  ignorer (
-        --  ignorer (
-        --  keeper (
-        --  ignorer (
-        --  keeper (
-        --  ignorer (
-        --  ignorer (
-        --  ignorer (
-        --  keeper (
-        --  succeed MethodInvocation_Primary ) <|
-        --  lazy (\_ -> primary) ) <|
-        --  spaces ) <|
-        --  (symbol ".") ) <|
-        --  spaces ) <|
-        --  optional typeArguments ) <|
-        --  spaces ) <|
-        --  identifier ) <|
-        --  spaces ) <|
-        --  (symbol "(") ) <|
-        --  spaces ) <|
-        --  optional argumentList ) <|
-        --  spaces ) <|
-        --  (symbol ")")
+            ----, ignorer (
+            ----  ignorer (
+            ----  keeper (
+            ----  ignorer (
+            ----  ignorer (
+            ----  ignorer (
+            ----  keeper (
+            ----  ignorer (
+            ----  keeper (
+            ----  ignorer (
+            ----  ignorer (
+            ----  ignorer (
+            ----  keeper (
+            ----  succeed MethodInvocation_Primary ) <|
+            ----  lazy (\_ -> primary) ) <|
+            ----  spaces ) <|
+            ----  (symbol ".") ) <|
+            ----  spaces ) <|
+            ----  optional typeArguments ) <|
+            ----  spaces ) <|
+            ----  identifier ) <|
+            ----  spaces ) <|
+            ----  (symbol "(") ) <|
+            ----  spaces ) <|
+            ----  optional argumentList ) <|
+            ----  spaces ) <|
+            ----  (symbol ")")
+            , ignorer (
+              ignorer (
+              keeper (
+              ignorer (
+              ignorer (
+              ignorer (
+              keeper (
+              succeed MethodInvocation_TODO ) <|
+              dotted identifier ) <|
+              spaces ) <|
+              (symbol "(") ) <|
+              spaces ) <|
+              optional argumentList ) <|
+              spaces ) <|
+              (symbol ")")
         ,   
             ignorer (
             ignorer (

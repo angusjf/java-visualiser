@@ -289,12 +289,7 @@ getRefsInLeftHandSide lhs =
             [] --ArrayAccess
 
 getRefsInExpressionName : ExpressionName -> List String
-getRefsInExpressionName e =
-    case e of
-        ExpressionName_Identifier i ->
-            []
-        ExpressionName_AmbiguousDotIdentifier i ->
-            [] -- TODO
+getRefsInExpressionName = always []
 
 getRefsInExpressionStatement : ExpressionStatement -> List String
 getRefsInExpressionStatement (ExpressionStatement s) =
