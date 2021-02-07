@@ -89,36 +89,36 @@ filesToStrings files =
 
 init =
   init2
-    Project.JavaToGraph.fromSources
-      { viewNode = Project.Visualiser.viewNode
-      , viewEdge = Project.Visualiser.viewEdge
-      , onClick  = Project.Visualiser.onClick
-      , getRect  = Project.Visualiser.getRect
-      }
+      {-
+        Project.JavaToGraph.fromSources
+        { viewNode = Project.Visualiser.viewNode
+        , viewEdge = Project.Visualiser.viewEdge
+        , onClick  = Project.Visualiser.onClick
+        , getRect  = Project.Visualiser.getRect
+        }
+      -}
+        Package.JavaToGraph.fromSources
+        { viewNode = Package.Visualiser.viewNode
+        , viewEdge = Package.Visualiser.viewEdge
+        , onClick  = Package.Visualiser.onClick
+        , getRect  = Package.Visualiser.getRect
+        }
           
 init2 : (List String -> List (String, Graph n e))
      -> Instance n e (Visualiser.Msg n)
-     -> (Config, List File)
+     -> Config
      -> (Model n e, Cmd (Msg n e))
-init2 fromSources instance (config, inFiles) =
-  let
-    files = List.map (\f -> (f, True)) inFiles
-    graphs = fromSources <| filesToStrings <| temp_log <| files
-    sgav = 
-         Maybe.map
-           (\(n, graph) -> (n, Visualiser.init config graph instance))
-           (List.head graphs)
-  in
-    ({ files = files
-     , config = config
-     , fromSources = fromSources
-     , menu = Main
-     , graphs = graphs
-     , selectedGraphAndVisualiser = sgav
-     , instance = instance
-     }
-    , Cmd.none
-    )
+init2 fromSources instance config =
+  ({ files = []
+   , config = config
+   , fromSources = fromSources
+   , menu = Main
+   , graphs = []
+   , selectedGraphAndVisualiser = Nothing
+   , instance = instance
+   }
+  , Cmd.none
+  )
 
 isJust : Maybe a -> Bool
 isJust = Maybe.withDefault False << Maybe.map (always True)
@@ -193,10 +193,25 @@ update msg model =
 setFiles : List (File, Bool) -> Model n e -> (Model n e, Cmd (Msg n e))
 setFiles files model =
   let
+    graphs = model.fromSources <| filesToStrings <| files
     newModel = 
       { model
         | files = files
-        , graphs = model.fromSources <| filesToStrings <| files
+        , graphs = graphs
+        , selectedGraphAndVisualiser =
+              case model.selectedGraphAndVisualiser of
+                  Just x -> Just x
+                  Nothing ->
+                    Maybe.map
+                        (\(n, graph) ->
+                            ( n
+                            , Visualiser.init
+                                model.config
+                                graph
+                                model.instance
+                            )
+                        )
+                        (List.head graphs)
       }
   in
     case model.selectedGraphAndVisualiser of
@@ -285,7 +300,7 @@ view model =
 
 viewNoGraphError : Element (Msg n e)
 viewNoGraphError =
-  CElement.text "Sorry! I couldn't find any Java classes in your open workspaces"
+  CElement.text "Sorry! I couldn't find any Java classes in that workspace"
 
 viewSelectGraph : List (String, Graph n e) -> Element (Msg n e)
 viewSelectGraph options =
