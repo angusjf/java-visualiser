@@ -95,9 +95,9 @@ lineBetween from to =
     op = 
         if centerX from <= centerX to && centerY from <= centerY to then
             { x1 = (+), y1 = (+), x2 = (-), y2 = (-) }
-        else if centerX from =< centerX to && centerY from >= centerY to then
+        else if centerX from <= centerX to && centerY from >= centerY to then
             { x1 = (+), y1 = (-), x2 = (-), y2 = (+) }
-        else if centerX from >= centerX to && centerY from =< centerY to then
+        else if centerX from >= centerX to && centerY from <= centerY to then
             { x1 = (-), y1 = (+), x2 = (+), y2 = (-) }
         else
             { x1 = (-), y1 = (-), x2 = (+), y2 = (+) }
