@@ -2,8 +2,48 @@ module Java15AstHelpers exposing (..)
 
 import Java15Parser exposing (..)
 
+identifierToString : Identifier -> String
+identifierToString (Identifier i) = i
+
 typeIdentifierToString : TypeIdentifier -> String
-typeIdentifierToString (TypeIdentifier (Identifier i)) = Debug.log "_" i
+typeIdentifierToString (TypeIdentifier (Identifier i)) = i
+
+importDeclarationToString : ImportDeclaration -> String
+importDeclarationToString id =
+    case id of
+        ImportDeclaration_SingleTypeImport s ->
+            singleTypeImportDeclarationToString s
+        ImportDeclaration_TypeImportOnDemand t ->
+            typeImportOnDemandDeclarationToString t
+        ImportDeclaration_SingleStaticImport s ->
+            singleStaticImportDeclarationToString s
+        ImportDeclaration_StaticImportOnDemand s ->
+            staticImportOnDemandDeclarationToString s
+
+singleTypeImportDeclarationToString : SingleTypeImportDeclaration -> String
+singleTypeImportDeclarationToString (SingleTypeImportDeclaration (TypeName tn)) =
+    List.map typeIdentifierToString tn
+    |> listInit
+    |> String.join "."
+
+listInit : List a -> List a
+listInit l =
+    case l of
+        [ x ] -> [ ]
+        x :: xs -> x :: listInit xs
+        [] -> []
+
+typeImportOnDemandDeclarationToString : TypeImportOnDemandDeclaration -> String
+typeImportOnDemandDeclarationToString (TypeImportOnDemandDeclaration pOTN) =
+    "TODO"
+
+singleStaticImportDeclarationToString : SingleStaticImportDeclaration -> String
+singleStaticImportDeclarationToString (SingleStaticImportDeclaration pOTN) =
+    "TODO"
+
+staticImportOnDemandDeclarationToString : StaticImportOnDemandDeclaration -> String
+staticImportOnDemandDeclarationToString (StaticImportOnDemandDeclaration typeName) =
+    "TODO"
 
 -- GET REFS
 

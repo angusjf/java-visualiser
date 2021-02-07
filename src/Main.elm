@@ -14,6 +14,9 @@ import Instance exposing (Instance)
 import Package.JavaToGraph
 import Package.Visualiser
 import Package.Graph
+import Project.JavaToGraph
+import Project.Visualiser
+import Project.Graph
 
 type alias Uri = String
 
@@ -86,11 +89,11 @@ filesToStrings files =
 
 init =
   init2
-    Package.JavaToGraph.fromSources
-      { viewNode = Package.Visualiser.viewNode
-      , viewEdge = Package.Visualiser.viewEdge
-      , onClick  = Package.Visualiser.onClick
-      , getRect  = Package.Visualiser.getRect
+    Project.JavaToGraph.fromSources
+      { viewNode = Project.Visualiser.viewNode
+      , viewEdge = Project.Visualiser.viewEdge
+      , onClick  = Project.Visualiser.onClick
+      , getRect  = Project.Visualiser.getRect
       }
           
 init2 : (List String -> List (String, Graph n e))

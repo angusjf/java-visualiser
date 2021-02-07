@@ -93,11 +93,11 @@ lineBetween from to =
     m = if isNaN unsafeM || isInfinite unsafeM then 99999999 else unsafeM
     c = (centerY from) - m * (centerX from)
     op = 
-        if centerX from < centerX to && centerY from < centerY to then
+        if centerX from <= centerX to && centerY from <= centerY to then
             { x1 = (+), y1 = (+), x2 = (-), y2 = (-) }
-        else if centerX from < centerX to && centerY from > centerY to then
+        else if centerX from =< centerX to && centerY from >= centerY to then
             { x1 = (+), y1 = (-), x2 = (-), y2 = (+) }
-        else if centerX from > centerX to && centerY from < centerY to then
+        else if centerX from >= centerX to && centerY from =< centerY to then
             { x1 = (-), y1 = (+), x2 = (+), y2 = (-) }
         else
             { x1 = (-), y1 = (-), x2 = (+), y2 = (+) }

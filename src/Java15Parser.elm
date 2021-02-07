@@ -16,6 +16,21 @@ parse parser =
     >> Result.map Tuple.first
 
 
+parseJustHeader : String -> Result.Result String ( Maybe PackageDeclaration
+                                                 , List ImportDeclaration
+                                                 )
+parseJustHeader =
+    let
+        parser =
+            kikmap Tuple.pair
+                (optional packageDeclaration)
+                spaces
+                (list importDeclaration)
+    in
+        removeCommentsAndTabs
+        >> parser
+        >> Result.map Tuple.first
+
 
 removeCommentsAndTabs : String -> String
 removeCommentsAndTabs src =
@@ -3849,8 +3864,8 @@ primaryNoNewArray =
         --     fieldAccess
         --, kmap PrimaryNoNewArray_ArrayAccess
         --     (lazy (\_ -> arrayAccess)) -- ?
-        --, kmap PrimaryNoNewArray_MethodInvocation
-        --     methodInvocation
+        , kmap PrimaryNoNewArray_MethodInvocation
+             methodInvocation
         --, kmap PrimaryNoNewArray_MethodReference
         --     methodReference
         ]
@@ -4104,199 +4119,28 @@ arrayAccess =
 
 
 type MethodInvocation
-    = MethodInvocation_Name MethodName (Maybe ArgumentList)
-    | MethodInvocation_Type TypeName (Maybe TypeArguments) Identifier (Maybe ArgumentList)
-    | MethodInvocation_Expression ExpressionName (Maybe TypeArguments) Identifier (Maybe ArgumentList)
-    --| MethodInvocation_Primary Primary (Maybe TypeArguments) Identifier (Maybe ArgumentList)
-    {--}| MethodInvocation_TODO (List Identifier) (Maybe ArgumentList)
-    | MethodInvocation_Super (Maybe TypeArguments) Identifier (Maybe ArgumentList)
-    | MethodInvocation_TypeSuper TypeName (Maybe TypeArguments) Identifier (Maybe ArgumentList)
+    = MethodInvocation (List ((List Identifier), (Maybe ArgumentList)))
     
 
 
 methodInvocation : Parser MethodInvocation
-methodInvocation =
-    oneOf
-        [
-            ignorer (
-            ignorer (
-            keeper (
-            ignorer (
-            ignorer (
-            ignorer (
-            keeper (
-            succeed MethodInvocation_Name ) <|
-            methodName ) <|
-            spaces ) <|
-            (symbol "(") ) <|
-            spaces ) <|
-            optional argumentList ) <|
-            spaces ) <|
-            (symbol ")")
-        ,
-            ignorer (
-            ignorer (
-            keeper (
-            ignorer (
-            ignorer (
-            ignorer (
-            keeper (
-            ignorer (
-            keeper (
-            ignorer (
-            ignorer (
-            ignorer (
-            keeper (
-            succeed MethodInvocation_Type ) <|
-            typeName ) <|
-            spaces ) <|
-            (symbol ".") ) <|
-            spaces ) <|
-            optional typeArguments ) <|
-            spaces ) <|
-            identifier ) <|
-            spaces ) <|
-            (symbol "(") ) <|
-            spaces ) <|
-            optional argumentList ) <|
-            spaces ) <|
-            (symbol ")")
-        ,   
-            ignorer (
-            ignorer (
-            keeper (
-            ignorer (
-            ignorer (
-            ignorer (
-            keeper (
-            ignorer (
-            keeper (
-            ignorer (
-            ignorer (
-            ignorer (
-            keeper (
-            succeed MethodInvocation_Expression ) <|
-            expressionName ) <|
-            spaces ) <|
-            (symbol ".") ) <|
-            spaces ) <|
-            optional typeArguments ) <|
-            spaces ) <|
-            identifier ) <|
-            spaces ) <|
-            (symbol "(") ) <|
-            spaces ) <|
-            optional argumentList ) <|
-            spaces ) <|
-            (symbol ")")
-            ----, ignorer (
-            ----  ignorer (
-            ----  keeper (
-            ----  ignorer (
-            ----  ignorer (
-            ----  ignorer (
-            ----  keeper (
-            ----  ignorer (
-            ----  keeper (
-            ----  ignorer (
-            ----  ignorer (
-            ----  ignorer (
-            ----  keeper (
-            ----  succeed MethodInvocation_Primary ) <|
-            ----  lazy (\_ -> primary) ) <|
-            ----  spaces ) <|
-            ----  (symbol ".") ) <|
-            ----  spaces ) <|
-            ----  optional typeArguments ) <|
-            ----  spaces ) <|
-            ----  identifier ) <|
-            ----  spaces ) <|
-            ----  (symbol "(") ) <|
-            ----  spaces ) <|
-            ----  optional argumentList ) <|
-            ----  spaces ) <|
-            ----  (symbol ")")
-            , ignorer (
-              ignorer (
-              keeper (
-              ignorer (
-              ignorer (
-              ignorer (
-              keeper (
-              succeed MethodInvocation_TODO ) <|
-              dotted identifier ) <|
-              spaces ) <|
-              (symbol "(") ) <|
-              spaces ) <|
-              optional argumentList ) <|
-              spaces ) <|
-              (symbol ")")
-        ,   
-            ignorer (
-            ignorer (
-            keeper (
-            ignorer (
-            ignorer (
-            ignorer (
-            keeper (
-            ignorer (
-            keeper (
-            ignorer (
-            ignorer (
-            ignorer (
-            ignorer (
-            succeed MethodInvocation_Super ) <|
-            symbol "super" ) <|
-            spaces ) <|
-            (symbol ".") ) <|
-            spaces ) <|
-            optional typeArguments ) <|
-            spaces ) <|
-            identifier ) <|
-            spaces ) <|
-            (symbol "(") ) <|
-            spaces ) <|
-            optional argumentList ) <|
-            spaces ) <|
-            (symbol ")")
-        , 
-            ignorer (
-            ignorer (
-            keeper (
-            ignorer (
-            ignorer (
-            ignorer (
-            keeper (
-            ignorer (
-            keeper (
-            ignorer (
-            ignorer (
-            ignorer (
-            ignorer (
-            ignorer (
-            ignorer (
-            ignorer (
-            keeper (
-            succeed MethodInvocation_TypeSuper ) <|
-            typeName ) <|
-            spaces ) <|
-            (symbol ".") ) <|
-            spaces ) <|
-            (keyword "super") ) <|
-            spaces ) <|
-            (symbol ".") ) <|
-            spaces ) <|
-            optional typeArguments ) <|
-            spaces ) <|
-            identifier ) <|
-            spaces ) <|
-            (symbol "(") ) <|
-            spaces ) <|
-            optional argumentList ) <|
-            spaces ) <|
-            (symbol ")")
-        ]
-
+methodInvocation = kmap MethodInvocation (nonEmptySep "." (
+    ignorer (
+    ignorer (
+    keeper (
+    ignorer (
+    ignorer (
+    ignorer (
+    keeper (
+    succeed Tuple.pair ) <|
+    dotted identifier ) <|
+    spaces ) <|
+    (symbol "(") ) <|
+    spaces ) <|
+    optional argumentList ) <|
+    spaces ) <|
+    (symbol ")")
+    ))
 
 type ArgumentList
     = ArgumentList Expression (List Expression)
@@ -4341,7 +4185,7 @@ methodReference =
           succeed MethodReference_Expression ) <|
           expressionName ) <|
           spaces ) <|
-          symbol ":" ) <|
+          symbol "::" ) <|
           spaces ) <|
           optional typeArguments ) <|
           spaces ) <|
@@ -4356,7 +4200,7 @@ methodReference =
           succeed MethodReference_Primary ) <|
           lazy (\_ -> primary) ) <|
           spaces ) <|
-          symbol ":" ) <|
+          symbol "::" ) <|
           spaces ) <|
           optional typeArguments ) <|
           spaces ) <|
@@ -4371,7 +4215,7 @@ methodReference =
           succeed MethodReference_Reference ) <|
           referenceType ) <|
           spaces ) <|
-          symbol ":" ) <|
+          symbol "::" ) <|
           spaces ) <|
           optional typeArguments ) <|
           spaces ) <|
@@ -4386,7 +4230,7 @@ methodReference =
           succeed MethodReference_Super ) <|
           (keyword "super") ) <|
           spaces ) <|
-          symbol ":" ) <|
+          symbol "::" ) <|
           spaces ) <|
           optional typeArguments ) <|
           spaces ) <|
@@ -4411,7 +4255,7 @@ methodReference =
           spaces ) <|
           (keyword "super") ) <|
           spaces ) <|
-          symbol ":" ) <|
+          symbol "::" ) <|
           spaces ) <|
           optional typeArguments ) <|
           spaces ) <|
@@ -4426,7 +4270,7 @@ methodReference =
           succeed MethodReference_ClassNew ) <|
           classType ) <|
           spaces ) <|
-          symbol ":" ) <|
+          symbol "::" ) <|
           spaces ) <|
           optional typeArguments ) <|
           spaces ) <|
@@ -4439,7 +4283,7 @@ methodReference =
           succeed MethodReference_ArrayNew ) <|
           arrayType ) <|
           spaces ) <|
-          symbol ":" ) <|
+          symbol "::" ) <|
           spaces ) <|
           (keyword "new")
         ]
@@ -4791,9 +4635,7 @@ type ConditionalExpression
 conditionalExpression : Parser ConditionalExpression
 conditionalExpression =
     oneOf
-        [ kmap ConditionalExpression_Or
-            conditionalOrExpression
-        , kiiikiiikmap ConditionalExpression_TernaryConditional
+        [ kiiikiiikmap ConditionalExpression_TernaryConditional
             conditionalOrExpression
             spaces
             (symbol "?")
@@ -4813,6 +4655,8 @@ conditionalExpression =
             (symbol ":")
             spaces
             lambdaExpression
+        , kmap ConditionalExpression_Or
+            conditionalOrExpression
         ]
 
 
