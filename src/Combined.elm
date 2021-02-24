@@ -160,8 +160,8 @@ update msg model =
                                 v
                     in
                         case click of
-                            Just entity ->
-                                update (PackageSelected entity.name) model
+                            Just n ->
+                                update (PackageSelected n.data.data.name) model
                             Nothing ->
                                 ( { model | view = ProjectView v2 }
                                 , Cmd.map ProjectMsg msg2
@@ -181,19 +181,12 @@ update msg model =
                                 v
                     in
                         case click of
-                            Just entity ->
-                                    {-
-                                let
-                                  newNodes = upsert (click model.instance entity) model.nodes 
-                                  s = getInitialSimulation
-                                          config
-                                          model.static
-                                          model.instance
-                                          newNodes
-                                          model.edges
-                                in
-                                          -}
-                                ( { model | view = PackageView n v2 }
+                            Just node ->
+                                ( { model
+                                    | view =
+                                      Visualiser.clickNode model.config node v2
+                                      |> PackageView n
+                                  }
                                 , Cmd.map PackageMsg msg2
                                 )
                             Nothing ->
@@ -221,12 +214,12 @@ viewOverlay : Model -> List (Element (Msg))
 viewOverlay model =
     case model.view of
         PackageView name v ->
-            [ CElement.button 
+            [ CElement.button
               { onPress = Just BackToProject
               , label =
                   case name of
-                    "" -> "Unnamed Package"
-                    _  -> "Package: '" ++ name ++ "'"
+                    "" -> "← Unnamed Package"
+                    _  -> "← Package: '" ++ name ++ "'"
               }
             ]
             ++

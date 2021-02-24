@@ -1,5 +1,5 @@
 port module Visualiser exposing
-  ( init, view, viewOverlay, update, tick, withConfig, withGraph, Model, Msg )
+  ( init, view, viewOverlay, update, tick, withConfig, withGraph, Model, Msg, clickNode)
 
 import Element exposing (Element)
 import Element.Input
@@ -103,7 +103,7 @@ click { onClick } n =
   in
     { n | data = newData }
 
-update : Config -> Msg n -> Model n e -> (Model n e, Cmd (Msg n), Maybe n)
+update : Config -> Msg n -> Model n e -> (Model n e, Cmd (Msg n), Maybe (PosNode n))
 update config msg model =
   case msg of
     Start node ->
@@ -126,12 +126,12 @@ update config msg model =
                   , Nothing
                   )
               else
-                    ( { model
-                        | draggedNode = Nothing
-                      }
-                    , Cmd.none
-                    , Just node.data.data
-                    )
+                  ( { model
+                      | draggedNode = Nothing
+                    }
+                  , Cmd.none
+                  , Just node
+                  )
           Nothing ->
               ( model
               , Cmd.none
@@ -265,6 +265,23 @@ viewNodes { viewNode, getRect } nodeList =
                     n.data.data
                     (getRect (G.point n.x n.y) n.data.data)
            ) nodeList
+
+clickNode : Config -> PosNode n -> Model n e -> Model n e
+clickNode config entity model =
+    let
+        newNodes = upsert (click model.instance entity) model.nodes 
+        s = getInitialSimulation
+                config
+                model.static
+                model.instance
+                newNodes
+                model.edges
+    in
+        { model
+          | nodes = newNodes
+          , simulation = s
+        }
+
 
 viewOverlay : Model n e -> List (Element (Msg n))
 viewOverlay model =
