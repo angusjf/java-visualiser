@@ -103,7 +103,7 @@ click { onClick } n =
   in
     { n | data = newData }
 
-update : Config -> Msg n -> Model n e -> (Model n e, Cmd (Msg n))
+update : Config -> Msg n -> Model n e -> (Model n e, Cmd (Msg n), Maybe n)
 update config msg model =
   case msg of
     Start node ->
@@ -112,29 +112,31 @@ update config msg model =
           , movedBetweenClicks = False
         }
       , Cmd.none
+      , Nothing
       )
     Stop ->
-      ( case (model.movedBetweenClicks, model.draggedNode) of
-        (False, Just node) ->
-          let
-            newNodes = upsert (click model.instance node) model.nodes 
-            s = getInitialSimulation config model.static
-                                           model.instance newNodes model.edges
-          in
-            { model
-              | draggedNode = Nothing
-              , nodes = newNodes
-              , simulation = s
-            }
-        (True, Just node) ->
-          { model
-            | draggedNode = Nothing
-            , simulation = Force.reheat model.simulation
-          }
-        (_, Nothing) ->
-          model
-      , Cmd.none
-      )
+      case model.draggedNode of
+          Just node ->
+              if model.movedBetweenClicks then
+                  ( { model
+                      | draggedNode = Nothing
+                      , simulation = Force.reheat model.simulation
+                    }
+                  , Cmd.none
+                  , Nothing
+                  )
+              else
+                    ( { model
+                        | draggedNode = Nothing
+                      }
+                    , Cmd.none
+                    , Just node.data.data
+                    )
+          Nothing ->
+              ( model
+              , Cmd.none
+              , Nothing
+              )
     Move (x, y) ->
       ( { model
           | nodes =
@@ -153,9 +155,13 @@ update config msg model =
           , movedBetweenClicks = True
         }
       , Cmd.none
+      , Nothing
       )
     ExportSvg ->
-      (model, exportSvg ())
+      ( model
+      , exportSvg ()
+      , Nothing
+      )
     Scroll deltaY ->
       ( let
           scale = clamp (0.2, 5) (model.scale + (deltaY / 500))
@@ -164,6 +170,7 @@ update config msg model =
             | scale = scale
           }  
       , Cmd.none
+      , Nothing
       )
     SetStatic bool ->
       ( { model
@@ -176,6 +183,7 @@ update config msg model =
                             model.edges
         }
       , Cmd.none
+      , Nothing
       )
     SnapToCircle ->
       let
@@ -192,6 +200,7 @@ update config msg model =
                               model.edges
           }
         , Cmd.none
+        , Nothing
         )
 
 withConfig : Config -> Model n e -> Model n e
