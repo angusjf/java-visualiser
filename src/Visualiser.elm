@@ -266,9 +266,8 @@ viewNodes { viewNode, getRect } nodeList =
                     (getRect (G.point n.x n.y) n.data.data)
            ) nodeList
 
-viewOverlay : Model n e -> Element (Msg n)
+viewOverlay : Model n e -> List (Element (Msg n))
 viewOverlay model =
-  CElement.column
     [ CElement.button <|
         if model.static then
             { onPress = Just (SetStatic False)

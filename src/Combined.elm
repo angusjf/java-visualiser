@@ -220,31 +220,19 @@ view model =
 viewOverlay : Model -> List (Element (Msg))
 viewOverlay model =
     case model.view of
-        PackageView n _ ->
+        PackageView name v ->
             [ CElement.button 
               { onPress = Just BackToProject
-              , label = n ++ ": Back To Project"
+              , label =
+                  case name of
+                    "" -> "Unnamed Package"
+                    _  -> "Package: '" ++ name ++ "'"
               }
             ]
-        ProjectView _ ->
-            []
-{-
-         , case model.selectedGraphAndVisualiser of
-             Just (selectedGraph, vis) ->
-               CElement.column
-                 [ CElement.button 
-                   { onPress = Just (ViewMenu SelectGraph)
-                   , label = case selectedGraph of
-                               "" -> "Unnamed Package"
-                               g  -> "Package: '" ++ selectedGraph ++ "'"
-                   }
-                 , Visualiser.viewOverlay vis
-                       |> Element.map VisualiserMsg
-                 ]
-             Nothing ->
-               Element.column [] []
-         ]
--}
+            ++
+            (List.map (Element.map PackageMsg) (Visualiser.viewOverlay v))
+        ProjectView v ->
+            List.map (Element.map ProjectMsg) (Visualiser.viewOverlay v)
 
 tick : Model -> Model
 tick model =
