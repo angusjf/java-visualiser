@@ -25,7 +25,7 @@ type alias Model =
 
 type View
     = ProjectView (Visualiser.Model Project.Graph.Entity Project.Graph.Link)
-    | PackageView (Visualiser.Model Package.Graph.Entity Package.Graph.Link)
+    | PackageView String (Visualiser.Model Package.Graph.Entity Package.Graph.Link)
 
 type Msg
     = PackageSelected String
@@ -61,6 +61,10 @@ init config =
         , Cmd.none
         )
 
+graphsMatching : String -> List (String, a) -> List (String, a)
+graphsMatching name graphs =
+    List.filter (\(gName, _) -> String.endsWith name gName) graphs 
+
 update : Msg -> Model -> (Model, Cmd (Msg))
 update msg model =
     case msg of
@@ -70,10 +74,10 @@ update msg model =
                     filesToStrings model.files
                     |> Package.JavaToGraph.fromSources
             in
-                case graphs of
+                case graphsMatching name graphs of
                     (_, graph)::_ ->
                         ( { model
-                            | view = PackageView <|
+                            | view = PackageView name <|
                                 Visualiser.init
                                     model.config
                                     graph
@@ -86,11 +90,26 @@ update msg model =
                         , Cmd.none
                         )
                     [] ->
-                        ( Debug.todo "AGGGGGG"
+                        ( Debug.todo "todo"
                         , Cmd.none
                         )
         BackToProject ->
-            ( model
+            ( { model | view =
+                  let
+                    graph =
+                        filesToStrings model.files
+                        |> Project.JavaToGraph.fromSources
+                  in
+                    ProjectView <|
+                        Visualiser.init
+                            model.config
+                            graph 
+                            { viewNode = Project.Visualiser.viewNode
+                            , viewEdge = Project.Visualiser.viewEdge
+                            , onClick  = Project.Visualiser.onClick
+                            , getRect  = Project.Visualiser.getRect
+                            }
+              }
             , Cmd.none
             )
         SetFiles files ->
@@ -108,8 +127,21 @@ update msg model =
                                         model.config
                                         graph
                                         v
-                        PackageView v ->
-                            Debug.todo "todo"
+                        PackageView name v ->
+                            let
+                                graphs =
+                                    filesToStrings model.files
+                                    |> Package.JavaToGraph.fromSources
+                            in
+                                case graphsMatching name graphs of
+                                    (_, graph)::_ ->
+                                        PackageView name <|
+                                            Visualiser.withGraph
+                                                model.config
+                                                graph
+                                                v
+                                    _ -> Debug.todo "todo"
+
             in
                 ( { model
                     | files = files
@@ -122,10 +154,10 @@ update msg model =
                 ProjectView v -> 
                     let
                         (v2, msg2, click) =
-                                Visualiser.update
-                                    model.config
-                                    vMsg
-                                    v
+                            Visualiser.update
+                                model.config
+                                vMsg
+                                v
                     in
                         case click of
                             Just entity ->
@@ -134,19 +166,19 @@ update msg model =
                                 ( { model | view = ProjectView v2 }
                                 , Cmd.map ProjectMsg msg2
                                 )
-                PackageView v ->
+                PackageView _ _ ->
                     ( model
                     , Cmd.none
                     )
         PackageMsg vMsg ->
             case model.view of
-                PackageView v ->
+                PackageView n v ->
                     let
                         (v2, msg2, click) =
-                                Visualiser.update
-                                    model.config
-                                    vMsg
-                                    v
+                            Visualiser.update
+                                model.config
+                                vMsg
+                                v
                     in
                         case click of
                             Just entity ->
@@ -161,11 +193,11 @@ update msg model =
                                           model.edges
                                 in
                                           -}
-                                ( { model | view = PackageView v2 }
+                                ( { model | view = PackageView n v2 }
                                 , Cmd.map PackageMsg msg2
                                 )
                             Nothing ->
-                                ( { model | view = PackageView v2 }
+                                ( { model | view = PackageView n v2 }
                                 , Cmd.map PackageMsg msg2
                                 )
                 ProjectView v ->
@@ -180,10 +212,39 @@ view model =
             (Visualiser.view model.config v)
             |> Element.html
             |> Element.map ProjectMsg
-        PackageView v ->
+        PackageView _ v ->
             (Visualiser.view model.config v)
             |> Element.html
             |> Element.map PackageMsg
+
+viewOverlay : Model -> List (Element (Msg))
+viewOverlay model =
+    case model.view of
+        PackageView n _ ->
+            [ CElement.button 
+              { onPress = Just BackToProject
+              , label = n ++ ": Back To Project"
+              }
+            ]
+        ProjectView _ ->
+            []
+{-
+         , case model.selectedGraphAndVisualiser of
+             Just (selectedGraph, vis) ->
+               CElement.column
+                 [ CElement.button 
+                   { onPress = Just (ViewMenu SelectGraph)
+                   , label = case selectedGraph of
+                               "" -> "Unnamed Package"
+                               g  -> "Package: '" ++ selectedGraph ++ "'"
+                   }
+                 , Visualiser.viewOverlay vis
+                       |> Element.map VisualiserMsg
+                 ]
+             Nothing ->
+               Element.column [] []
+         ]
+-}
 
 tick : Model -> Model
 tick model =
@@ -192,9 +253,8 @@ tick model =
             case model.view of
                 ProjectView v ->
                     ProjectView (Visualiser.tick v)
-                PackageView v ->
-                    PackageView (Visualiser.tick v)
+                PackageView n v ->
+                    PackageView n (Visualiser.tick v)
     in
         { model | view = newView }
-        
 

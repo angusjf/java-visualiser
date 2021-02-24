@@ -9,10 +9,12 @@ import Config exposing (Config)
 import VsColor
 import Combined
 import File exposing (File, Uri)
+import CustomElement as CElement
 
 type alias Model =
   { config : Config
   , combined : Combined.Model
+  , selectFiles : Bool
   }
 
 type Msg
@@ -23,6 +25,8 @@ type Msg
   | ConfigChanged Config
   | Tick Float
   | CombinedMsg Combined.Msg
+  | SelectFiles Bool
+  | SetFileSelected File Bool
 
 port newFile : (File -> msg) -> Sub msg
 port updateFile : (File -> msg) -> Sub msg
@@ -38,6 +42,7 @@ init config =
   in
       ({ config = config
        , combined = cModel
+       , selectFiles = False
        }
       , Cmd.map CombinedMsg cMsg
       )
@@ -50,9 +55,71 @@ view model =
             [ VsColor.fontColor VsColor.Foreground
             , Element.Font.size 13
             , Element.padding 4
-            ]
-            (Element.map CombinedMsg (Combined.view model.combined))
+            ] <|
+            CElement.column
+                [ Element.map CombinedMsg (Combined.view model.combined)
+                , viewOverlay model
+                ]
         ]
+    }
+
+viewOverlay : Model -> Element (Msg)
+viewOverlay model =
+    if model.selectFiles then
+       viewSelectFilesPopup model.combined.files
+    else
+       CElement.column <|
+         [ CElement.button 
+           { onPress = Just (SelectFiles True)
+           , label = "Select Files..."
+           }
+         ] ++
+         ( Combined.viewOverlay model.combined
+           |> List.map (Element.map CombinedMsg)
+         )
+
+viewSelectFilesPopup : List (File, Bool) -> Element (Msg)
+viewSelectFilesPopup files =
+  CElement.column <|
+    (List.map viewFileSelect files) ++ 
+    [ CElement.button
+      { onPress = Just (SelectFiles False)
+      , label = "back"
+      }
+    ]
+
+viewFileSelect : (File, Bool) -> Element (Msg)
+viewFileSelect (file, sel) =
+  Element.row
+    [ Element.spacing 8 ]
+    [ CElement.text <| trimUntilRev (\c -> c == '/') file.uri
+    , toggleFileButton (file, sel)
+    ]
+
+trimUntilRev fn str =
+  let prefix = String.reverse <| trimUntil fn <| String.reverse str
+  in String.replace prefix "" str
+
+trimUntil : (Char -> Bool) -> String -> String
+trimUntil f str =
+  let
+    helper : List Char -> List Char
+    helper chars =
+      case chars of 
+        x::xs -> if f x then xs
+                        else helper xs
+        [] -> []
+  in
+    str
+    |> String.toList
+    |> helper
+    |> String.fromList
+
+toggleFileButton : (File, Bool) -> Element (Msg)
+toggleFileButton (file, sel) =
+  CElement.button
+    { onPress = Just <| SetFileSelected file (not sel)
+    , label = if sel then "✓" else "✕"
     }
 
 update : Msg -> Model -> (Model, Cmd (Msg))
@@ -88,6 +155,18 @@ update msg model =
       ( { model | combined = cModel }
       , Cmd.map CombinedMsg cMsg2
       )
+    SelectFiles b ->
+      ( { model | selectFiles = b }
+      , Cmd.none
+      )
+    SetFileSelected file selected ->
+      let
+        files =
+          model.combined.files
+          |> List.map (\(f, s) -> if f.uri == file.uri
+                                    then (file, selected) else (f, s))
+      in
+        setFiles files model
 
 setFiles : List (File, Bool) -> Model -> (Model, Cmd (Msg))
 setFiles files model =
