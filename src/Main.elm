@@ -81,12 +81,12 @@ viewOverlay model =
 viewSelectFilesPopup : List (File, Bool) -> Element (Msg)
 viewSelectFilesPopup files =
   CElement.column <|
-    (List.map viewFileSelect files) ++ 
-    [ CElement.button
+    ( CElement.button
       { onPress = Just (SelectFiles False)
-      , label = "back"
+      , label = "← Back"
       }
-    ]
+    )
+    :: (List.map viewFileSelect files)
 
 viewFileSelect : (File, Bool) -> Element (Msg)
 viewFileSelect (file, sel) =

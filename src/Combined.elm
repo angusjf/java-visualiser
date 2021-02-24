@@ -119,7 +119,7 @@ update msg model =
                         ProjectView v ->
                             let
                                 graph =
-                                    filesToStrings model.files
+                                    filesToStrings files
                                     |> Project.JavaToGraph.fromSources
                             in
                                 ProjectView <|
@@ -130,7 +130,7 @@ update msg model =
                         PackageView name v ->
                             let
                                 graphs =
-                                    filesToStrings model.files
+                                    filesToStrings files
                                     |> Package.JavaToGraph.fromSources
                             in
                                 case graphsMatching name graphs of

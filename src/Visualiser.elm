@@ -48,7 +48,7 @@ withoutSelfLoops = List.filter (\{to, from} -> to /= from)
 init : Config -> Graph n e -> Instance n e (Msg n) -> Model n e
 init config graph instance =
   let
-    posNodes = withPositions config.width config.height graph.nodes
+    posNodes = withPositions 0 config.width config.height graph.nodes
     noLoops = withoutSelfLoops graph.edges
     static = False
   in
@@ -78,7 +78,7 @@ withGraph config graph model =
   let
     updatedNodes = List.map (updateNode graph.nodes) model.nodes
     (keep, new) = diff updatedNodes graph.nodes
-    newNodes = keep ++ withPositions config.width config.height new
+    newNodes = keep ++ withPositions (List.length graph.nodes) config.width config.height new
     noLoops = withoutSelfLoops graph.edges
   in 
     { model
@@ -188,7 +188,7 @@ update config msg model =
     SnapToCircle ->
       let
         oldNodes = List.map .data model.nodes
-        newNodes = withPositions config.width config.height oldNodes
+        newNodes = withPositions 0 config.width config.height oldNodes
       in
         ( { model
             | nodes = newNodes
@@ -351,12 +351,13 @@ unique l =
     x::xs -> not (List.member x xs) && unique xs
     [] -> True
 
-withPositions : Float -> Float -> List (Graph.Node n) -> List (PosNode n)
-withPositions width height entities =
+withPositions : Int -> Float -> Float -> List (Graph.Node n) -> List (PosNode n)
+withPositions seed width height entities =
   let
+    fseed = toFloat seed
     num = List.length entities
-    xs = List.map (\t -> a * width * sin t + width / 2) ts
-    ys = List.map (\t -> a * height * cos t + height / 2) ts
+    xs = List.map (\t -> a * width * sin t + width / 2 + fseed) ts
+    ys = List.map (\t -> a * height * cos t + height / 2 + fseed) ts
     angle = (2 * pi) / toFloat num
     ts = List.map (\t -> angle * toFloat t) <| List.range 0 (num - 1)
     a = 0.3

@@ -19,8 +19,17 @@ fromSources srcs =
         data = List.filterMap compilationUnitToData srcs
     in
         { nodes = partialDataToNodes data
-        , edges = Debug.log "?" (partialDataToEdges data)
+        , edges = nub <| partialDataToEdges data
         }
+
+nub : List Edge -> List Edge
+nub l =
+    let
+        isEqual a b = a.from == b.from && a.to == b.to && a.data == b.data
+    in
+        case l of
+            [] -> []
+            x::xs -> x :: nub (List.filter (not << (isEqual x)) xs)
 
 partialDataToNodes : List PartialData -> List Node
 partialDataToNodes data =
