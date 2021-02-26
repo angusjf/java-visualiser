@@ -17,15 +17,10 @@ type alias Subgraph =
 
 fromSources : List String -> List (String, PackageGraph)
 fromSources srcs =
-  let
-    packageSubgraphs : List (List Subgraph)
-    packageSubgraphs =
-      srcs
-      |> List.filterMap toAst
-      |> List.concatMap compilationUnitTS
-      |> groupByPackage
-  in
-    packageSubgraphs
+    srcs
+    |> List.filterMap toAst
+    |> List.concatMap compilationUnitTS
+    |> groupByPackage -- -> packageSubgraphs : List (List Subgraph)
     |> List.filterMap (\subgraphs ->
         let
           nodes = List.map subgraphToNode subgraphs

@@ -1,4 +1,4 @@
-module Project.JavaToGraph exposing (..) -- TODO (fromSources)
+module Project.JavaToGraph exposing (fromSource, toGraph, fromSources)
 
 import Graph exposing (NodeId)
 import Project.Graph exposing (..)
@@ -13,14 +13,17 @@ type alias PartialData =
   , imports : List String
   }
 
-fromSources : List String -> ProjectGraph
-fromSources srcs =
-    let
-        data = List.filterMap compilationUnitToData srcs
-    in
+fromSource : String -> Maybe PartialData
+fromSource = compilationUnitToData
+
+toGraph : List PartialData -> ProjectGraph
+toGraph data =
         { nodes = partialDataToNodes data
         , edges = nub <| partialDataToEdges data
         }
+
+fromSources : List String -> ProjectGraph
+fromSources srcs = toGraph (List.filterMap fromSource srcs)
 
 nub : List Edge -> List Edge
 nub l =

@@ -18,8 +18,7 @@ type alias Model =
   }
 
 type Msg
-  = NewFile File
-  | UpdateFile File
+  = UpdateFile File
   | DeleteFile Uri
   | RenameFile (Uri, Uri)
   | ConfigChanged Config
@@ -28,7 +27,6 @@ type Msg
   | SelectFiles Bool
   | SetFileSelected File Bool
 
-port newFile : (File -> msg) -> Sub msg
 port updateFile : (File -> msg) -> Sub msg
 port deleteFile : (Uri -> msg) -> Sub msg
 port renameFile : ((Uri, Uri) -> msg) -> Sub msg
@@ -122,11 +120,11 @@ toggleFileButton (file, sel) =
     , label = if sel then "✓" else "✕"
     }
 
+setFiles _ model = (model, Cmd.none) -- TODO
+
 update : Msg -> Model -> (Model, Cmd (Msg))
 update msg model =
   case msg of 
-    NewFile file ->
-      setFiles (insert file model.combined.files) model
     UpdateFile file ->
       setFiles (insert file model.combined.files) model
     DeleteFile uri ->
@@ -168,10 +166,6 @@ update msg model =
       in
         setFiles files model
 
-setFiles : List (File, Bool) -> Model -> (Model, Cmd (Msg))
-setFiles files model =
-    update (CombinedMsg (Combined.SetFiles files)) model
-
 insert : File -> List (File, Bool) -> List (File, Bool)
 insert file files =
   case files of
@@ -202,8 +196,7 @@ rename from to files =
 subscriptions : Model -> Sub (Msg)
 subscriptions model =
   Sub.batch
-    [ newFile NewFile
-    , updateFile UpdateFile
+    [ updateFile UpdateFile
     , deleteFile DeleteFile
     , renameFile RenameFile
     , configChanged ConfigChanged
