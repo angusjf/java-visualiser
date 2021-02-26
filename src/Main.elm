@@ -205,9 +205,8 @@ update msg model =
 
 resetMode : Model -> Model
 resetMode model =
-    let
-        helper m =
-            case m of
+    { model | mode = 
+            case model.mode of
                 LoadingProject ->
                     let
                         graph =
@@ -252,13 +251,35 @@ resetMode model =
                         [] ->
                             Debug.todo "todo"
 
-                Project _ ->
-                    helper LoadingProject
+                Project { vis } ->
+                    let
+                        graph =
+                            model.files
+                                |> List.filterMap .cachedProjectData
+                                |> Project.JavaToGraph.toGraph
+                    in
+                    Project <|
+                        ProjectData <|
+                            Visualiser.withGraph model.config graph vis
 
-                Package { name } ->
-                    helper (LoadingPackage name)
-    in
-    { model | mode = helper model.mode }
+                Package { name, vis } ->
+                    let
+                        graphs =
+                            model.files
+                                |> List.filterMap .cachedPackageData
+                                |> List.concat
+                                |> Package.JavaToGraph.toGraphs
+                    in
+                    case graphsMatching name graphs of
+                        ( _, graph ) :: _ ->
+                            Package
+                                { vis = Visualiser.withGraph model.config graph vis
+                                , name = name
+                                }
+
+                        [] ->
+                            Debug.todo "todo"
+    }
 
 
 updateProjectVisualiser msg data model =
@@ -465,12 +486,7 @@ toggleFileButton : FileData -> Element Msg
 toggleFileButton d =
     CElement.button
         { onPress = Just <| SetFileSelected d (not d.selected)
-        , label =
-            if d.selected then
-                "✓"
-
-            else
-                "✕"
+        , label = if d.selected then "✓" else "✕"
         }
 
 
@@ -483,7 +499,11 @@ insert file files =
     case files of
         data :: xs ->
             if data.file.uri == file.uri then
-                data :: xs
+                { file = file
+                , selected = True
+                , cachedPackageData = Package.JavaToGraph.fromSource file.content
+                , cachedProjectData = Project.JavaToGraph.fromSource file.content
+                } :: xs
 
             else
                 data :: insert file xs
