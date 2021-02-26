@@ -15,11 +15,22 @@ type alias Subgraph =
   , references : List NodeId
   }
 
+fromSource : String -> Maybe (List Subgraph)
+fromSource src =
+    src
+    |> toAst
+    |> Maybe.map compilationUnitTS
+
 fromSources : List String -> List (String, PackageGraph)
 fromSources srcs =
     srcs
-    |> List.filterMap toAst
-    |> List.concatMap compilationUnitTS
+    |> List.filterMap fromSource
+    |> List.concat
+    |> toGraphs
+
+toGraphs : List Subgraph -> List (String, PackageGraph)
+toGraphs in_subgraphs =
+    in_subgraphs
     |> groupByPackage -- -> packageSubgraphs : List (List Subgraph)
     |> List.filterMap (\subgraphs ->
         let

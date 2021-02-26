@@ -1,4 +1,4 @@
-module Project.JavaToGraph exposing (fromSource, toGraph, fromSources)
+module Project.JavaToGraph exposing (PartialData, fromSource, toGraph, fromSources)
 
 import Graph exposing (NodeId)
 import Project.Graph exposing (..)
