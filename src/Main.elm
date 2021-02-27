@@ -39,6 +39,7 @@ type Mode
     | Package PackageData
     | LoadingProject
     | LoadingPackage String
+    | Error
 
 
 type alias ProjectData =
@@ -162,7 +163,7 @@ update msg model =
             )
 
         ConfigChanged cfg ->
-            ( { model | config = cfg }
+            ( resetMode { model | config = cfg }
             , Cmd.none
             )
 
@@ -205,7 +206,8 @@ update msg model =
 
 resetMode : Model -> Model
 resetMode model =
-    { model | mode = 
+    { model
+        | mode =
             case model.mode of
                 LoadingProject ->
                     let
@@ -249,8 +251,8 @@ resetMode model =
                                 }
 
                         [] ->
-                            Debug.todo "todo"
-
+                            Error
+    
                 Project { vis } ->
                     let
                         graph =
@@ -278,7 +280,10 @@ resetMode model =
                                 }
 
                         [] ->
-                            Debug.todo "todo"
+                            Error
+
+                Error ->
+                    Error
     }
 
 
@@ -398,35 +403,55 @@ viewOverlay model =
         viewSelectFilesPopup model.files
 
     else
+        let
+            title =
+                CElement.text <|
+                    case model.mode of
+                        Package { name } -> if name == "" 
+                                                then "Unnamed Package"
+                                                else "'" ++ name ++ "'"
+                        Project _ -> "Click a Package..."
+                        LoadingProject -> ""
+                        LoadingPackage _ -> ""
+                        Error -> "Error!"
+
+            selectFilesButton =
+                CElement.button
+                    { onPress = Just (SelectFiles True)
+                    , label = "Select Files..."
+                    }
+
+            rest =
+                case model.mode of
+                    Package { name, vis } ->
+                        [ CElement.button
+                            { onPress = Just BackToProject
+                            , label = "← Unnamed Package"
+                            }
+                        ]
+                            ++ List.map (Element.map PackageMsg) (Visualiser.viewOverlay vis)
+
+                    Project { vis } ->
+                        List.map (Element.map ProjectMsg) (Visualiser.viewOverlay vis)
+
+                    LoadingProject ->
+                        [ CElement.text "loading project view..." ]
+
+                    LoadingPackage n ->
+                        [ CElement.text <| "loading package '" ++ n ++ "'..." ]
+
+                    Error ->
+                        [ CElement.button
+                            { onPress = Just BackToProject
+                            , label = "← Back To Project"
+                            }
+                        ]
+        in
         CElement.column <|
-            CElement.button
-                { onPress = Just (SelectFiles True)
-                , label = "Select Files..."
-                }
-                :: (case model.mode of
-                        Package { name, vis } ->
-                            [ CElement.button
-                                { onPress = Just BackToProject
-                                , label =
-                                    case name of
-                                        "" ->
-                                            "← Unnamed Package"
-
-                                        _ ->
-                                            "← Package: '" ++ name ++ "'"
-                                }
-                            ]
-                                ++ List.map (Element.map PackageMsg) (Visualiser.viewOverlay vis)
-
-                        Project { vis } ->
-                            List.map (Element.map ProjectMsg) (Visualiser.viewOverlay vis)
-
-                        LoadingProject ->
-                            [ CElement.text "loading project view..." ]
-
-                        LoadingPackage n ->
-                            [ CElement.text <| "loading package '" ++ n ++ "'..." ]
-                   )
+            [ title
+            , selectFilesButton
+            ]
+            ++ rest
 
 
 
@@ -461,7 +486,7 @@ trimUntilRev fn str =
 
 
 trimUntil : (Char -> Bool) -> String -> String
-trimUntil f str =
+trimUntil f =
     let
         helper : List Char -> List Char
         helper chars =
@@ -476,17 +501,19 @@ trimUntil f str =
                 [] ->
                     []
     in
-    str
-        |> String.toList
-        |> helper
-        |> String.fromList
+    String.toList >> helper >> String.fromList
 
 
 toggleFileButton : FileData -> Element Msg
 toggleFileButton d =
     CElement.button
         { onPress = Just <| SetFileSelected d (not d.selected)
-        , label = if d.selected then "✓" else "✕"
+        , label =
+            if d.selected then
+                "✓"
+
+            else
+                "✕"
         }
 
 
@@ -503,7 +530,8 @@ insert file files =
                 , selected = True
                 , cachedPackageData = Package.JavaToGraph.fromSource file.content
                 , cachedProjectData = Project.JavaToGraph.fromSource file.content
-                } :: xs
+                }
+                    :: xs
 
             else
                 data :: insert file xs
@@ -555,7 +583,7 @@ rename from to files =
 
 graphsMatching : String -> List ( String, a ) -> List ( String, a )
 graphsMatching name graphs =
-    List.filter (\( gName, _ ) -> String.endsWith name gName) graphs
+    List.filter (\( gName, _ ) -> name == gName) graphs
 
 
 tick : Model -> Model
@@ -574,6 +602,9 @@ tick model =
 
                 LoadingPackage n ->
                     LoadingPackage n
+
+                Error ->
+                    Error
     in
     { model | mode = newView }
 

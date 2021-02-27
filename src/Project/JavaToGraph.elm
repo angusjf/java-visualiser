@@ -54,8 +54,8 @@ partialDataToNodes data =
         packages
 
 lastPackageIdentifier : String -> String
-lastPackageIdentifier =
-    (String.split ".") >> listLast >> (Maybe.withDefault "")
+lastPackageIdentifier = identity  -- TODO REMOVE
+    --(String.split ".") >> listLast >> (Maybe.withDefault "")
 
 listLast : List a -> Maybe a
 listLast l =
@@ -89,7 +89,7 @@ compilationUnitToData src =
                          , imports = importsToStrings imports
                          }
                 Nothing ->
-                    Just { packageName = "default package"
+                    Just { packageName = ""
                          , imports = importsToStrings imports
                          }
         Err _ ->

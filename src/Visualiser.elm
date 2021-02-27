@@ -304,21 +304,6 @@ viewOverlay model =
         }
     ]
 
-getInfo : Model n e -> Element (Msg n)
-getInfo model =
-  Element.column
-    []
-    [ Element.text <| String.fromInt (List.length model.nodes) ++
-             " nodes & " ++ String.fromInt (List.length model.edges) ++ " edges"
-             --++ " [" ++ String.join ", " (List.map .id model.nodes) ++ "]"
-             --++ " [" ++ String.join ", " (List.map .from model.edges) ++ "]"
-             --++ " [" ++ String.join ", " (List.map .to model.edges) ++ "]"
-    , Element.text <| "(simulation" ++
-                          if Force.isCompleted model.simulation
-                            then " completed)"
-                            else " calculating ...)"
-    ]
-
 getNode : List (PosNode n) -> Graph.NodeId -> Maybe (PosNode n)
 getNode nodes id =
   case List.filter (\n -> n.data.id == id) nodes of

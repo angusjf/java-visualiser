@@ -56,3 +56,8 @@ backgroundColor : VsColor -> Element.Attribute msg
 backgroundColor color =
   Element.htmlAttribute <|
     Html.Attributes.style "background-color" (vsColor color)
+
+borderColor : VsColor -> Element.Attribute msg
+borderColor color =
+  Element.htmlAttribute <|
+    Html.Attributes.style "border-color" (vsColor color)

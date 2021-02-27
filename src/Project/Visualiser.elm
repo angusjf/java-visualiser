@@ -5,8 +5,7 @@ import CustomSvg as S exposing (Svg)
 import Geometry as G exposing (Rect, Point)
 
 onClick : Entity -> Entity
-onClick entity =
-  { entity | expanded = not entity.expanded }
+onClick = identity
 
 pad : Float
 pad = 11
@@ -28,10 +27,14 @@ linesHeight : Int -> Float
 linesHeight n =
   pad * 2 + (toFloat n) * charh + (toFloat n - 1) * lineh
 
+getTag : String -> String
+getTag name = if name == "" then "default package" else name
+
 getRect : Point -> Entity -> Rect
 getRect corner entity =
   let
-    w = textWidth entity.name
+    tag = getTag entity.name
+    w = textWidth tag
     h = linesHeight 1
   in
     G.rect corner w h
@@ -39,7 +42,8 @@ getRect corner entity =
 viewNode : x -> Entity -> Rect -> Svg x
 viewNode msg entity rect =
   let
-    text = S.text2 (G.move (G.corner rect) pad (charh + pad)) entity.name
+    tag = getTag entity.name
+    text = S.text2 (G.move (G.corner rect) pad (charh + pad)) tag
     box =
         case entity.kind of
             Class     -> S.rect2 rect
@@ -49,4 +53,4 @@ viewNode msg entity rect =
 
 viewEdge : (Entity, Rect) -> (Entity, Rect) -> Link -> Svg x
 viewEdge (_, fromRect) (_, toRect) link =
-  S.arrow1 fromRect toRect
+  S.arrow2 fromRect toRect

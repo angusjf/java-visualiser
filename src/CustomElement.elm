@@ -14,6 +14,11 @@ text str =
     Element.el
         [ VsColor.backgroundColor Background
         , VsColor.fontColor Foreground
+        , Element.Font.bold
+        , Element.Border.rounded 4
+        , Element.Border.width 2
+        , Element.padding 3
+        , VsColor.borderColor Foreground
         ]
         (Element.text str)
 
