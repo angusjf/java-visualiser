@@ -154,6 +154,13 @@ rect2 =
     , UntypedA.fill (vsColor Background)
     ]
 
+rect3 : Rect -> Svg msg
+rect3 =
+  rect_
+    [ UntypedA.stroke (vsColor Blue)
+    , UntypedA.fill (vsColor Background)
+    ]
+
 rect_ : List (Svg.Attribute msg) -> Rect -> Svg msg
 rect_ attrs rect =
   S.rect

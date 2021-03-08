@@ -430,7 +430,7 @@ viewOverlay model =
                     Package { name, vis } ->
                         [ CElement.button
                             { onPress = Just BackToProject
-                            , label = "← Unnamed Package"
+                            , label = "← Back To Packages"
                             }
                         ]
                             ++ List.map (Element.map PackageMsg) (Visualiser.viewOverlay vis)

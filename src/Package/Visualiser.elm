@@ -15,6 +15,8 @@ cycle e =
     Attrs -> Stats
     Stats -> Not
 
+-- helpers
+
 pad : Float
 pad = 11
 
@@ -35,6 +37,8 @@ linesHeight : Int -> Float
 linesHeight n =
   pad * 2 + (toFloat n) * charh + (toFloat n - 1) * lineh
 
+-- box
+
 getRect : Point -> Entity -> Rect
 getRect corner entity =
   let
@@ -48,32 +52,41 @@ getRect corner entity =
   in
     G.rect corner (max w attrsW) h
 
-viewNode : x -> Entity -> Rect -> Svg x
-viewNode msg entity rect =
-  let
-    text = S.text2 (G.move (G.corner rect) pad (charh + pad)) entity.name
-    box =
-        case entity.access of
-            Public    -> S.rect2 rect
-            Private   -> S.rect1 rect
-            Protected -> S.rect1 rect
-    attrs = viewAttrs (G.corner rect) entity
-  in
-    S.click msg (S.group <| [ box, text ] ++ attrs)
-
-viewAttrs : Point -> Entity -> List (Svg msg)
-viewAttrs point entity =
-  let
-    attrs = getInfo entity
-    offsets = List.map (\a -> toFloat (a + 1) * (charh + lineh)) <|
-                List.range 0 (List.length attrs)
-  in
-    List.map2 (viewAttr point) attrs offsets
+-- strings
 
 getStats : Entity -> List String
 getStats entity =
-    [ "complexity: " ++ (String.fromFloat entity.complexity)
-    ]
+    let
+        access =
+            [ "access: " ++ case entity.access of
+                Public -> "public"
+                Protected -> "protected"
+                Private -> "private"
+            ]
+        kind =
+            [ "kind: " ++ case entity.kind of
+                Class -> "class"
+                Interface -> "interface"
+                Enum -> "enum"
+            ]
+        details =
+            let
+                static =   if entity.static   then ["static"]   else []
+                final =    if entity.final    then ["final"]    else []
+                abstract = if entity.abstract then ["abstract"] else []
+            in
+            case (static ++ final ++ abstract) of
+                [] -> []
+                all -> [ "(" ++ String.join ", " all ++ ")" ]
+        complexity =
+            [ "complexity: " ++ (String.fromFloat entity.complexity) ]
+    in
+    List.concat
+        [ kind
+        , access
+        , details
+        , complexity
+        ]
 
 getInfo : Entity -> List String
 getInfo entity =
@@ -88,12 +101,36 @@ getAttrs entity =
         [] -> [ "no public attributes" ]
         strings -> List.take 3 strings
 
+attrToString : Attribute -> String
+attrToString attr = attr.prettyTypeName ++ " " ++ attr.identifier
+
+-- view
+
+viewNode : x -> Entity -> Rect -> Svg x
+viewNode msg entity rect =
+  let
+    text = S.text2 (G.move (G.corner rect) pad (charh + pad)) entity.name
+    box =
+        case entity.expansion of
+            Not   -> S.rect1 rect
+            Attrs -> S.rect2 rect
+            Stats -> S.rect3 rect
+    attrs = viewAttrs (G.corner rect) entity
+  in
+    S.click msg (S.group <| [ box, text ] ++ attrs)
+
+viewAttrs : Point -> Entity -> List (Svg msg)
+viewAttrs point entity =
+  let
+    attrs = getInfo entity
+    offsets = List.map (\a -> toFloat (a + 1) * (charh + lineh)) <|
+                List.range 0 (List.length attrs)
+  in
+    List.map2 (viewAttr point) attrs offsets
+
 viewAttr : Point -> String -> Float -> Svg msg
 viewAttr point attrName offset =
     S.text1 (G.move point pad (pad + charh + offset)) attrName
-
-attrToString : Attribute -> String
-attrToString attr = attr.prettyTypeName ++ " " ++ attr.identifier
 
 viewEdge : (Entity, Rect) -> (Entity, Rect) -> Link -> Svg x
 viewEdge (_, fromRect) (_, toRect) link =
@@ -101,3 +138,4 @@ viewEdge (_, fromRect) (_, toRect) link =
     Extends ->    S.arrow1 fromRect toRect
     References -> S.arrow2 fromRect toRect
     Implements -> S.arrow1 fromRect toRect
+

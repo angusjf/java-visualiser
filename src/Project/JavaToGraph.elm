@@ -1,4 +1,4 @@
-module Project.JavaToGraph exposing (PartialData, fromSource, toGraph, fromSources)
+module Project.JavaToGraph exposing (PartialData, fromSource, toGraph)
 
 import Graph exposing (NodeId)
 import Project.Graph exposing (..)
@@ -21,9 +21,6 @@ toGraph data =
         { nodes = partialDataToNodes data
         , edges = nub <| partialDataToEdges data
         }
-
-fromSources : List String -> ProjectGraph
-fromSources srcs = toGraph (List.filterMap fromSource srcs)
 
 nub : List Edge -> List Edge
 nub l =

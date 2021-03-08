@@ -1,4 +1,4 @@
-module Package.JavaToGraph exposing (..) -- TODO (fromSources)
+module Package.JavaToGraph exposing (fromSource, toGraphs, Subgraph)
 
 import Graph exposing (NodeId)
 import Package.Graph exposing (..)
@@ -21,13 +21,6 @@ fromSource src =
     src
     |> toAst
     |> Maybe.map compilationUnitTS
-
-fromSources : List String -> List (String, PackageGraph)
-fromSources srcs =
-    srcs
-    |> List.filterMap fromSource
-    |> List.concat
-    |> toGraphs
 
 toGraphs : List Subgraph -> List (String, PackageGraph)
 toGraphs in_subgraphs =
@@ -172,7 +165,7 @@ normalClassDeclarationTS pkg (JP.NormalClassDeclaration mods id typeParams super
              , publicAttributes = []
              , publicMethods = []
              , expansion = Not
-             , complexity = Complexity.cClassBody classBody 
+             , complexity = 1 + Complexity.cClassBody classBody 
              }
   , parent = Maybe.map (mkNodeId pkg << superclassToString) superclass
   , interfaces = [] --List.filterMap onlyRefTypes class.implements

@@ -80,9 +80,9 @@ cStatement stmt =
         Statement_If s ->
             cIfThenStatement s
         Statement_IfThenElse s ->
-            cIfThenElse s
+            0 -- TODO
         Statement_While s ->
-            cWhile 
+            0 -- TODO
         Statement_For s ->
             0 -- TODO
 
