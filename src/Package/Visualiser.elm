@@ -11,9 +11,9 @@ onClick entity =
 cycle : Expansion -> Expansion
 cycle e =
   case e of
-    Not -> Fully
-    Fully -> Not
-    Half -> Fully
+    Not -> Attrs
+    Attrs -> Stats
+    Stats -> Not
 
 pad : Float
 pad = 11
@@ -40,7 +40,7 @@ getRect corner entity =
   let
     w = textWidth entity.name
     h = linesHeight (List.length attrs + 1)
-    attrs = getAttrs entity
+    attrs = getInfo entity
     attrsW = attrs
              |> List.map textWidth
              |> List.maximum
@@ -64,23 +64,29 @@ viewNode msg entity rect =
 viewAttrs : Point -> Entity -> List (Svg msg)
 viewAttrs point entity =
   let
-    attrs = getAttrs entity
+    attrs = getInfo entity
     offsets = List.map (\a -> toFloat (a + 1) * (charh + lineh)) <|
                 List.range 0 (List.length attrs)
-    allAttrs = List.map2 (viewAttr point) attrs offsets
-  in case entity.expansion of
+  in
+    List.map2 (viewAttr point) attrs offsets
+
+getStats : Entity -> List String
+getStats entity =
+    [ "complexity: " ++ (String.fromFloat entity.complexity)
+    ]
+
+getInfo : Entity -> List String
+getInfo entity =
+  case entity.expansion of
     Not -> []
-    Half -> List.take 3 <| allAttrs
-    Fully -> allAttrs
+    Attrs -> getAttrs entity
+    Stats -> getStats entity
 
 getAttrs : Entity -> List String
 getAttrs entity =
-  let
-    allAttrs = List.map attrToString entity.publicAttributes
-  in case entity.expansion of
-    Not -> []
-    Half -> List.take 3 <| allAttrs
-    Fully -> allAttrs
+    case List.map attrToString entity.publicAttributes of
+        [] -> [ "no public attributes" ]
+        strings -> List.take 3 strings
 
 viewAttr : Point -> String -> Float -> Svg msg
 viewAttr point attrName offset =

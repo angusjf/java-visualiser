@@ -7,6 +7,7 @@ import Java15AstHelpers as AstHelpers
 import Parser
 import List.Nonempty as Nonempty exposing (Nonempty(..))
 import Set
+import Complexity
 
 type alias Subgraph =
   { entity : Entity
@@ -171,6 +172,7 @@ normalClassDeclarationTS pkg (JP.NormalClassDeclaration mods id typeParams super
              , publicAttributes = []
              , publicMethods = []
              , expansion = Not
+             , complexity = Complexity.cClassBody classBody 
              }
   , parent = Maybe.map (mkNodeId pkg << superclassToString) superclass
   , interfaces = [] --List.filterMap onlyRefTypes class.implements

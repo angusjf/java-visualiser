@@ -20,9 +20,10 @@ type alias Entity =
   , final : Bool
   , static : Bool
   , expansion : Expansion
+  , complexity : Float
   }
 
-type Expansion = Not | Half | Fully
+type Expansion = Not | Attrs | Stats
 
 type Kind = Class | Interface | Enum
 

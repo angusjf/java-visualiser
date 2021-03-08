@@ -213,6 +213,7 @@ resetMode model =
                     let
                         graph =
                             model.files
+                                |> List.filter .selected
                                 |> List.filterMap .cachedProjectData
                                 |> Project.JavaToGraph.toGraph
                     in
@@ -231,6 +232,7 @@ resetMode model =
                     let
                         graphs =
                             model.files
+                                |> List.filter .selected
                                 |> List.filterMap .cachedPackageData
                                 |> List.concat
                                 |> Package.JavaToGraph.toGraphs
@@ -257,6 +259,7 @@ resetMode model =
                     let
                         graph =
                             model.files
+                                |> List.filter .selected
                                 |> List.filterMap .cachedProjectData
                                 |> Project.JavaToGraph.toGraph
                     in
@@ -268,6 +271,7 @@ resetMode model =
                     let
                         graphs =
                             model.files
+                                |> List.filter .selected
                                 |> List.filterMap .cachedPackageData
                                 |> List.concat
                                 |> Package.JavaToGraph.toGraphs
