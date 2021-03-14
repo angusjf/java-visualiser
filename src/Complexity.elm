@@ -4,7 +4,11 @@ import Java15Parser exposing (..)
 
 cClassDeclaration _ = 0 -- TODO
 
-cMethodDeclaration _ = 0 -- TODO
+cMethodDeclaration : MethodDeclaration -> Float
+cMethodDeclaration (MethodDeclaration modifiers header body) =
+    case body of
+        MethodBody_Block block -> cBlock block
+        MethodBody_Semi -> 0
 
 cClassBody : ClassBody -> Float
 cClassBody (ClassBody declarations) =
@@ -80,13 +84,44 @@ cStatement stmt =
         Statement_If s ->
             cIfThenStatement s
         Statement_IfThenElse s ->
-            0 -- TODO
+            cIfThenElseStatement s
         Statement_While s ->
-            0 -- TODO
+            cWhileStatement s
         Statement_For s ->
-            0 -- TODO
+            cForStatement s
 
 cIfThenStatement : IfThenStatement -> Float
 cIfThenStatement (IfThenStatement _ stmt) =
    1 + cStatement stmt
+
+cIfThenElseStatement : IfThenElseStatement -> Float
+cIfThenElseStatement (IfThenElseStatement _ true false) =
+   1 + cStatementNoShortIf true + cStatement false
+
+cWhileStatement : WhileStatement -> Float
+cWhileStatement (WhileStatement _ statement) = 1 + cStatement statement
+
+cForStatement : ForStatement -> Float
+cForStatement s =
+    case s of
+        ForStatement_Basic (BasicForStatement _ _ _ statement) ->
+            1 + cStatement statement
+        ForStatement_Enhanced (EnhancedForStatement _ _ _ _ statement) ->
+            1 + cStatement statement
+    
+    
+
+cStatementNoShortIf : StatementNoShortIf -> Float
+cStatementNoShortIf s =
+    case s of
+        StatementNoShortIf_NoTrailing statementWithoutTrailingSubstatement ->
+            0 -- TODO
+        StatementNoShortIf_Labeled labeledStatementNoShortIf ->
+            0 -- TODO
+        StatementNoShortIf_IfThenElse ifThenElseStatementNoShortIf ->
+            0 -- TODO
+        StatementNoShortIf_While whileStatementNoShortIf ->
+            0 -- TODO
+        StatementNoShortIf_For forStatementNoShortIf ->
+            0 -- TODO
 

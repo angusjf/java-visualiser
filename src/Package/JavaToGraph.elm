@@ -162,8 +162,8 @@ normalClassDeclarationTS pkg (JP.NormalClassDeclaration mods id typeParams super
              , static = List.member JP.ClassModifier_Static mods
              , final = List.member JP.ClassModifier_Final mods
              , abstract = List.member JP.ClassModifier_Abstract mods
-             , publicAttributes = []
-             , publicMethods = []
+             , publicAttributes = getPublicAttributes classBody
+             , publicMethods = [] -- TODO
              , expansion = Not
              , complexity = 1 + Complexity.cClassBody classBody 
              }
@@ -202,16 +202,49 @@ prefixIfNotAlready pkg name =
 removeDuplicates : List comparable -> List comparable
 removeDuplicates = Set.toList << Set.fromList
 
-{-
-getPublicAttributes : JP.ClassBody -> List Attribute
-getPublicAttributes body =
-  body.declarations
-  |> List.filterMap onlyMembers
-  |> List.map Tuple.second
-  |> List.filterMap memberToAttribute
+----------------
 
-memberToAttribute : JP.MemberDecl -> Maybe Attribute
-memberToAttribute memberDecl =
+getPublicAttributes : JP.ClassBody -> List Attribute
+getPublicAttributes (JP.ClassBody declarations) =
+  declarations
+  |> List.filterMap onlyFields
+  |> List.filterMap fieldToAttribute
+
+onlyFields : JP.ClassBodyDeclaration -> Maybe JP.FieldDeclaration
+onlyFields dec =
+  case dec of
+    JP.ClassBodyDeclaration_ClassMemberDeclaration classMemberDeclaration ->
+        case classMemberDeclaration of 
+          JP.ClassMemberDeclaration_Field fieldDeclaration ->
+              Just fieldDeclaration
+          _ ->
+              Nothing
+    _ ->
+        Nothing
+
+fieldToAttribute : JP.FieldDeclaration -> Maybe Attribute
+fieldToAttribute (JP.FieldDeclaration modifiers type_ declList) =
+  Just { identifier = vdlts declList
+       , prettyTypeName = ""--typeToPrettyString type_
+       , typeIdentifiers = [""]--typeToIdentifiers type_
+       , multiple = {-case type_ of
+                      JP.ArrayType _ -> True
+                      _              -> False-TODO-} False
+       }
+
+vdlts (JP.VariableDeclaratorList vs) =
+    vs
+    |> List.map (\v ->
+        case v of
+            JP.VariableDeclarator id _ ->
+                case id of
+                    JP.VariableDeclaratorId identifier dims ->
+                        AstHelpers.identifierToString identifier
+    )
+    |> List.head
+    |> Maybe.withDefault "TODO"
+
+    {-
   case memberDecl of 
     JP.MDMethodOrField { type_, identifier, rest }
       -> Just { identifier = identifier
@@ -316,11 +349,4 @@ onlyRefTypes type_ =
     JP.ArrayType t -> Nothing
     JP.RefType (Nonempty (id, _) rest) ->
         Just <| id ++ String.join "." (List.map Tuple.first rest)
-
-onlyMembers : JP.ClassBodyDeclaration -> Maybe (List JP.Modifier, JP.MemberDecl)
-onlyMembers dec =
-  case dec of
-    JP.CBSemicolon -> Nothing 
-    JP.CBMember { modifiers, decl } -> Just (modifiers, decl)
-    JP.CBBlock { static, block } -> Nothing
--}
+    -}

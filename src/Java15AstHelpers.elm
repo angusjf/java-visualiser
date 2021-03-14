@@ -266,11 +266,15 @@ getRefsInStatement stmt =
         Statement_If s ->
             getRefsInIfThenStatement s
         Statement_IfThenElse s ->
-            [] -- TODO
+            getRefsInIfThenElseStatement s
         Statement_While s ->
             [] -- TODO
         Statement_For s ->
             [] -- TODO
+
+getRefsInIfThenElseStatement : IfThenElseStatement -> List String
+getRefsInIfThenElseStatement (IfThenElseStatement expr statementNoShortIf statement) =
+    [] -- TODO
 
 getRefsInStatementWithoutTrailingSubstatement : StatementWithoutTrailingSubstatement -> List String
 getRefsInStatementWithoutTrailingSubstatement s =

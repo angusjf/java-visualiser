@@ -131,8 +131,13 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         UpdateFile file ->
-            ( resetMode { model | files = insert file model.files }
-            , Cmd.none
+            let
+                (files, error) = insert file model.files
+            in
+            ( resetMode { model | files = files }
+            , if error
+                then infoMessage <| "Compilation error: " ++ dropStart file.uri
+                else Cmd.none
             )
 
         DeleteFile uri ->
@@ -476,10 +481,11 @@ viewFileSelect : FileData -> Element Msg
 viewFileSelect data =
     Element.row
         [ Element.spacing 8 ]
-        [ CElement.text <| trimUntilRev (\c -> c == '/') data.file.uri
+        [ CElement.text <| dropStart data.file.uri
         , toggleFileButton data
         ]
 
+dropStart = String.dropLeft 1 << trimUntilRev (\c -> c == '/')
 
 trimUntilRev fn str =
     let
@@ -525,28 +531,31 @@ toggleFileButton d =
 --------------
 
 
-insert : File -> List FileData -> List FileData
+insert : File -> List FileData -> (List FileData, Bool)
 insert file files =
-    case files of
-        data :: xs ->
-            if data.file.uri == file.uri then
-                { file = file
-                , selected = True
-                , cachedPackageData = Package.JavaToGraph.fromSource file.content
-                , cachedProjectData = Project.JavaToGraph.fromSource file.content
-                }
-                    :: xs
-
-            else
-                data :: insert file xs
-
-        [] ->
-            [ { file = file
+    let
+        pkg = Package.JavaToGraph.fromSource file.content
+        prj = Project.JavaToGraph.fromSource file.content
+        error = isNothing pkg || isNothing prj
+        isNothing mX = case mX of
+                Nothing -> True
+                Just _ -> False
+        new = { file = file
               , selected = True
-              , cachedPackageData = Package.JavaToGraph.fromSource file.content
-              , cachedProjectData = Project.JavaToGraph.fromSource file.content
+              , cachedPackageData = pkg
+              , cachedProjectData = prj
               }
-            ]
+        helper fs =
+            case fs of
+                data :: xs ->
+                    if data.file.uri == file.uri then
+                        new :: xs
+                    else
+                        data :: helper xs
+                [] ->
+                    [ new ]
+    in
+    (helper files, error)
 
 
 delete : Uri -> List FileData -> List FileData
