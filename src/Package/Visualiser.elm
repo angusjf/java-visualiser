@@ -97,12 +97,17 @@ getInfo entity =
 
 getAttrs : Entity -> List String
 getAttrs entity =
-    case List.map attrToString entity.publicAttributes of
+    case List.map attrToString entity.publicAttributes 
+      ++ List.map methodToString entity.publicMethods of
         [] -> [ "no public attributes" ]
         strings -> List.take 3 strings
 
 attrToString : Attribute -> String
 attrToString attr = attr.prettyTypeName ++ " " ++ attr.identifier
+
+methodToString : Method -> String
+methodToString method = method.identifier ++ "/"
+                            ++ (String.fromInt method.numberOfParams)
 
 -- view
 

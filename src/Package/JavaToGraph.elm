@@ -163,7 +163,7 @@ normalClassDeclarationTS pkg (JP.NormalClassDeclaration mods id typeParams super
              , final = List.member JP.ClassModifier_Final mods
              , abstract = List.member JP.ClassModifier_Abstract mods
              , publicAttributes = getPublicAttributes classBody
-             , publicMethods = [] -- TODO
+             , publicMethods = getPublicMethods classBody
              , expansion = Not
              , complexity = 1 + Complexity.cClassBody classBody 
              }
@@ -210,6 +210,12 @@ getPublicAttributes (JP.ClassBody declarations) =
   |> List.filterMap onlyFields
   |> List.filterMap fieldToAttribute
 
+getPublicMethods : JP.ClassBody -> List Method
+getPublicMethods (JP.ClassBody declarations) =
+  declarations
+  |> List.filterMap onlyMethods
+  |> List.filterMap methodDeclToMethod
+
 onlyFields : JP.ClassBodyDeclaration -> Maybe JP.FieldDeclaration
 onlyFields dec =
   case dec of
@@ -217,6 +223,18 @@ onlyFields dec =
         case classMemberDeclaration of 
           JP.ClassMemberDeclaration_Field fieldDeclaration ->
               Just fieldDeclaration
+          _ ->
+              Nothing
+    _ ->
+        Nothing
+
+onlyMethods : JP.ClassBodyDeclaration -> Maybe JP.MethodDeclaration
+onlyMethods dec =
+  case dec of
+    JP.ClassBodyDeclaration_ClassMemberDeclaration classMemberDeclaration ->
+        case classMemberDeclaration of 
+          JP.ClassMemberDeclaration_Method method ->
+              Just method
           _ ->
               Nothing
     _ ->
@@ -230,6 +248,28 @@ fieldToAttribute (JP.FieldDeclaration modifiers type_ declList) =
        , multiple = {-case type_ of
                       JP.ArrayType _ -> True
                       _              -> False-TODO-} False
+       }
+
+methodDeclToMethod : JP.MethodDeclaration -> Maybe Method
+methodDeclToMethod (JP.MethodDeclaration modifiers header _) =
+  let
+    (identifier, n) =
+        case header of
+            JP.MethodHeader_Result _ methodDeclarator _ ->
+                case methodDeclarator of 
+                    JP.MethodDeclarator id _ params _ ->
+                        case params of
+                            Just (JP.FormalParameterList list) ->
+                                ( AstHelpers.identifierToString id
+                                , List.length list
+                                )
+                            _ ->
+                                ("", 0) -- TODO
+            _ ->
+                ("", 0) -- TODO
+  in
+  Just { identifier = identifier
+       , numberOfParams = n
        }
 
 vdlts (JP.VariableDeclaratorList vs) =

@@ -31,6 +31,7 @@ type Access = Public | Protected | Private
 
 type alias Method =
   { identifier : String
+  , numberOfParams : Int
   }
 
 type alias Attribute =

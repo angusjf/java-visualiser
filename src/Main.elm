@@ -39,7 +39,7 @@ type Mode
     | Package PackageData
     | LoadingProject
     | LoadingPackage String
-    | Error
+    | PackageError String
 
 
 type alias ProjectData =
@@ -258,7 +258,7 @@ resetMode model =
                                 }
 
                         [] ->
-                            Error
+                            PackageError name
     
                 Project { vis } ->
                     let
@@ -289,10 +289,11 @@ resetMode model =
                                 }
 
                         [] ->
-                            Error
+                            PackageError name
 
-                Error ->
-                    Error
+                PackageError name ->
+                    (resetMode { model | mode = LoadingPackage name }).mode
+
     }
 
 
@@ -422,7 +423,8 @@ viewOverlay model =
                         Project _ -> "Click a Package..."
                         LoadingProject -> ""
                         LoadingPackage _ -> ""
-                        Error -> "Error!"
+                        PackageError name ->
+                            "Error! Can't load that package"
 
             selectFilesButton =
                 CElement.button
@@ -449,7 +451,7 @@ viewOverlay model =
                     LoadingPackage n ->
                         [ CElement.text <| "loading package '" ++ n ++ "'..." ]
 
-                    Error ->
+                    PackageError _ ->
                         [ CElement.button
                             { onPress = Just BackToProject
                             , label = "← Back To Project"
@@ -463,8 +465,6 @@ viewOverlay model =
             ++ rest
 
 
-
--- RUBBISH
 
 
 viewSelectFilesPopup : List FileData -> Element Msg
@@ -616,8 +616,8 @@ tick model =
                 LoadingPackage n ->
                     LoadingPackage n
 
-                Error ->
-                    Error
+                PackageError e ->
+                    PackageError e
     in
     { model | mode = newView }
 
