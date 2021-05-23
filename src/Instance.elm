@@ -1,7 +1,7 @@
 module Instance exposing (..)
 
-import Geometry as G exposing (Point, Rect)
 import CustomSvg
+import Geometry exposing (Rect, Point)
 
 type alias NodeViewer n msg =
    msg -> n -> Rect -> CustomSvg.Svg msg

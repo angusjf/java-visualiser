@@ -34,7 +34,7 @@ cClassMemberDeclaration declaration =
         ClassMemberDeclaration_Field _ ->
             0
         ClassMemberDeclaration_Method d ->
-            cMethodDeclaration d
+            1 + cMethodDeclaration d -- add one for every class method
         ClassMemberDeclaration_Class d ->
             cClassDeclaration d
         ClassMemberDeclaration_Interface d ->
@@ -78,7 +78,7 @@ cStatement : Statement -> Float
 cStatement stmt =
     case stmt of
         Statement_Statement s ->
-            0 -- TODO getRefsInStatementWithoutTrailingSubstatement s
+            cStatementWithoutTrailingSubstatement s
         Statement_Labeled s ->
             0 -- TODO
         Statement_If s ->
@@ -125,3 +125,58 @@ cStatementNoShortIf s =
         StatementNoShortIf_For forStatementNoShortIf ->
             0 -- TODO
 
+cStatementWithoutTrailingSubstatement : StatementWithoutTrailingSubstatement -> Float
+cStatementWithoutTrailingSubstatement st =
+    case st of
+        StatementWithoutTrailingSubstatement_Block s ->
+            cBlock s
+        StatementWithoutTrailingSubstatement_Empty s ->
+            0
+        StatementWithoutTrailingSubstatement_Expression s ->
+            0 -- TODO
+        StatementWithoutTrailingSubstatement_Assert s ->
+            0 -- TODO
+        StatementWithoutTrailingSubstatement_Switch s ->
+            cSwitchStatment s
+        StatementWithoutTrailingSubstatement_Do s ->
+            0 -- TODO
+        StatementWithoutTrailingSubstatement_Break s ->
+            0 -- TODO
+        StatementWithoutTrailingSubstatement_Continue s ->
+            0 -- TODO
+        StatementWithoutTrailingSubstatement_Return s ->
+            0 -- TODO
+        StatementWithoutTrailingSubstatement_Synchronized s ->
+            0 -- TODO
+        StatementWithoutTrailingSubstatement_Throw s ->
+            0 -- TODO
+        StatementWithoutTrailingSubstatement_Try s ->
+            0 -- TODO
+        StatementWithoutTrailingSubstatement_Yield s ->
+            0 -- TODO
+
+cSwitchStatment : SwitchStatement -> Float
+cSwitchStatment (SwitchStatement _ switchBlock) =
+    case switchBlock of
+        SwitchBlock_Rule first more ->
+            List.map cSwitchRule more
+            |> List.sum
+            |> \r -> (cSwitchRule first) + r
+        SwitchBlock_Group switchBlockStatementGroups switchLabels ->
+            List.map cSwitchBlockStatementGroup switchBlockStatementGroups
+            |> List.sum
+            |> \n -> n + toFloat (List.length switchBlockStatementGroups)
+            
+cSwitchRule : SwitchRule -> Float
+cSwitchRule s =
+    case s of
+        SwitchRule_Expression _ exp ->
+            0
+        SwitchRule_Block _ block ->
+            cBlock block
+        SwitchRule_Throw label throwStatement ->
+            0 -- TODO
+    
+cSwitchBlockStatementGroup : SwitchBlockStatementGroup -> Float
+cSwitchBlockStatementGroup (SwitchBlockStatementGroup _ _ blockStatements) =
+    cBlockStatements blockStatements

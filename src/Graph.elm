@@ -2,9 +2,9 @@ module Graph exposing (NodeId, Graph, Edge, Node)
 
 type alias NodeId = String
 
-type alias Graph n v =
+type alias Graph n e =
   { nodes : List (Node n)
-  , edges : List (Edge v)
+  , edges : List (Edge e)
   }
 
 type alias Edge a =

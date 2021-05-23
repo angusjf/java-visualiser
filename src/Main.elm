@@ -11,7 +11,6 @@ import Element.Font
 import Element.Input
 import File exposing (File, Uri)
 import Graph exposing (Graph)
-import Instance exposing (Instance)
 import Package.Graph
 import Package.JavaToGraph
 import Package.Visualiser

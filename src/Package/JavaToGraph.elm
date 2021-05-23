@@ -165,7 +165,7 @@ normalClassDeclarationTS pkg (JP.NormalClassDeclaration mods id typeParams super
              , publicAttributes = getPublicAttributes classBody
              , publicMethods = getPublicMethods classBody
              , expansion = Not
-             , complexity = 1 + Complexity.cClassBody classBody 
+             , complexity = Complexity.cClassBody classBody 
              }
   , parent = Maybe.map (mkNodeId pkg << superclassToString) superclass
   , interfaces = [] --List.filterMap onlyRefTypes class.implements
@@ -258,14 +258,14 @@ methodDeclToMethod (JP.MethodDeclaration modifiers header _) =
             JP.MethodHeader_Result _ methodDeclarator _ ->
                 case methodDeclarator of 
                     JP.MethodDeclarator id _ params _ ->
-                        case params of
-                            Just (JP.FormalParameterList list) ->
-                                ( AstHelpers.identifierToString id
-                                , List.length list
-                                )
-                            _ ->
-                                ("", 0) -- TODO
-            _ ->
+                            ( AstHelpers.identifierToString id
+                            , case params of
+                                Just (JP.FormalParameterList list) ->
+                                    List.length list
+                                Nothing ->
+                                    0
+                            )
+            JP.MethodHeader_TypeParameters _ _ _ _ _ -> --TypeParameters (List Annotation) Result MethodDeclarator (Maybe Throws)
                 ("", 0) -- TODO
   in
   Just { identifier = identifier
