@@ -2856,10 +2856,10 @@ statementExpression =
              preIncrementExpression
         , kmap StatementExpression_PreDecrement
              preDecrementExpression
-        --, kmap StatementExpression_PostIncrement
-        --     postIncrementExpression
-        --, kmap StatementExpression_PostDecrement
-        --     postDecrementExpression
+        , kmap StatementExpression_PostIncrement
+             postIncrementExpression
+        , kmap StatementExpression_PostDecrement
+             postDecrementExpression
         , kmap StatementExpression_MethodInvocation
              methodInvocation
         --, kmap StatementExpression_ClassCreation
@@ -3359,10 +3359,10 @@ type ForInit
 forInit : Parser ForInit
 forInit =
     oneOf
-        [ kmap ForInit_StatementList
-            statementExpressionList
-        , kmap ForInit_Variable
+        [ kmap ForInit_Variable
             localVariableDeclaration
+        , kmap ForInit_StatementList
+            statementExpressionList
         ]
 
 
@@ -4107,14 +4107,14 @@ arrayAccess =
             expression
             spaces
             (symbol "]")
-        , kiiikiimap ArrayAccess_Primary
-            primaryNoNewArray
-            spaces
-            (symbol "[")
-            spaces
-            expression
-            spaces
-            (symbol "]")
+        --, kiiikiimap ArrayAccess_Primary
+        --    primaryNoNewArray
+        --    spaces
+        --    (symbol "[")
+        --    spaces
+        --    expression
+        --    spaces
+        --    (symbol "]")
         ]
 
 
@@ -4573,8 +4573,8 @@ type LeftHandSide
 leftHandSide : Parser LeftHandSide
 leftHandSide =
     oneOf
-        [ --kmap LeftHandSide_Array (lazy (\_ -> arrayAccess))
-          kmap LeftHandSide_Field fieldAccess
+        [ kmap LeftHandSide_Array (lazy (\_ -> arrayAccess))
+        , kmap LeftHandSide_Field fieldAccess
         , kmap LeftHandSide_Expression expressionName
         ]
 
@@ -5010,16 +5010,24 @@ type PostfixExpression
 
 postfixExpression : Parser PostfixExpression
 postfixExpression =
-    oneOf
-        [ kmap PostfixExpression_Primary
-            primary
-        , kmap PostfixExpression_Name
-            expressionName
-        --, kmap PostfixExpression_Increment
-        --    postIncrementExpression
-        --, kmap PostfixExpression_Decrement
-        --    postDecrementExpression
-        ]
+    kimap identity
+        ( oneOf
+            [ kmap PostfixExpression_Primary
+                primary
+            , kmap PostfixExpression_Name
+                expressionName
+            ]
+        )
+        ( optional  
+            ( ignorer
+                spaces
+                ( oneOf
+                    [ symbol "++"
+                    , symbol "--"
+                    ]
+                )
+            )
+        )
 
 
 type PostIncrementExpression
@@ -5028,12 +5036,7 @@ type PostIncrementExpression
 
 
 postIncrementExpression : Parser PostIncrementExpression
-postIncrementExpression =
-    kiimap PostIncrementExpression
-        (lazy (\_ -> postfixExpression))
-        spaces
-        (symbol "++")
-
+postIncrementExpression = kmap PostIncrementExpression postfixExpression
 
 type PostDecrementExpression
     = PostDecrementExpression PostfixExpression
@@ -5041,11 +5044,7 @@ type PostDecrementExpression
 
 
 postDecrementExpression : Parser PostDecrementExpression
-postDecrementExpression =
-    kiimap PostDecrementExpression
-        (lazy (\_ -> postfixExpression))
-        spaces
-        (symbol "--")
+postDecrementExpression = kmap PostDecrementExpression postfixExpression
 
 
 type CastExpression
